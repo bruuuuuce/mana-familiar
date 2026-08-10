@@ -2,8 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mana_learning_explorer/journey_graph.dart';
 import 'package:mana_learning_explorer/journey_navigator.dart';
 
+import 'support/journey_graph_fixture.dart';
+
 void main() {
-  JourneyGraph graph() => JourneyGraph.decode('''
+  JourneyGraph graph() => decodeTestGraph('''
     {
       "nodes":[
         {"id":"start","label":"Start","state":"expanded"},

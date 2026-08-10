@@ -1,7 +1,27 @@
 import 'dart:convert';
 
+class JourneyGraphCompatibilityException implements Exception {
+  const JourneyGraphCompatibilityException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'Journey graph compatibility error: $message';
+}
+
+class JourneyGraphFormatException implements Exception {
+  const JourneyGraphFormatException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'Malformed Journey graph: $message';
+}
+
 class JourneyGraph {
   JourneyGraph(this.raw);
+  static const supportedSchema = 'mana.learning.graph/v1';
+
   final Map<String, dynamic> raw;
 
   String get title => raw['journey']?['title'] as String? ?? 'Untitled Journey';
@@ -113,6 +133,89 @@ class JourneyGraph {
     return result;
   }
 
-  static JourneyGraph decode(String source) =>
-      JourneyGraph(jsonDecode(source) as Map<String, dynamic>);
+  static JourneyGraph decode(String source) {
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(source);
+    } on FormatException catch (error) {
+      throw JourneyGraphFormatException('invalid JSON: ${error.message}');
+    }
+    if (decoded is! Map<String, dynamic>) {
+      throw const JourneyGraphFormatException(
+        'the top-level JSON value must be an object.',
+      );
+    }
+
+    final schema = decoded['schema'];
+    if (schema == null) {
+      throw const JourneyGraphCompatibilityException(
+        'missing required "schema"; supported schema is '
+        '"mana.learning.graph/v1".',
+      );
+    }
+    if (schema != supportedSchema) {
+      throw JourneyGraphCompatibilityException(
+        'unsupported schema "$schema"; supported schema is '
+        '"$supportedSchema".',
+      );
+    }
+
+    _validateObject(decoded, 'journey', required: true);
+    final journey = decoded['journey'] as Map<String, dynamic>;
+    if (journey['id'] is! String || (journey['id'] as String).isEmpty) {
+      throw const JourneyGraphFormatException(
+        '"journey.id" must be a non-empty string.',
+      );
+    }
+    _validateRecords(decoded, 'nodes', required: true, nonEmpty: true);
+    for (final key in const [
+      'edges',
+      'anchors',
+      'evidence',
+      'explanations',
+      'hypotheses',
+      'hypothesis_assessments',
+      'concept_occurrences',
+      'timeline_events',
+      'diagrams',
+      'traversals',
+      'cycle_regions',
+    ]) {
+      _validateRecords(decoded, key);
+    }
+    return JourneyGraph(decoded);
+  }
+
+  static void _validateObject(
+    Map<String, dynamic> graph,
+    String key, {
+    bool required = false,
+  }) {
+    final value = graph[key];
+    if (value == null && !required) return;
+    if (value is! Map<String, dynamic>) {
+      throw JourneyGraphFormatException('"$key" must be an object.');
+    }
+  }
+
+  static void _validateRecords(
+    Map<String, dynamic> graph,
+    String key, {
+    bool required = false,
+    bool nonEmpty = false,
+  }) {
+    final value = graph[key];
+    if (value == null && !required) return;
+    if (value is! List) {
+      throw JourneyGraphFormatException('"$key" must be an array.');
+    }
+    if (nonEmpty && value.isEmpty) {
+      throw JourneyGraphFormatException('"$key" must not be empty.');
+    }
+    if (value.any((item) => item is! Map<String, dynamic>)) {
+      throw JourneyGraphFormatException(
+        'every item in "$key" must be an object.',
+      );
+    }
+  }
 }

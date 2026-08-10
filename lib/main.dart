@@ -160,8 +160,8 @@ class ExplorerConfig {
   final String? preferencesRoot;
   final String? journeyId;
 
-  /// A materialized Journey graph for local UI review. This deliberately
-  /// bypasses persistence and is not available through the normal navigator.
+  /// A compatible materialized Journey graph loaded directly from disk.
+  /// `--fixture` remains a backwards-compatible alias for `--artifact`.
   final String? fixturePath;
 
   factory ExplorerConfig.parse(List<String> args) {
@@ -197,11 +197,17 @@ class ExplorerConfig {
     final detectedProject = detect('.mana');
     final detectedMana = detect('scripts/mana-journey.sh');
 
+    final artifactPath = args.contains('--artifact')
+        ? value('--artifact', '')
+        : args.contains('--fixture')
+        ? value('--fixture', '')
+        : null;
+
     return ExplorerConfig(
       projectRoot: value('--project-root', detectedProject),
       manaRoot: value('--mana-root', detectedMana),
       journeyId: args.contains('--journey') ? value('--journey', '') : null,
-      fixturePath: args.contains('--fixture') ? value('--fixture', '') : null,
+      fixturePath: artifactPath,
     );
   }
 }
@@ -277,9 +283,13 @@ class JourneyStore {
           '--json',
         ]);
     if (result.exitCode != 0) return [];
-    return (JourneyGraph.decode('{"labels":${result.stdout}}').raw['labels']
-            as List)
-        .cast<Map<String, dynamic>>();
+    try {
+      final decoded = jsonDecode(result.stdout.toString());
+      if (decoded is! List) return [];
+      return decoded.whereType<Map<String, dynamic>>().toList();
+    } on FormatException {
+      return [];
+    }
   }
 
   Future<String> requestExpansion(String journey, String node) async {

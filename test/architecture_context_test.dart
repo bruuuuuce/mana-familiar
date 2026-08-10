@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mana_learning_explorer/architecture_context.dart';
-import 'package:mana_learning_explorer/journey_graph.dart';
+import 'support/journey_graph_fixture.dart';
 
 void main() {
   test(
     'uses explicit component and async execution bindings with provenance',
     () {
-      final graph = JourneyGraph.decode('''
+      final graph = decodeTestGraph('''
       {"journey":{"repository_revision":"journey-revision"},"nodes":[{"id":"node"}],"diagrams":[
         {"id":"component","kind":"component","node_ids":["node"],"elements":[{"id":"component-element","node_ids":["node"],"context":{"component":"billing-service","participant":"BillingWorker","execution_path":["HTTP","BillingWorker"],"step":"publish invoice","depth":2,"transition_kind":"async"},"provenance":{"snapshot":"analysis-42","confidence":"documented"}}]},
         {"id":"sequence","kind":"sequence","node_ids":["node"]}
@@ -30,10 +30,10 @@ void main() {
   );
 
   test('does not fabricate semantics for unmapped or ambiguous diagrams', () {
-    final partial = JourneyGraph.decode(
+    final partial = decodeTestGraph(
       '''{"nodes":[{"id":"node"}],"diagrams":[{"id":"diagram","kind":"sequence","node_ids":["node"]}]}''',
     );
-    final ambiguous = JourneyGraph.decode('''
+    final ambiguous = decodeTestGraph('''
       {"nodes":[{"id":"node"}],"diagrams":[{"id":"diagram","kind":"sequence","node_ids":["node"],"elements":[{"id":"one","node_ids":["node"]},{"id":"two","node_ids":["node"]}]}]}
     ''');
 
@@ -51,7 +51,7 @@ void main() {
   });
 
   test('states unavailable context honestly', () {
-    final graph = JourneyGraph.decode('''{"nodes":[{"id":"node"}]}''');
+    final graph = decodeTestGraph('''{"nodes":[{"id":"node"}]}''');
     expect(
       ArchitectureContextModel.build(graph: graph, nodeId: 'node').status,
       ArchitectureContextStatus.unavailable,

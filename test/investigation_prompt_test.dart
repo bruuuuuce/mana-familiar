@@ -4,8 +4,10 @@ import 'package:mana_learning_explorer/investigation_prompt.dart';
 import 'package:mana_learning_explorer/journey_graph.dart';
 import 'package:mana_learning_explorer/source_workspace.dart';
 
+import 'support/journey_graph_fixture.dart';
+
 void main() {
-  JourneyGraph graph() => JourneyGraph.decode(r'''
+  JourneyGraph graph() => decodeTestGraph(r'''
     {
       "journey":{"repository_revision":"journey-snapshot"},
       "nodes":[{"id":"root","label":"Entry"},{"id":"current","label":"Service \"edge\""},{"id":"next","label":"Worker"}],
@@ -63,7 +65,7 @@ void main() {
   });
 
   test('does not claim unavailable source content or missing context', () {
-    final empty = JourneyGraph.decode('''{"nodes":[{"id":"node"}]}''');
+    final empty = decodeTestGraph('''{"nodes":[{"id":"node"}]}''');
     final prompt = const InvestigationPromptBuilder().build(
       graph: empty,
       route: const ExplorerRoute(journeyId: 'journey', nodeId: 'node'),
