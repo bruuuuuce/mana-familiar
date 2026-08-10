@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mana_learning_explorer/graph_overview.dart';
-import 'package:mana_learning_explorer/journey_graph.dart';
+import 'support/journey_graph_fixture.dart';
 
 void main() {
   test('projects each cyclic node once and preserves semantic edge styles', () {
-    final graph = JourneyGraph.decode('''
+    final graph = decodeTestGraph('''
       {"nodes":[{"id":"a"},{"id":"b"},{"id":"c"},{"id":"d"}],
        "edges":[
         {"id":"primary","from":"a","to":"b","kind":"CALLS","disposition":"primary"},
@@ -43,7 +43,7 @@ void main() {
       return '{"id":"edge-$index","from":"node-$from","to":"node-$to","kind":"CALLS","disposition":"${index.isEven ? 'primary' : 'alternative'}"}';
     }).join(',');
     final model = GraphOverviewModel.build(
-      JourneyGraph.decode('{"nodes":[$nodes],"edges":[$edges]}'),
+      decodeTestGraph('{"nodes":[$nodes],"edges":[$edges]}'),
     );
     expect(model.nodes, hasLength(480));
     expect(model.relations, hasLength(520));

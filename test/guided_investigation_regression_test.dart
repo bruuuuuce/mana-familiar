@@ -4,15 +4,16 @@ import 'package:mana_learning_explorer/diagram_detachment.dart';
 import 'package:mana_learning_explorer/diagram_workspace.dart';
 import 'package:mana_learning_explorer/explorer_navigation.dart';
 import 'package:mana_learning_explorer/investigation_inspector.dart';
-import 'package:mana_learning_explorer/journey_graph.dart';
 import 'package:mana_learning_explorer/journey_navigator.dart';
 import 'package:mana_learning_explorer/source_workspace.dart';
+
+import 'support/journey_graph_fixture.dart';
 
 /// A workflow-level fixture: it deliberately contains a branch, a deferred
 /// path, a loop, cross-file evidence, an async boundary, and both diagrams.
 /// Keeping these scenarios together catches route contract regressions that
 /// isolated widget/model tests cannot see.
-final _graph = JourneyGraph.decode(r'''
+final _graph = decodeTestGraph(r'''
 {
   "journey":{"id":"guided","repository_revision":"snapshot-42"},
   "nodes":[

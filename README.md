@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/branding/mana-learning-explorer-logo.png" alt="Mana Learning Explorer" width="280">
+</p>
+
 # Mana Learning Explorer
 
 Mana Learning Explorer is the desktop companion for exploring Mana learning
@@ -10,8 +14,29 @@ explanation requests. It does not write Journey records or source code.
 
 ## Development
 
-Requirements: Flutter with macOS desktop support, a Mana checkout or
-installation, and a Mana-enabled target project containing `.mana/learning`.
+Requirements: Flutter with macOS desktop support. A Mana checkout or
+installation is required only for producer-backed mode; direct artifact mode
+works with this repository alone.
+
+### Open a materialized artifact directly
+
+Any compatible `mana.learning.graph/v1` JSON artifact can be opened read-only
+without installing Mana:
+
+```sh
+flutter pub get
+flutter run -d macos \
+  --dart-entrypoint-args=--artifact \
+  --dart-entrypoint-args=/path/to/materialized-journey.json \
+  --dart-entrypoint-args=--project-root \
+  --dart-entrypoint-args=/path/to/source-project
+```
+
+`--project-root` is optional when no source anchors need to be resolved.
+Diagram paths in the artifact are resolved relative to the artifact directory.
+`--fixture` remains a backwards-compatible alias for `--artifact`.
+
+### Use a Mana producer installation
 
 ```sh
 flutter pub get
@@ -25,38 +50,53 @@ flutter run -d macos \
 ```
 
 `--project-root` identifies the target project whose source anchors and
-Journey artifacts are being explored. `--mana-root` identifies the Mana
-installation that supplies the producer commands. Supplying both flags is the
-portable, supported invocation. When omitted, the app only performs local
-ancestor discovery for convenience; it never imports or assumes a sibling
-Mana source tree.
+Journey artifacts are being explored. `--mana-root` identifies any compatible
+Mana installation that supplies the producer commands; it does not need to be
+a sibling checkout. Supplying both flags is the portable producer-backed
+invocation. When omitted, the app only performs local ancestor discovery for
+convenience.
 
-Run checks with:
+Run the complete validation suite with:
 
 ```sh
+dart format --output=none --set-exit-if-changed .
 flutter analyze
 flutter test
+flutter build macos --debug
 ```
 
 ## Contract
 
-The authoritative producer contract remains in the Mana repository:
-`docs/standards/mana-learning-journey-v0.schema.json` and
-`docs/standards/mana-learning-journey-v0.md`. This app consumes the
-deterministic `mana.learning.graph/v1` materialization emitted by
+This consumer supports exactly `mana.learning.graph/v1`. Missing or unsupported
+schema identifiers and malformed artifacts are rejected with explicit errors.
+The local compatibility rules are pinned in
+[Artifact compatibility](docs/artifact-compatibility.md); they can be reviewed
+without access to the Mana repository.
+
+Producer-backed mode consumes the deterministic materialization emitted by
 `scripts/mana-journey.sh materialize`, plus the documented concept-label and
-expansion request commands. See [the local architecture note](docs/architecture.md)
-for the consumer boundary.
+expansion request commands. See the
+[consumer architecture note](docs/architecture.md) for the boundary.
 
 ## Development fixture
 
-For a deterministic UI-only fixture with no Mana installation required:
+For the repository's deterministic branching/cycle fixture:
 
 ```sh
 flutter run -d macos \
-  --dart-entrypoint-args=--fixture \
+  --dart-entrypoint-args=--artifact \
   --dart-entrypoint-args=test/fixtures/complex_journey_fixture.json
 ```
 
-The fixture is materialized Journey JSON and never persists data under
-`.mana`.
+The fixture is materialized Journey JSON and never persists data under `.mana`.
+
+## Supported platforms
+
+macOS desktop is the supported application target. Web scaffolding is retained
+for possible future work, but browser runtime is not supported because source
+resolution, Git snapshots, filesystem watching, and producer commands require
+desktop APIs.
+
+## License
+
+Mana Learning Explorer is available under the [MIT License](LICENSE).

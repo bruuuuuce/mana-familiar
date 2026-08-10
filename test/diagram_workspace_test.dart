@@ -3,10 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mana_learning_explorer/diagram_detachment.dart';
 import 'package:mana_learning_explorer/diagram_workspace.dart';
 import 'package:mana_learning_explorer/explorer_navigation.dart';
-import 'package:mana_learning_explorer/journey_graph.dart';
+import 'support/journey_graph_fixture.dart';
 
 void main() {
-  final graph = JourneyGraph.decode(
+  final graph = decodeTestGraph(
     '''{"journey":{"repository_revision":"snap"},"nodes":[{"id":"a"},{"id":"b"},{"id":"c"}],"edges":[{"id":"ab","from":"a","to":"b","kind":"CALLS"},{"id":"bc","from":"b","to":"c","kind":"CALLS"},{"id":"ca","from":"c","to":"a","kind":"LOOP_BACK"}]}''',
   );
   final diagram = <String, dynamic>{

@@ -37,6 +37,8 @@ preferences are stored outside the project: in macOS Application Support or
 the platform configuration directory. They are deliberately not Mana
 artifacts.
 
-The authoritative schema and compatibility rules are versioned with Mana.
-Changes to the materialized graph or the CLI commands above require a
-compatible producer release and corresponding Explorer update.
+The Explorer pins its accepted consumer contract locally in
+[`artifact-compatibility.md`](artifact-compatibility.md). Changes to the
+materialized graph or the CLI commands above require a compatible producer
+release and a corresponding Explorer update. The app rejects missing or
+unsupported graph schema identifiers before rendering.
