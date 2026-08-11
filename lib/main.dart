@@ -152,17 +152,12 @@ class ExplorerConfig {
     required this.projectRoot,
     required this.manaRoot,
     this.preferencesRoot,
-    this.legacyPreferencesRoot,
     this.journeyId,
     this.fixturePath,
   });
   final String projectRoot;
   final String manaRoot;
   final String? preferencesRoot;
-
-  /// Overrides the previous product's settings directory for migration tests.
-  /// Production uses the platform-specific Mana Learning Explorer location.
-  final String? legacyPreferencesRoot;
   final String? journeyId;
 
   /// A compatible materialized Journey graph loaded directly from disk.
@@ -353,35 +348,10 @@ class ExplorerPreferences {
   static Future<ExplorerPreferences> load(ExplorerConfig config) async {
     final root = config.preferencesRoot ?? _defaultPreferencesRoot();
     final file = File('$root/preferences.json');
-    final legacyRoot =
-        config.legacyPreferencesRoot ??
-        (config.preferencesRoot == null ? _legacyPreferencesRoot() : null);
-    if (legacyRoot != null && !await file.exists()) {
-      final legacyFile = File('$legacyRoot/preferences.json');
-      if (await legacyFile.exists()) {
-        try {
-          await file.parent.create(recursive: true);
-          await legacyFile.copy(file.path);
-        } catch (_) {
-          // A read-only or otherwise unavailable preferences directory should
-          // not prevent startup. The legacy file remains available for this
-          // load and will be migrated on a later writable launch.
-          return _loadFromFile(legacyFile, saveTo: file);
-        }
-      }
-    }
-    return _loadFromFile(file);
-  }
-
-  static Future<ExplorerPreferences> _loadFromFile(
-    File source, {
-    File? saveTo,
-  }) async {
     try {
-      final raw =
-          jsonDecode(await source.readAsString()) as Map<String, dynamic>;
+      final raw = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       return ExplorerPreferences._(
-        saveTo ?? source,
+        file,
         initialMode: _themeMode(raw['themeMode'] as String?),
         fontSize: (raw['editorFontSize'] as num?)?.toDouble() ?? 14,
         tabSize: raw['tabSize'] as int? ?? 2,
@@ -392,7 +362,7 @@ class ExplorerPreferences {
       );
     } catch (_) {
       return ExplorerPreferences._(
-        saveTo ?? source,
+        file,
         initialMode: ThemeMode.system,
         fontSize: 14,
         tabSize: 2,
@@ -415,21 +385,6 @@ class ExplorerPreferences {
       return '$home/.config/mana-familiar';
     }
     return '${Directory.systemTemp.path}/mana-familiar';
-  }
-
-  static String _legacyPreferencesRoot() {
-    final home = Platform.environment['HOME'];
-    final xdgConfigHome = Platform.environment['XDG_CONFIG_HOME'];
-    if (Platform.isMacOS && home != null && home.isNotEmpty) {
-      return '$home/Library/Application Support/Mana Learning Explorer';
-    }
-    if (xdgConfigHome != null && xdgConfigHome.isNotEmpty) {
-      return '$xdgConfigHome/mana-learning-explorer';
-    }
-    if (home != null && home.isNotEmpty) {
-      return '$home/.config/mana-learning-explorer';
-    }
-    return '${Directory.systemTemp.path}/mana-learning-explorer';
   }
 
   static ThemeMode _themeMode(String? value) => switch (value) {
