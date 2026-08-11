@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mana_learning_explorer/explorer_navigation.dart';
-import 'package:mana_learning_explorer/source_workspace.dart';
+import 'package:mana_familiar/explorer_navigation.dart';
+import 'package:mana_familiar/source_workspace.dart';
 
 void main() {
   const a = ExplorerRoute(journeyId: 'journey-a', nodeId: 'node-a');

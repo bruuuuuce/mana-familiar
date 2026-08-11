@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mana_learning_explorer/external_editor.dart';
-import 'package:mana_learning_explorer/source_workspace.dart';
+import 'package:mana_familiar/external_editor.dart';
+import 'package:mana_familiar/source_workspace.dart';
 
 void main() {
   const vscode = ExternalEditorProfile(

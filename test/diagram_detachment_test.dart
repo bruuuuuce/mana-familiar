@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mana_learning_explorer/diagram_detachment.dart';
+import 'package:mana_familiar/diagram_detachment.dart';
 
 void main() {
   test('unavailable detachment leaves the shared presentation attached', () {

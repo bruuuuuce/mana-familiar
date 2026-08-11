@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mana_learning_explorer/architecture_context.dart';
-import 'package:mana_learning_explorer/diagram_detachment.dart';
-import 'package:mana_learning_explorer/diagram_workspace.dart';
-import 'package:mana_learning_explorer/explorer_navigation.dart';
-import 'package:mana_learning_explorer/investigation_inspector.dart';
-import 'package:mana_learning_explorer/journey_navigator.dart';
-import 'package:mana_learning_explorer/source_workspace.dart';
+import 'package:mana_familiar/architecture_context.dart';
+import 'package:mana_familiar/diagram_detachment.dart';
+import 'package:mana_familiar/diagram_workspace.dart';
+import 'package:mana_familiar/explorer_navigation.dart';
+import 'package:mana_familiar/investigation_inspector.dart';
+import 'package:mana_familiar/journey_navigator.dart';
+import 'package:mana_familiar/source_workspace.dart';
 
 import 'support/journey_graph_fixture.dart';
 

@@ -1,14 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mana_learning_explorer/architecture_context.dart';
-import 'package:mana_learning_explorer/explorer_navigation.dart';
-import 'package:mana_learning_explorer/graph_overview.dart';
-import 'package:mana_learning_explorer/investigation_inspector.dart';
-import 'package:mana_learning_explorer/journey_graph.dart';
-import 'package:mana_learning_explorer/journey_navigator.dart';
-import 'package:mana_learning_explorer/main.dart';
-import 'package:mana_learning_explorer/source_workspace.dart';
+import 'package:mana_familiar/architecture_context.dart';
+import 'package:mana_familiar/explorer_navigation.dart';
+import 'package:mana_familiar/graph_overview.dart';
+import 'package:mana_familiar/investigation_inspector.dart';
+import 'package:mana_familiar/journey_graph.dart';
+import 'package:mana_familiar/journey_navigator.dart';
+import 'package:mana_familiar/main.dart';
+import 'package:mana_familiar/source_workspace.dart';
 
 const _fixturePath = 'test/fixtures/complex_journey_fixture.json';
 const _journeyId = 'jrn_100000000000000000000001';
