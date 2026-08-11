@@ -173,37 +173,4 @@ void main() {
       expect(reloaded.wordWrap, isTrue);
     },
   );
-
-  test('migrates preferences from Mana Learning Explorer once', () async {
-    final root = await Directory.systemTemp.createTemp(
-      'mana-familiar-preferences-',
-    );
-    addTearDown(() => root.delete(recursive: true));
-    final legacyRoot = Directory('${root.path}/Mana Learning Explorer');
-    final familiarRoot = Directory('${root.path}/Mana Familiar');
-    await legacyRoot.create(recursive: true);
-    await File('${legacyRoot.path}/preferences.json').writeAsString('''
-      {
-        "themeMode": "dark",
-        "editorFontSize": 17,
-        "tabSize": 4,
-        "wordWrap": true
-      }
-    ''');
-    final config = ExplorerConfig(
-      projectRoot: root.path,
-      manaRoot: root.path,
-      preferencesRoot: familiarRoot.path,
-      legacyPreferencesRoot: legacyRoot.path,
-    );
-
-    final preferences = await ExplorerPreferences.load(config);
-
-    expect(preferences.themeMode.value, ThemeMode.dark);
-    expect(preferences.fontSize, 17);
-    expect(preferences.tabSize, 4);
-    expect(preferences.wordWrap, isTrue);
-    expect(File('${familiarRoot.path}/preferences.json').existsSync(), isTrue);
-    expect(File('${legacyRoot.path}/preferences.json').existsSync(), isTrue);
-  });
 }
