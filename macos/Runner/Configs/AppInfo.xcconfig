@@ -5,10 +5,10 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = Mana Learning Explorer
+PRODUCT_NAME = Mana Familiar
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.mana.learningexplorer
+PRODUCT_BUNDLE_IDENTIFIER = com.mana.familiar
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 Mana contributors. All rights reserved.

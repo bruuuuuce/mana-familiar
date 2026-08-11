@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="assets/branding/mana-learning-explorer-logo.png" alt="Mana Learning Explorer" width="280">
+  <img src="assets/branding/mana-familiar-logo.png" alt="Mana Familiar" width="280">
 </p>
 
-# Mana Learning Explorer
+# Mana Familiar
 
-Mana Learning Explorer is the desktop companion for exploring Mana learning
+Mana Familiar is the desktop companion for exploring Mana learning
 journeys, evidence graphs, source references, and architecture context.
 
 Mana is the producer: it creates and validates Journey artifacts. This
@@ -99,4 +99,4 @@ desktop APIs.
 
 ## License
 
-Mana Learning Explorer is available under the [MIT License](LICENSE).
+Mana Familiar is available under the [MIT License](LICENSE).

@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:mana_learning_explorer/journey_graph.dart';
+import 'package:mana_familiar/journey_graph.dart';
 
 /// Adds the producer envelope when a unit test only cares about a graph
 /// projection. Contract-validation tests call [JourneyGraph.decode] directly.

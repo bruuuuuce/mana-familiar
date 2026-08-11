@@ -24,13 +24,20 @@ class MainFlutterWindow: NSWindow {
       for: .applicationSupportDirectory,
       in: .userDomainMask
     ).first {
-      let path = applicationSupport
-        .appendingPathComponent("Mana Learning Explorer/preferences.json")
-        .path
-      if let source = try? String(contentsOfFile: path),
-         source.contains("\"themeMode\":\"dark\"") ||
-         source.contains("\"themeMode\": \"dark\"") {
-        return .black
+      for directory in ["Mana Familiar", "Mana Learning Explorer"] {
+        let path = applicationSupport
+          .appendingPathComponent("\(directory)/preferences.json")
+          .path
+        if let source = try? String(contentsOfFile: path),
+           source.contains("\"themeMode\":\"dark\"") ||
+           source.contains("\"themeMode\": \"dark\"") {
+          return .black
+        }
+        if FileManager.default.fileExists(atPath: path) {
+          // The first existing file is authoritative. Once migrated, an old
+          // dark preference must not override a newer non-dark preference.
+          return .windowBackgroundColor
+        }
       }
     }
     // Dynamic system color also updates when macOS appearance changes.

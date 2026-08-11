@@ -1,6 +1,6 @@
 {
-    "name": "Mana Learning Explorer",
-    "short_name": "Mana Explorer",
+    "name": "Mana Familiar",
+    "short_name": "Mana Familiar",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

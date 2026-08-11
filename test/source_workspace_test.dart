@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mana_learning_explorer/source_workspace.dart';
+import 'package:mana_familiar/source_workspace.dart';
 
 void main() {
   test(

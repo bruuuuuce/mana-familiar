@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mana_learning_explorer/architecture_context.dart';
+import 'package:mana_familiar/architecture_context.dart';
 import 'support/journey_graph_fixture.dart';
 
 void main() {

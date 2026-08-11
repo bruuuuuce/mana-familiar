@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mana_learning_explorer/diagram_detachment.dart';
-import 'package:mana_learning_explorer/diagram_workspace.dart';
-import 'package:mana_learning_explorer/explorer_navigation.dart';
+import 'package:mana_familiar/diagram_detachment.dart';
+import 'package:mana_familiar/diagram_workspace.dart';
+import 'package:mana_familiar/explorer_navigation.dart';
 import 'support/journey_graph_fixture.dart';
 
 void main() {

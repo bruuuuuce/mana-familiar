@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mana_learning_explorer/investigation_inspector.dart';
-import 'package:mana_learning_explorer/journey_graph.dart';
+import 'package:mana_familiar/investigation_inspector.dart';
+import 'package:mana_familiar/journey_graph.dart';
 
 import 'support/journey_graph_fixture.dart';
 
