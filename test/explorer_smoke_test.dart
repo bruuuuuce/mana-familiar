@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mana_learning_explorer/main.dart';
+import 'package:mana_familiar/main.dart';
 
 void main() {
   testWidgets(
@@ -45,10 +45,14 @@ void main() {
         if (root.existsSync()) root.deleteSync(recursive: true);
       });
       await tester.pumpWidget(
-        ManaExplorerApp(config: config, preferences: preferences),
+        ManaFamiliarApp(config: config, preferences: preferences),
       );
       await _pumpFrames(tester);
 
+      expect(
+        tester.widget<MaterialApp>(find.byType(MaterialApp)).title,
+        'Mana Familiar',
+      );
       expect(find.text('SOURCE WORKSPACE'), findsOneWidget);
       expect(find.text('lib/example.dart:1-1'), findsOneWidget);
       expect(find.text('Source unavailable'), findsWidgets);

@@ -1,6 +1,6 @@
 # Materialized artifact compatibility
 
-Mana Learning Explorer is a read-only consumer of materialized Journey graph
+Mana Familiar is a read-only consumer of materialized Journey graph
 JSON. This document pins the compatibility boundary implemented by this
 repository so a consumer build does not depend on documentation from another
 checkout.
@@ -15,7 +15,7 @@ The only accepted top-level schema identifier is:
 
 The `schema` field is mandatory. Missing identifiers and every other version
 are rejected before the graph is rendered. A future schema requires an
-explicit Explorer change and tests; compatibility is never inferred from a
+explicit Mana Familiar change and tests; compatibility is never inferred from a
 version prefix.
 
 ## Required envelope
