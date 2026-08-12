@@ -6,6 +6,28 @@ viewing, and local UI preferences. Mana owns Journey IDs, append-only
 persistence, validation, graph materialization, concepts, and expansion
 semantics.
 
+## Application structure
+
+`main.dart` is the composition root only: it initializes Flutter, parses
+startup arguments, loads local preferences, and starts the app. The remaining
+responsibilities are deliberately located by their role:
+
+- `app/mana_familiar_app.dart` composes Material theme and the top-level page;
+- `application/explorer_config.dart` owns immutable command-line and
+  auto-discovered roots;
+- `application/mana_inspect.dart` is the typed, read-only transport boundary
+  for Mana-owned inspect v1 responses, saved snapshots, and debounced catalog
+  refreshes; it does not scan `.mana`;
+- `presentation/explorer_page.dart` owns the Journey screen, its dialogs, and
+  screen-local state;
+- root-level focused modules own Journey graph logic, navigation, source
+  resolution, architecture context, diagrams, investigation, and editor
+  integration.
+
+The public types historically imported from `main.dart` remain re-exported
+there for test and embedding compatibility. This reorganization changes no
+artifact contract, loading mode, or UI behavior.
+
 ## Supported producer boundary
 
 Given `--project-root`, the app reads the selected target project's Journey
