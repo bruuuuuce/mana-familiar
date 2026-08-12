@@ -26,6 +26,51 @@ void main() {
     expect(plan.rendererId, 'journey');
   });
 
+  test('dispatches verification and bounded repair renderers', () {
+    final verification = registry.render(
+      _context(
+        kind: 'verification-result',
+        payload: {'schema': 'mana.verification.result/v2'},
+      ),
+    );
+    final repair = registry.render(
+      _context(
+        kind: 'repair-result',
+        payload: {'schema': 'mana.repair.bounded/v1'},
+      ),
+    );
+    expect(verification.view, ArtifactPayloadView.verification);
+    expect(repair.view, ArtifactPayloadView.repair);
+  });
+
+  test(
+    'dispatches only documented structured review, evidence, decision and governance schemas',
+    () {
+      expect(
+        registry
+            .render(_context(payload: {'schema': 'mana.review.findings/v1'}))
+            .view,
+        ArtifactPayloadView.review,
+      );
+      expect(
+        registry
+            .render(_context(payload: {'schema': 'mana.evidence.index/v1'}))
+            .view,
+        ArtifactPayloadView.evidence,
+      );
+      expect(
+        registry.render(_context(payload: {'schema': 'mana.decision/v1'})).view,
+        ArtifactPayloadView.decision,
+      );
+      expect(
+        registry
+            .render(_context(payload: {'schema': 'mana.governance.report/v2'}))
+            .view,
+        ArtifactPayloadView.governance,
+      );
+    },
+  );
+
   test('uses content type and unknown fallback safely', () {
     final markdown = registry.render(
       _context(

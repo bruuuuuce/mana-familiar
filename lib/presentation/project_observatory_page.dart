@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../application/mana_inspect.dart';
 import '../application/observatory_model.dart';
 import 'artifact_detail_view.dart';
+import 'activity_view.dart';
+import 'catalog_focus_view.dart';
 
 enum ObservatoryDestination {
   overview,
@@ -300,10 +302,32 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         detail: _detail,
         loading: _detailLoading,
         error: _detailError,
+        onOpenRelatedArtifact: (id) {
+          final related = catalog.artifacts.where(
+            (artifact) => artifact.id == id,
+          );
+          if (related.isNotEmpty) _openArtifact(related.first);
+        },
+        sourceLoader: widget.client.source,
+        projectRoot: widget.client.projectRoot,
       );
     }
     return switch (_destination) {
       ObservatoryDestination.overview => _overview(catalog),
+      ObservatoryDestination.activity => ActivityView(
+        artifacts: catalog.artifacts,
+        onOpenArtifact: _openArtifact,
+      ),
+      ObservatoryDestination.review => CatalogFocusView(
+        focus: CatalogFocus.review,
+        artifacts: catalog.artifacts,
+        onOpenArtifact: _openArtifact,
+      ),
+      ObservatoryDestination.evidence => CatalogFocusView(
+        focus: CatalogFocus.evidence,
+        artifacts: catalog.artifacts,
+        onOpenArtifact: _openArtifact,
+      ),
       ObservatoryDestination.knowledge => widget.knowledge,
       _ => _artifactList(catalog, _destination.name),
     };

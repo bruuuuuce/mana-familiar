@@ -41,3 +41,24 @@ artifact family/kind, content type, then metadata-only fallback. JSON, text,
 and Markdown previews are bounded; Markdown is inert text with no link opening
 or HTML execution. Unsupported, malformed, binary, oversized, deeply nested,
 or future payloads remain visible as metadata rather than being interpreted.
+
+### Operational renderers
+
+When advertised in a payload, Familiar recognizes `mana.verification.result/v2`
+and `mana.repair.bounded/v1`. Their fields remain producer-owned: a
+verification result is evidence, never an approval; and bounded repair results
+are limited to `RESOLVED`, `UNCHANGED`, `REGRESSED`, or `UNKNOWN`, where
+`RESOLVED` is not a merge-ready decision. Activity uses only run/session,
+timestamp, profile, workspace, status, and summary metadata actually supplied
+by Mana. No action is executed from these views.
+
+### Review, evidence, and governance
+
+Structured payload renderers are limited to the documented schemas
+`mana.review.findings/v1`, `mana.evidence.index/v1`, `mana.decision/v1`,
+`mana.story-trace/v1`, and `mana.governance.report/v2`. Existing Mana review
+and readiness Markdown remains safe text unless a versioned structured payload
+is supplied; Familiar never derives findings from Markdown headings. Review
+recommendations are advisory and human approval is displayed only when Mana
+declares it. Every specialized view retains a bounded raw-payload section for
+auditability.
