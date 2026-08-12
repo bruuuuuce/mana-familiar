@@ -10,7 +10,8 @@ viewing, and local UI preferences. Artifact data and paths are untrusted: the
 client accepts only its documented schema and reads artifact-relative assets
 only after containment, regular-file, symlink, and size checks.
 
-The current product is the Learning Journey explorer for
-`mana.learning.graph/v1`. It will broaden into a project observatory only
-through a versioned Mana-owned inspect contract. It will not add a competing
-generic `.mana` parser or a write surface while making that transition.
+The current product is the project observatory. Its Knowledge module preserves
+the Learning Journey explorer for `mana.learning.graph/v1` under
+**Knowledge > Journeys** and exposes other Knowledge categories only when
+Mana's versioned inspect catalog reports matching artifacts. It does not add a
+competing generic `.mana` parser, knowledge database, or write surface.

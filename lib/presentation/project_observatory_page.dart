@@ -5,6 +5,7 @@ import '../application/observatory_model.dart';
 import 'artifact_detail_view.dart';
 import 'activity_view.dart';
 import 'catalog_focus_view.dart';
+import 'knowledge_module_page.dart';
 
 enum ObservatoryDestination {
   overview,
@@ -20,6 +21,7 @@ class ProjectObservatoryPage extends StatefulWidget {
     super.key,
     required this.client,
     required this.knowledge,
+    this.knowledgeBuilder,
     this.initialProject,
     this.initialCatalog,
     this.recentProjectRoots = const [],
@@ -28,6 +30,7 @@ class ProjectObservatoryPage extends StatefulWidget {
   });
   final ManaInspectClient client;
   final Widget knowledge;
+  final Widget Function(String? journeyId)? knowledgeBuilder;
   final ManaInspectProject? initialProject;
   final ManaInspectCatalog? initialCatalog;
   final List<String> recentProjectRoots;
@@ -328,7 +331,12 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         artifacts: catalog.artifacts,
         onOpenArtifact: _openArtifact,
       ),
-      ObservatoryDestination.knowledge => widget.knowledge,
+      ObservatoryDestination.knowledge => KnowledgeModulePage(
+        journeys: widget.knowledge,
+        journeysBuilder: widget.knowledgeBuilder,
+        artifacts: catalog.artifacts,
+        onOpenArtifact: _openArtifact,
+      ),
       _ => _artifactList(catalog, _destination.name),
     };
   }
