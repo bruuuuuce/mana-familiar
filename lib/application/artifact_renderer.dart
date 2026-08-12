@@ -19,7 +19,19 @@ class ArtifactRenderLimits {
   final int maxRelationDepth;
 }
 
-enum ArtifactPayloadView { journey, json, markdown, text, metadata }
+enum ArtifactPayloadView {
+  journey,
+  verification,
+  repair,
+  review,
+  evidence,
+  decision,
+  governance,
+  json,
+  markdown,
+  text,
+  metadata,
+}
 
 class ArtifactRenderContext {
   const ArtifactRenderContext({
@@ -42,7 +54,10 @@ class ArtifactRenderContext {
   final Map<String, dynamic> raw;
   final List<Map<String, dynamic>> relations;
 
-  String? get payloadSchema => _metadataString('schema');
+  /// The detail envelope itself is `mana.inspect.artifact/v1`; dispatch must
+  /// use the nested payload schema or explicit producer payload_schema instead.
+  String? get payloadSchema =>
+      _payloadString('schema') ?? _rawString('payload_schema');
   String? get contentType =>
       _metadataString('content_type') ??
       _metadataString('contentType') ??
@@ -51,6 +66,15 @@ class ArtifactRenderContext {
   String? _metadataString(String key) {
     final direct = raw[key];
     if (direct is String && direct.isNotEmpty) return direct;
+    return _payloadString(key);
+  }
+
+  String? _rawString(String key) {
+    final direct = raw[key];
+    return direct is String && direct.isNotEmpty ? direct : null;
+  }
+
+  String? _payloadString(String key) {
     if (payload case final Map map) {
       final value = map[key];
       if (value is String && value.isNotEmpty) return value;
@@ -94,6 +118,12 @@ class ArtifactRendererRegistry {
 
   factory ArtifactRendererRegistry.standard() => ArtifactRendererRegistry([
     const JourneyArtifactRenderer(),
+    const VerificationArtifactRenderer(),
+    const BoundedRepairArtifactRenderer(),
+    const ReviewArtifactRenderer(),
+    const EvidenceArtifactRenderer(),
+    const DecisionArtifactRenderer(),
+    const GovernanceArtifactRenderer(),
     const JsonArtifactRenderer(),
     const MarkdownArtifactRenderer(),
     const PlainTextArtifactRenderer(),
@@ -143,6 +173,137 @@ class JourneyArtifactRenderer extends ArtifactRenderer {
     rendererId: 'journey',
     view: ArtifactPayloadView.journey,
     reason: 'Known Journey artifact',
+  );
+}
+
+class VerificationArtifactRenderer extends ArtifactRenderer {
+  const VerificationArtifactRenderer() : super('verification');
+
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.verification.result/v2';
+
+  @override
+  bool supportsKind(ArtifactRenderContext context) =>
+      context.artifact.kind == 'verification-result';
+
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) => const ArtifactRenderPlan(
+    rendererId: 'verification',
+    view: ArtifactPayloadView.verification,
+    reason: 'Mana verification result',
+  );
+}
+
+class BoundedRepairArtifactRenderer extends ArtifactRenderer {
+  const BoundedRepairArtifactRenderer() : super('bounded-repair');
+
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.repair.bounded/v1';
+
+  @override
+  bool supportsKind(ArtifactRenderContext context) =>
+      context.artifact.kind == 'bounded-repair' ||
+      context.artifact.kind == 'repair-result';
+
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) => const ArtifactRenderPlan(
+    rendererId: 'bounded-repair',
+    view: ArtifactPayloadView.repair,
+    reason: 'Mana bounded repair outcome',
+  );
+}
+
+class ReviewArtifactRenderer extends ArtifactRenderer {
+  const ReviewArtifactRenderer() : super('review');
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.review.findings/v1';
+  @override
+  bool supportsKind(ArtifactRenderContext context) => const {
+    'review-findings',
+    'pr-readiness',
+    'branch-validation',
+    'architecture-review',
+  }.contains(context.artifact.kind);
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) => const ArtifactRenderPlan(
+    rendererId: 'review',
+    view: ArtifactPayloadView.review,
+    reason: 'Structured Mana review findings',
+  );
+}
+
+class EvidenceArtifactRenderer extends ArtifactRenderer {
+  const EvidenceArtifactRenderer() : super('evidence');
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.evidence.index/v1';
+  @override
+  bool supportsKind(ArtifactRenderContext context) =>
+      context.artifact.kind == 'evidence_index';
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) => const ArtifactRenderPlan(
+    rendererId: 'evidence',
+    view: ArtifactPayloadView.evidence,
+    reason: 'Mana evidence inventory',
+  );
+}
+
+class DecisionArtifactRenderer extends ArtifactRenderer {
+  const DecisionArtifactRenderer() : super('decision');
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.decision/v1' ||
+      context.payloadSchema == 'mana.story-trace/v1';
+  @override
+  bool supportsKind(ArtifactRenderContext context) => const {
+    'decision',
+    'story-trace',
+    'developer-choice',
+  }.contains(context.artifact.kind);
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) => const ArtifactRenderPlan(
+    rendererId: 'decision',
+    view: ArtifactPayloadView.decision,
+    reason: 'Structured Mana decision or story trace',
+  );
+}
+
+class GovernanceArtifactRenderer extends ArtifactRenderer {
+  const GovernanceArtifactRenderer() : super('governance');
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.governance.report/v2';
+  @override
+  bool supportsKind(ArtifactRenderContext context) => const {
+    'governance-report',
+    'evaluation-summary',
+  }.contains(context.artifact.kind);
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) => const ArtifactRenderPlan(
+    rendererId: 'governance',
+    view: ArtifactPayloadView.governance,
+    reason: 'Mana governance or evaluation summary',
   );
 }
 

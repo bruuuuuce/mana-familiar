@@ -16,6 +16,8 @@ void main() {
   testWidgets('shows overview attention and stable top-level navigation', (
     tester,
   ) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     final client = ManaInspectClient(
       projectRoot: '/project',
       snapshotPath: '/snapshot.json',
@@ -38,16 +40,14 @@ void main() {
     await tester.tap(find.text('Activity'));
     await tester.pump();
     expect(
-      find.text(
-        'Generic catalog view; specialized renderers arrive in later phases.',
-      ),
+      find.text('Mana-reported operational timeline; no synthetic events.'),
       findsOneWidget,
     );
     await tester.tap(find.text('verification:failed').last);
     await tester.pump();
     await tester.pump();
     expect(find.text('Artifact detail'), findsOneWidget);
-    expect(find.text('Validated JSON payload'), findsOneWidget);
+    expect(find.text('Mana verification result'), findsOneWidget);
     await tester.tap(find.byTooltip('Back'));
     await tester.pump();
     expect(find.text('Activity'), findsNWidgets(2));
