@@ -7,6 +7,9 @@
 Mana Familiar is the desktop companion for exploring Mana learning
 journeys, evidence graphs, source references, and architecture context.
 
+See the [product boundary](docs/product-boundary.md) for the read-only client
+scope and the versioned-contract direction.
+
 Mana is the producer: it creates and validates Journey artifacts. This
 repository is the consumer/explorer: it renders those artifacts and can invoke
 the documented Mana commands for materialization, concept labels, and bounded
@@ -35,6 +38,8 @@ flutter run -d macos \
 `--project-root` is optional when no source anchors need to be resolved.
 Diagram paths in the artifact are resolved relative to the artifact directory.
 `--fixture` remains a backwards-compatible alias for `--artifact`.
+Artifact-derived source and diagram paths are containment-checked before any
+file is read; see [Artifact compatibility](docs/artifact-compatibility.md).
 
 ### Use a Mana producer installation
 
@@ -55,6 +60,20 @@ Mana installation that supplies the producer commands; it does not need to be
 a sibling checkout. Supplying both flags is the portable producer-backed
 invocation. When omitted, the app only performs local ancestor discovery for
 convenience.
+
+### Open a saved Mana inspect response
+
+For standalone demos or testing of the project read model, open a saved
+versioned Mana inspect response without a Mana checkout:
+
+```sh
+flutter run -d macos \
+  --dart-entrypoint-args=--inspect-snapshot \
+  --dart-entrypoint-args=/path/to/mana-inspect-response.json
+```
+
+The inspect client negotiates project capabilities before optional operations;
+see [Mana inspect compatibility](docs/mana-inspect-compatibility.md).
 
 Run the complete validation suite with:
 
