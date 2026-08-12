@@ -4,8 +4,11 @@
 
 # Mana Familiar
 
-Mana Familiar is the desktop companion for exploring Mana learning
-journeys, evidence graphs, source references, and architecture context.
+Mana Familiar is the read-only desktop **project observatory** for Mana. Its
+Knowledge module retains the existing Learning Journey explorer under
+**Knowledge > Journeys**, alongside producer-reported concepts, architecture,
+rationale, history, and learning candidates. It also exposes evidence graphs,
+source references, and architecture context.
 
 See the [product boundary](docs/product-boundary.md) for the read-only client
 scope and the versioned-contract direction.
