@@ -60,6 +60,14 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
                 preferences: widget.preferences,
                 initialJourney: widget.config.journeyId,
               ),
+              knowledgeBuilder: (journeyId) => ExplorerPage(
+                key: ValueKey(journeyId ?? widget.config.journeyId),
+                store: JourneyStore(
+                  widget.config.withProjectRoot(_projectRoot),
+                ),
+                preferences: widget.preferences,
+                initialJourney: journeyId ?? widget.config.journeyId,
+              ),
               recentProjectRoots: widget.preferences.recentProjectRoots,
               onOpenProject: _openProject,
             ),
