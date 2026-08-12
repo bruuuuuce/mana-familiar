@@ -15,3 +15,8 @@ the Learning Journey explorer for `mana.learning.graph/v1` under
 **Knowledge > Journeys** and exposes other Knowledge categories only when
 Mana's versioned inspect catalog reports matching artifacts. It does not add a
 competing generic `.mana` parser, knowledge database, or write surface.
+
+The Review Inbox derives its queue from the versioned Mana inspect catalog. It
+may copy a documented CLI handoff only when all typed arguments are present;
+Familiar never executes it. Missing action metadata remains visible as a
+missing requirement rather than a guessed command.
