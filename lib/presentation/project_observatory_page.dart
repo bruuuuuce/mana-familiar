@@ -6,6 +6,7 @@ import 'artifact_detail_view.dart';
 import 'activity_view.dart';
 import 'catalog_focus_view.dart';
 import 'knowledge_module_page.dart';
+import 'review_inbox_page.dart';
 
 enum ObservatoryDestination {
   overview,
@@ -321,8 +322,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         artifacts: catalog.artifacts,
         onOpenArtifact: _openArtifact,
       ),
-      ObservatoryDestination.review => CatalogFocusView(
-        focus: CatalogFocus.review,
+      ObservatoryDestination.review => ReviewInboxPage(
         artifacts: catalog.artifacts,
         onOpenArtifact: _openArtifact,
       ),
