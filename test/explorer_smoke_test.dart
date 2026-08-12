@@ -53,6 +53,13 @@ void main() {
         tester.widget<MaterialApp>(find.byType(MaterialApp)).title,
         'Mana Familiar',
       );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Banner && widget.message == 'Limited Journey mode',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('SOURCE WORKSPACE'), findsOneWidget);
       expect(find.text('lib/example.dart:1-1'), findsOneWidget);
       expect(find.text('Source unavailable'), findsWidgets);
