@@ -61,6 +61,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   ManaInspectCatalog? _catalog;
   Object? _error;
   var _loading = true;
+  int _catalogRequest = 0;
+  int _detailRequest = 0;
+  final _detailCache = <String, ManaInspectArtifactDetail>{};
 
   @override
   void initState() {
@@ -72,6 +75,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   }
 
   Future<void> _load() async {
+    final request = ++_catalogRequest;
     setState(() {
       _loading = true;
       _error = null;
@@ -85,7 +89,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         project = await widget.client.project();
         catalog = project.manaPresent ? await widget.client.catalog() : null;
       }
-      if (mounted) {
+      if (mounted && request == _catalogRequest) {
         setState(() {
           _project = project;
           _catalog = catalog;
@@ -93,7 +97,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         });
       }
     } catch (error) {
-      if (mounted) {
+      if (mounted && request == _catalogRequest) {
         setState(() {
           _error = error;
           _loading = false;
@@ -112,36 +116,58 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   }
 
   void _openArtifact(ManaInspectArtifactSummary artifact) {
+    final cached = _detailCache[_detailCacheKey(artifact)];
     setState(() {
       _pushCurrentRoute();
       _destination = ObservatoryDestination.activity;
       _selectedArtifact = artifact;
-      _detail = null;
+      _detail = cached;
       _detailError = null;
-      _detailLoading = true;
+      _detailLoading = cached == null;
     });
-    _loadArtifactDetail(artifact);
+    if (cached == null) _loadArtifactDetail(artifact);
   }
 
   Future<void> _loadArtifactDetail(ManaInspectArtifactSummary artifact) async {
+    final request = ++_detailRequest;
     try {
       final detail =
           await (widget.artifactDetailLoader ?? widget.client.artifact)(
             artifact.id,
           );
-      if (mounted && _selectedArtifact?.id == artifact.id) {
+      if (mounted &&
+          request == _detailRequest &&
+          _selectedArtifact?.id == artifact.id) {
+        _rememberDetail(artifact, detail);
         setState(() {
           _detail = detail;
           _detailLoading = false;
         });
       }
     } catch (error) {
-      if (mounted && _selectedArtifact?.id == artifact.id) {
+      if (mounted &&
+          request == _detailRequest &&
+          _selectedArtifact?.id == artifact.id) {
         setState(() {
           _detailError = error;
           _detailLoading = false;
         });
       }
+    }
+  }
+
+  String _detailCacheKey(ManaInspectArtifactSummary artifact) =>
+      '${artifact.id}\u0000${artifact.raw['revision_id'] ?? ''}';
+
+  void _rememberDetail(
+    ManaInspectArtifactSummary artifact,
+    ManaInspectArtifactDetail detail,
+  ) {
+    final key = _detailCacheKey(artifact);
+    _detailCache.remove(key);
+    _detailCache[key] = detail;
+    while (_detailCache.length > 24) {
+      _detailCache.remove(_detailCache.keys.first);
     }
   }
 
@@ -486,30 +512,37 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     }
   }
 
-  Widget _artifactList(ManaInspectCatalog catalog, String title) => ListView(
+  Widget _artifactList(
+    ManaInspectCatalog catalog,
+    String title,
+  ) => ListView.builder(
     padding: const EdgeInsets.all(24),
-    children: [
-      Text(
-        title[0].toUpperCase() + title.substring(1),
-        style: Theme.of(context).textTheme.headlineSmall,
-      ),
-      const Text(
-        'Generic catalog view; specialized renderers arrive in later phases.',
-      ),
-      const SizedBox(height: 12),
-      ...catalog.artifacts.map(
-        (artifact) => Card(
-          child: ListTile(
-            title: Text(artifact.id),
-            subtitle: Text(
-              '${artifact.family} • ${artifact.kind} • ${artifact.status}',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _openArtifact(artifact),
+    itemCount: catalog.artifacts.length + 3,
+    itemBuilder: (context, index) {
+      if (index == 0) {
+        return Text(
+          title[0].toUpperCase() + title.substring(1),
+          style: Theme.of(context).textTheme.headlineSmall,
+        );
+      }
+      if (index == 1) {
+        return const Text(
+          'Generic catalog view; specialized renderers arrive in later phases.',
+        );
+      }
+      if (index == 2) return const SizedBox(height: 12);
+      final artifact = catalog.artifacts[index - 3];
+      return Card(
+        child: ListTile(
+          title: Text(artifact.id),
+          subtitle: Text(
+            '${artifact.family} • ${artifact.kind} • ${artifact.status}',
           ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _openArtifact(artifact),
         ),
-      ),
-    ],
+      );
+    },
   );
 
   Widget _stateScaffold(

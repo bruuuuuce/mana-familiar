@@ -18,6 +18,9 @@ responsibilities are deliberately located by their role:
 - `application/mana_inspect.dart` is the typed, read-only transport boundary
   for Mana-owned inspect v1 responses, saved snapshots, and debounced catalog
   refreshes; it does not scan `.mana`;
+- `presentation/project_observatory_page.dart` lazily loads artifact details,
+  suppresses stale async responses, and keeps at most 24 revision-keyed detail
+  results in memory for the running process only;
 - `presentation/explorer_page.dart` owns the Journey screen, its dialogs, and
   screen-local state;
 - root-level focused modules own Journey graph logic, navigation, source
