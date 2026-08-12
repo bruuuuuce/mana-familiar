@@ -29,16 +29,24 @@ class _ReviewInboxPageState extends State<ReviewInboxPage> {
       ManaInspectCatalog(artifacts: widget.artifacts, raw: const {}),
     );
     final items = model.filtered(_filter);
-    return ListView(
+    final headerCount = 6;
+    final itemCount = items.isEmpty
+        ? headerCount + 1
+        : headerCount + items.length;
+    return ListView.builder(
       padding: const EdgeInsets.all(24),
-      children: [
-        Text('Review Inbox', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 4),
-        const Text(
+      itemCount: itemCount,
+      itemBuilder: (context, index) => switch (index) {
+        0 => Text(
+          'Review Inbox',
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        1 => const SizedBox(height: 4),
+        2 => const Text(
           'Mana Familiar observes and hands off. Mana performs governed actions; this view never executes a command.',
         ),
-        const SizedBox(height: 12),
-        DropdownButton<ReviewInboxFilter>(
+        3 => const SizedBox(height: 12),
+        4 => DropdownButton<ReviewInboxFilter>(
           value: _filter,
           onChanged: (value) {
             if (value != null) setState(() => _filter = value);
@@ -52,18 +60,17 @@ class _ReviewInboxPageState extends State<ReviewInboxPage> {
               )
               .toList(),
         ),
-        const SizedBox(height: 8),
-        if (items.isEmpty)
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.check_circle_outline),
-              title: Text(
-                'No matching human attention is currently reported by Mana.',
-              ),
+        5 => const SizedBox(height: 8),
+        _ when items.isEmpty => const Card(
+          child: ListTile(
+            leading: Icon(Icons.check_circle_outline),
+            title: Text(
+              'No matching human attention is currently reported by Mana.',
             ),
           ),
-        ...items.map(_itemCard),
-      ],
+        ),
+        _ => _itemCard(items[index - headerCount]),
+      },
     );
   }
 

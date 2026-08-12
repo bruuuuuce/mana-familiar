@@ -78,6 +78,20 @@ flutter run -d macos \
 The inspect client negotiates project capabilities before optional operations;
 see [Mana inspect compatibility](docs/mana-inspect-compatibility.md).
 
+## Project-observatory flow
+
+1. Open a Mana-enabled project, or a saved inspect response, to see the
+   producer-reported overview and activity.
+2. Use **Review** to find explicit human attention and copy a documented Mana
+   handoff only when its typed arguments are available. Familiar never runs it.
+3. Use **Knowledge > Journeys** for the established source-, graph-, diagram-,
+   and investigation-oriented Journey workflow.
+4. Open an artifact or source reference to follow only Mana-declared relations.
+
+Screenshot placeholders are intentionally retained until a human reviews
+captures from a non-sensitive project. The application has no telemetry and
+the repository does not ship example customer artifacts.
+
 Run the complete validation suite with:
 
 ```sh
@@ -118,6 +132,13 @@ macOS desktop is the supported application target. Web scaffolding is retained
 for possible future work, but browser runtime is not supported because source
 resolution, Git snapshots, filesystem watching, and producer commands require
 desktop APIs.
+
+## Local packaging and release review
+
+See [release readiness](docs/release-readiness.md) for source and ad-hoc local
+build steps, the future Developer ID/notarization sequence, the compatibility
+matrix, and known limitations. A debug macOS build is CI-validated; no signed,
+notarized, or published release is claimed by this repository.
 
 ## License
 
