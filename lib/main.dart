@@ -8,6 +8,8 @@ export 'application/explorer_config.dart';
 export 'application/artifact_renderer.dart';
 export 'application/mana_inspect.dart';
 export 'application/observatory_model.dart';
+export 'application/operational_model.dart';
+export 'application/governance_model.dart';
 export 'app/mana_familiar_app.dart';
 export 'presentation/explorer_page.dart'
     show ExplorerPage, ExplorerPreferences, JourneyStore;
