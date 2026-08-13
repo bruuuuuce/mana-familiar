@@ -54,7 +54,7 @@ void main() {
     await tester.tap(find.byTooltip('Back'));
     await tester.pump();
     expect(find.text('Project overview'), findsOneWidget);
-    await tester.tap(find.text('Review'));
+    await tester.tap(find.text('Reviews'));
     await tester.pump();
     expect(find.text('Review Inbox'), findsOneWidget);
     await tester.tap(find.text('Knowledge'));
