@@ -296,6 +296,7 @@ class ManaInspectClient {
       );
     }
     final arguments = <String>[
+      if (mode == ManaInspectMode.projectWrapper) 'inspect',
       if (mode == ManaInspectMode.producerRoot) ...[
         '--project-root',
         projectRoot,

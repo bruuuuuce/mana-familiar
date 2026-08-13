@@ -66,7 +66,7 @@ void main() {
         projectRoot: root.path,
         run: (executable, arguments, {workingDirectory}) async {
           calls.add([executable, ...arguments]);
-          final response = arguments.first == 'project' ? _project : _catalog;
+          final response = arguments.contains('project') ? _project : _catalog;
           return ProcessResult(1, 0, jsonEncode(response), '');
         },
       );
@@ -74,8 +74,8 @@ void main() {
       final catalog = await client.catalog();
       expect(catalog.artifacts.single.kind, 'journey');
       expect(calls, hasLength(2));
-      expect(calls[0].skip(1), ['project', '--json']);
-      expect(calls[1].skip(1), ['artifacts', '--json']);
+      expect(calls[0].skip(1), ['inspect', 'project', '--json']);
+      expect(calls[1].skip(1), ['inspect', 'artifacts', '--json']);
     },
   );
 
