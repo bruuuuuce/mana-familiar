@@ -61,7 +61,10 @@ class ArtifactRenderContext {
   String? get contentType =>
       _metadataString('content_type') ??
       _metadataString('contentType') ??
-      _metadataString('media_type');
+      _metadataString('media_type') ??
+      _artifactString('content_type') ??
+      _artifactString('contentType') ??
+      _artifactString('media_type');
 
   String? _metadataString(String key) {
     final direct = raw[key];
@@ -72,6 +75,11 @@ class ArtifactRenderContext {
   String? _rawString(String key) {
     final direct = raw[key];
     return direct is String && direct.isNotEmpty ? direct : null;
+  }
+
+  String? _artifactString(String key) {
+    final value = artifact.raw[key];
+    return value is String && value.isNotEmpty ? value : null;
   }
 
   String? _payloadString(String key) {
@@ -89,12 +97,14 @@ class ArtifactRenderPlan {
     required this.view,
     required this.reason,
     this.text,
+    this.sourceText,
   });
 
   final String rendererId;
   final ArtifactPayloadView view;
   final String reason;
   final String? text;
+  final String? sourceText;
 }
 
 abstract class ArtifactRenderer {
@@ -351,6 +361,10 @@ class MarkdownArtifactRenderer extends ArtifactRenderer {
       context.contentType == 'text/x-markdown';
 
   @override
+  bool supportsKind(ArtifactRenderContext context) =>
+      context.artifact.kind == 'markdown';
+
+  @override
   ArtifactRenderPlan render(
     ArtifactRenderContext context,
     ArtifactRenderLimits limits,
@@ -375,6 +389,7 @@ class MarkdownArtifactRenderer extends ArtifactRenderer {
       view: ArtifactPayloadView.markdown,
       reason: 'Safely rendered Markdown',
       text: safeMarkdownText(text),
+      sourceText: text,
     );
   }
 }
@@ -478,22 +493,35 @@ List<RelationPreview> boundedRelationPreviews(
 }
 
 String safeMarkdownText(String text) {
-  var safe = text.replaceAll(RegExp(r'<[^>]*>', multiLine: true), '');
+  var safe = text
+      .replaceAll(
+        RegExp(r'<script\b[^>]*>[\s\S]*?</script\s*>', caseSensitive: false),
+        '',
+      )
+      .replaceAll(RegExp(r'<[^>]*>', multiLine: true), '');
   safe = safe.replaceAllMapped(
     RegExp(r'!\[([^\]]*)\]\([^)]*\)'),
     (match) => match.group(1) ?? '',
   );
-  safe = safe.replaceAllMapped(
-    RegExp(r'\[([^\]]+)\]\([^)]*\)'),
-    (match) => match.group(1) ?? '',
-  );
+  safe = safe.replaceAllMapped(RegExp(r'\[([^\]]+)\]\(([^)]*)\)'), (match) {
+    final target = match.group(2)!.trim();
+    return target.startsWith('http://') ||
+            target.startsWith('https://') ||
+            target.startsWith('#')
+        ? match.group(0)!
+        : match.group(1)!;
+  });
   return safe;
 }
 
 String? _payloadText(Object? payload) {
   if (payload is String) return payload;
   if (payload is Map) {
-    final content = payload['content'] ?? payload['text'] ?? payload['body'];
+    final content =
+        payload['content'] ??
+        payload['text'] ??
+        payload['body'] ??
+        payload['value'];
     return content is String ? content : null;
   }
   return null;
