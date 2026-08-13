@@ -35,15 +35,19 @@ void main() {
     );
     await tester.pump();
     expect(find.text('Project overview'), findsOneWidget);
-    expect(find.text('Needs human attention'), findsOneWidget);
-    expect(find.text('verification:failed'), findsNWidgets(2));
+    expect(
+      find.text(
+        'Semantic cockpit is unavailable in legacy catalog mode. Use Advanced for the catalog.',
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Activity'));
     await tester.pump();
     expect(
       find.text('Mana-reported operational timeline; no synthetic events.'),
       findsOneWidget,
     );
-    await tester.tap(find.text('verification:failed').last);
+    await tester.tap(find.text('verification:failed'));
     await tester.pump();
     await tester.pump();
     expect(find.text('Artifact detail'), findsOneWidget);
