@@ -6,6 +6,9 @@ class ObservatoryAttention {
   final String reason;
 }
 
+/// Legacy catalog-only presentation adapter. It is not a semantic read model:
+/// in particular, catalog order is never producer-defined activity. New
+/// semantic UI must use [ManaActivityResponse] through [ManaSemanticRepository].
 class ObservatoryOverview {
   const ObservatoryOverview({
     required this.failed,

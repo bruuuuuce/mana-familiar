@@ -71,8 +71,10 @@ class ReviewInboxItem {
   };
 }
 
-/// Conservative, deterministic inbox derivation from catalog metadata only.
-/// It deliberately does not inspect `.mana`, infer an owner, or guess a CLI.
+/// Legacy catalog-only inbox derivation. It is deliberately not a semantic
+/// interpretation and must not be used by new semantic views; those consume
+/// producer-supplied [ManaAttentionItem] values instead. It does not inspect
+/// `.mana`, infer an owner, or guess a CLI.
 class ReviewInboxModel {
   const ReviewInboxModel._(this.items);
 
