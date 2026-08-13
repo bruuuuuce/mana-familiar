@@ -1,22 +1,15 @@
+// ignore_for_file: curly_braces_in_flow_control_structures
+
 import 'package:flutter/material.dart';
 
 import '../application/mana_inspect.dart';
 import '../application/observatory_model.dart';
+import '../application/semantic_navigation.dart';
 import 'artifact_detail_view.dart';
-import 'activity_view.dart';
-import 'catalog_focus_view.dart';
-import 'knowledge_module_page.dart';
 import 'review_inbox_page.dart';
 
-enum ObservatoryDestination {
-  overview,
-  activity,
-  review,
-  evidence,
-  knowledge,
-  history,
-}
-
+/// F11 semantic navigation shell. Content remains intentionally lightweight;
+/// later phases own the cockpit, reader, and dossier presentations.
 class ProjectObservatoryPage extends StatefulWidget {
   const ProjectObservatoryPage({
     super.key,
@@ -25,6 +18,8 @@ class ProjectObservatoryPage extends StatefulWidget {
     this.knowledgeBuilder,
     this.initialProject,
     this.initialCatalog,
+    this.initialReadModel,
+    this.initialRoute,
     this.recentProjectRoots = const [],
     this.onOpenProject,
     this.artifactDetailLoader,
@@ -34,6 +29,8 @@ class ProjectObservatoryPage extends StatefulWidget {
   final Widget Function(String? journeyId)? knowledgeBuilder;
   final ManaInspectProject? initialProject;
   final ManaInspectCatalog? initialCatalog;
+  final ManaSemanticReadModel? initialReadModel;
+  final ObservatoryRoute? initialRoute;
   final List<String> recentProjectRoots;
   final Future<void> Function(String projectRoot)? onOpenProject;
   final Future<ManaInspectArtifactDetail> Function(String artifactId)?
@@ -42,333 +39,327 @@ class ProjectObservatoryPage extends StatefulWidget {
   State<ProjectObservatoryPage> createState() => _ProjectObservatoryPageState();
 }
 
-class _ObservatoryRoute {
-  const _ObservatoryRoute(this.destination, this.artifact);
-
-  final ObservatoryDestination destination;
-  final ManaInspectArtifactSummary? artifact;
-}
-
 class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
-  ObservatoryDestination _destination = ObservatoryDestination.overview;
-  ManaInspectArtifactSummary? _selectedArtifact;
+  late final ManaSemanticRepository _repository = ManaSemanticRepository(
+    widget.client,
+  );
+  late final ObservatoryNavigationState _navigation =
+      ObservatoryNavigationState(
+        widget.initialRoute ??
+            const ObservatoryRoute(
+              destination: ObservatoryDestination.overview,
+            ),
+      );
+  ManaSemanticReadModel? _model;
+  Object? _error;
+  var _loading = true;
   ManaInspectArtifactDetail? _detail;
   Object? _detailError;
   var _detailLoading = false;
-  final _history = <_ObservatoryRoute>[];
-  int _historyIndex = -1;
-  ManaInspectProject? _project;
-  ManaInspectCatalog? _catalog;
-  Object? _error;
-  var _loading = true;
-  int _catalogRequest = 0;
   int _detailRequest = 0;
-  final _detailCache = <String, ManaInspectArtifactDetail>{};
+  final Map<String, ManaInspectArtifactDetail> _detailCache = {};
+  final Map<String, ManaWorkItemResponse> _workDetails = {};
 
   @override
   void initState() {
     super.initState();
-    _project = widget.initialProject;
-    _catalog = widget.initialCatalog;
-    _loading = widget.initialCatalog == null;
+    _model = widget.initialReadModel ?? _legacyModel();
+    _loading = _model == null;
     if (_loading) _load();
   }
 
+  ManaSemanticReadModel? _legacyModel() => widget.initialCatalog == null
+      ? null
+      : ManaSemanticReadModel(
+          project:
+              widget.initialProject ??
+              ManaInspectProject.fromJson({
+                'schema': inspectProjectSchema,
+                'project_id': 'Saved inspect snapshot',
+                'framework': const {},
+                'mana': const {'present': true},
+                'operations': const [],
+              }),
+          mode:
+              widget.initialProject?.semanticMode ??
+              ManaSemanticMode.legacyCatalog,
+          catalog: widget.initialCatalog,
+        );
   Future<void> _load() async {
-    final request = ++_catalogRequest;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      ManaInspectProject? project;
-      ManaInspectCatalog? catalog;
-      if (widget.client.snapshotPath != null) {
-        catalog = await widget.client.catalog();
-      } else {
-        project = await widget.client.project();
-        catalog = project.manaPresent ? await widget.client.catalog() : null;
-      }
-      if (mounted && request == _catalogRequest) {
+      final model = await _repository.refresh();
+      if (mounted)
         setState(() {
-          _project = project;
-          _catalog = catalog;
+          _model = model;
           _loading = false;
         });
-      }
-    } catch (error) {
-      if (mounted && request == _catalogRequest) {
+    } catch (e) {
+      if (mounted)
         setState(() {
-          _error = error;
+          _error = e;
           _loading = false;
         });
-      }
     }
   }
 
-  void _select(ObservatoryDestination destination) {
-    if (destination == _destination && _selectedArtifact == null) return;
-    setState(() {
-      _pushCurrentRoute();
-      _destination = destination;
-      _selectedArtifact = null;
-    });
-  }
-
-  void _openArtifact(ManaInspectArtifactSummary artifact) {
-    final cached = _detailCache[_detailCacheKey(artifact)];
-    setState(() {
-      _pushCurrentRoute();
-      _destination = ObservatoryDestination.activity;
-      _selectedArtifact = artifact;
-      _detail = cached;
-      _detailError = null;
-      _detailLoading = cached == null;
-    });
-    if (cached == null) _loadArtifactDetail(artifact);
-  }
-
-  Future<void> _loadArtifactDetail(ManaInspectArtifactSummary artifact) async {
-    final request = ++_detailRequest;
-    try {
-      final detail =
-          await (widget.artifactDetailLoader ?? widget.client.artifact)(
-            artifact.id,
-          );
-      if (mounted &&
-          request == _detailRequest &&
-          _selectedArtifact?.id == artifact.id) {
-        _rememberDetail(artifact, detail);
-        setState(() {
-          _detail = detail;
-          _detailLoading = false;
-        });
-      }
-    } catch (error) {
-      if (mounted &&
-          request == _detailRequest &&
-          _selectedArtifact?.id == artifact.id) {
-        setState(() {
-          _detailError = error;
-          _detailLoading = false;
-        });
-      }
-    }
-  }
-
-  String _detailCacheKey(ManaInspectArtifactSummary artifact) =>
-      '${artifact.id}\u0000${artifact.raw['revision_id'] ?? ''}';
-
-  void _rememberDetail(
-    ManaInspectArtifactSummary artifact,
-    ManaInspectArtifactDetail detail,
-  ) {
-    final key = _detailCacheKey(artifact);
-    _detailCache.remove(key);
-    _detailCache[key] = detail;
-    while (_detailCache.length > 24) {
-      _detailCache.remove(_detailCache.keys.first);
-    }
-  }
-
-  void _pushCurrentRoute() {
-    _history.removeRange(_historyIndex + 1, _history.length);
-    _history.add(_ObservatoryRoute(_destination, _selectedArtifact));
-    _historyIndex = _history.length - 1;
+  void _navigate(ObservatoryRoute route) {
+    if (_navigation.navigate(route))
+      setState(() {
+        _detail = null;
+        _detailError = null;
+      });
+    _loadDetailIfNeeded();
+    _loadWorkDetailIfNeeded();
   }
 
   void _back() {
-    if (_historyIndex < 0) return;
-    late final ManaInspectArtifactSummary? artifact;
-    setState(() {
-      final route = _history[_historyIndex--];
-      _destination = route.destination;
-      _selectedArtifact = route.artifact;
-      _detail = null;
-      _detailError = null;
-      _detailLoading = route.artifact != null;
-      artifact = route.artifact;
-    });
-    if (artifact != null) _loadArtifactDetail(artifact!);
+    if (_navigation.back() != null)
+      setState(() {
+        _detail = null;
+        _detailError = null;
+      });
+    _loadDetailIfNeeded();
+    _loadWorkDetailIfNeeded();
   }
 
   void _forward() {
-    if (_historyIndex + 1 >= _history.length) return;
-    late final ManaInspectArtifactSummary? artifact;
-    setState(() {
-      final route = _history[++_historyIndex];
-      _destination = route.destination;
-      _selectedArtifact = route.artifact;
-      _detail = null;
-      _detailError = null;
-      _detailLoading = route.artifact != null;
-      artifact = route.artifact;
-    });
-    if (artifact != null) _loadArtifactDetail(artifact!);
+    if (_navigation.forward() != null)
+      setState(() {
+        _detail = null;
+        _detailError = null;
+      });
+    _loadDetailIfNeeded();
+    _loadWorkDetailIfNeeded();
+  }
+
+  void _loadWorkDetailIfNeeded() {
+    final model = _model;
+    final id = _navigation.current.workItemId;
+    if (model == null ||
+        id == null ||
+        _workDetails.containsKey(id) ||
+        model.mode == ManaSemanticMode.legacyCatalog)
+      return;
+    _repository
+        .workItem(id, model.project)
+        .then((detail) {
+          if (mounted) setState(() => _workDetails[id] = detail);
+        })
+        .catchError((_) {});
+  }
+
+  ManaInspectArtifactSummary? _artifact(
+    ManaSemanticReadModel model,
+    String id,
+  ) {
+    for (final artifact
+        in model.catalog?.artifacts ?? const <ManaInspectArtifactSummary>[]) {
+      if (artifact.id == id) return artifact;
+    }
+    for (final work
+        in model.workItems?.workItems ?? const <ManaWorkItemSummary>[]) {
+      for (final ref in work.artifacts) {
+        if (ref.id == id) return _summary(ref);
+      }
+    }
+    return null;
+  }
+
+  ManaInspectArtifactSummary _summary(ManaArtifactReference ref) =>
+      ManaInspectArtifactSummary(
+        id: ref.id,
+        path: ref.path,
+        family: 'semantic',
+        kind: ref.kind,
+        status: ref.status,
+        raw: const {},
+      );
+  void _openArtifact(
+    ManaInspectArtifactSummary artifact, {
+    String? workItemId,
+    ManaSectionId? section,
+    String? category,
+  }) => _navigate(
+    ObservatoryRoute(
+      destination: _navigation.current.destination,
+      workItemId: workItemId ?? _navigation.current.workItemId,
+      section: section ?? _navigation.current.section,
+      category: category ?? _navigation.current.category,
+      artifactId: artifact.id,
+    ),
+  );
+  void _loadDetailIfNeeded() {
+    final model = _model;
+    final id = _navigation.current.artifactId;
+    if (model == null || id == null) return;
+    final artifact = _artifact(model, id);
+    if (artifact == null) return;
+    final cached = _detailCache[id];
+    if (cached != null) {
+      setState(() {
+        _detail = cached;
+        _detailLoading = false;
+      });
+      return;
+    }
+    final request = ++_detailRequest;
+    setState(() => _detailLoading = true);
+    (widget.artifactDetailLoader ?? widget.client.artifact)(id)
+        .then((value) {
+          if (mounted && request == _detailRequest)
+            setState(() {
+              _detail = value;
+              _detailLoading = false;
+              _detailCache[id] = value;
+            });
+        })
+        .catchError((Object e) {
+          if (mounted && request == _detailRequest)
+            setState(() {
+              _detailError = e;
+              _detailLoading = false;
+            });
+        });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (_loading)
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    if (_error != null) {
-      return _stateScaffold(
-        _error is ManaInspectException &&
-                (_error as ManaInspectException).kind ==
-                    ManaInspectFailure.unsupportedSchema
-            ? 'Inspect compatibility issue'
-            : 'Could not inspect this project',
-        _error.toString(),
-        retry: _load,
-      );
-    }
-    if (_project != null && !_project!.manaPresent) {
-      return _stateScaffold(
-        'No Mana workspace',
-        'This project does not contain a usable .mana workspace.',
-        retry: _load,
-      );
-    }
-    final catalog = _catalog;
-    if (catalog == null) {
-      return _stateScaffold(
-        'No inspect catalog available',
-        'Open a project with Mana or a saved catalog snapshot.',
-        retry: _load,
-      );
-    }
+    if (_error != null || _model == null) return _errorState();
+    final model = _model!;
+    final route = _navigation.current;
+    final artifact = route.artifactId == null
+        ? null
+        : _artifact(model, route.artifactId!);
     return Scaffold(
       appBar: AppBar(
-        title: Text(_project?.projectId ?? 'Saved inspect snapshot'),
+        title: Text(model.project.projectId),
         actions: [
           IconButton(
-            onPressed: _historyIndex >= 0 ? _back : null,
+            onPressed: _navigation.canGoBack ? _back : null,
             icon: const Icon(Icons.arrow_back),
             tooltip: 'Back',
           ),
           IconButton(
-            onPressed: _historyIndex + 1 < _history.length ? _forward : null,
+            onPressed: _navigation.canGoForward ? _forward : null,
             icon: const Icon(Icons.arrow_forward),
             tooltip: 'Forward',
           ),
           IconButton(
             onPressed: _load,
             icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh catalog',
+            tooltip: 'Refresh',
           ),
-          if (widget.onOpenProject != null)
-            PopupMenuButton<String>(
-              tooltip: 'Open project',
-              onSelected: (projectRoot) {
-                if (projectRoot == '__choose__') {
-                  _chooseProject();
-                } else {
-                  widget.onOpenProject!(projectRoot);
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: '__choose__',
-                  child: Text('Open project…'),
-                ),
-                if (widget.recentProjectRoots.isNotEmpty)
-                  const PopupMenuDivider(),
-                ...widget.recentProjectRoots.map(
-                  (root) => PopupMenuItem(value: root, child: Text(root)),
-                ),
-              ],
-              icon: const Icon(Icons.folder_open_outlined),
-            ),
         ],
       ),
       body: Row(
         children: [
           NavigationRail(
-            selectedIndex: _destination.index,
+            selectedIndex: route.destination.index,
             labelType: NavigationRailLabelType.all,
-            onDestinationSelected: (index) =>
-                _select(ObservatoryDestination.values[index]),
+            onDestinationSelected: (i) => _navigate(
+              ObservatoryRoute(destination: ObservatoryDestination.values[i]),
+            ),
             destinations: const [
               NavigationRailDestination(
                 icon: Icon(Icons.home_outlined),
-                selectedIcon: Icon(Icons.home),
                 label: Text('Overview'),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.bolt_outlined),
-                label: Text('Activity'),
+                icon: Icon(Icons.work_outline),
+                label: Text('Work'),
               ),
               NavigationRailDestination(
                 icon: Icon(Icons.rate_review_outlined),
-                label: Text('Review'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.fact_check_outlined),
-                label: Text('Evidence'),
+                label: Text('Reviews'),
               ),
               NavigationRailDestination(
                 icon: Icon(Icons.school_outlined),
                 label: Text('Knowledge'),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.history),
-                label: Text('History'),
+                icon: Icon(Icons.bolt_outlined),
+                label: Text('Activity'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.tune_outlined),
+                label: Text('Advanced'),
               ),
             ],
           ),
           const VerticalDivider(width: 1),
-          Expanded(child: _body(catalog)),
+          Expanded(
+            child: Column(
+              children: [
+                _breadcrumbs(route, artifact),
+                Expanded(
+                  child: artifact == null
+                      ? _routeBody(model, route)
+                      : ArtifactDetailView(
+                          artifact: artifact,
+                          detail: _detail,
+                          loading: _detailLoading,
+                          error: _detailError,
+                          onOpenRelatedArtifact: (id) {
+                            final related = _artifact(model, id);
+                            if (related != null) _openArtifact(related);
+                          },
+                          sourceLoader: widget.client.source,
+                          projectRoot: widget.client.projectRoot,
+                        ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _body(ManaInspectCatalog catalog) {
-    final selectedArtifact = _selectedArtifact;
-    if (selectedArtifact != null) {
-      return ArtifactDetailView(
-        artifact: selectedArtifact,
-        detail: _detail,
-        loading: _detailLoading,
-        error: _detailError,
-        onOpenRelatedArtifact: (id) {
-          final related = catalog.artifacts.where(
-            (artifact) => artifact.id == id,
-          );
-          if (related.isNotEmpty) _openArtifact(related.first);
-        },
-        sourceLoader: widget.client.source,
-        projectRoot: widget.client.projectRoot,
-      );
-    }
-    return switch (_destination) {
-      ObservatoryDestination.overview => _overview(catalog),
-      ObservatoryDestination.activity => ActivityView(
-        artifacts: catalog.artifacts,
-        onOpenArtifact: _openArtifact,
+  Widget _breadcrumbs(
+    ObservatoryRoute route,
+    ManaInspectArtifactSummary? artifact,
+  ) => Padding(
+    padding: const EdgeInsets.all(12),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        observatoryBreadcrumbs(
+          route,
+          projectLabel: 'Project',
+          artifactLabel: artifact?.id,
+        ).join(' > '),
+        key: const Key('semantic-breadcrumbs'),
       ),
-      ObservatoryDestination.review => ReviewInboxPage(
-        artifacts: catalog.artifacts,
-        onOpenArtifact: _openArtifact,
-      ),
-      ObservatoryDestination.evidence => CatalogFocusView(
-        focus: CatalogFocus.evidence,
-        artifacts: catalog.artifacts,
-        onOpenArtifact: _openArtifact,
-      ),
-      ObservatoryDestination.knowledge => KnowledgeModulePage(
-        journeys: widget.knowledge,
-        journeysBuilder: widget.knowledgeBuilder,
-        artifacts: catalog.artifacts,
-        onOpenArtifact: _openArtifact,
-      ),
-      _ => _artifactList(catalog, _destination.name),
-    };
-  }
-
-  Widget _overview(ManaInspectCatalog catalog) {
-    final model = ObservatoryOverview.fromCatalog(catalog);
+    ),
+  );
+  Widget _routeBody(ManaSemanticReadModel model, ObservatoryRoute route) =>
+      switch (route.destination) {
+        ObservatoryDestination.overview => _overview(model),
+        ObservatoryDestination.work => _work(model, route),
+        ObservatoryDestination.reviews => _reviews(model),
+        ObservatoryDestination.knowledge => _knowledge(model),
+        ObservatoryDestination.activity => _activity(model),
+        ObservatoryDestination.advanced => _advanced(model),
+      };
+  Widget _placeholder(String title, String text) => ListView(
+    padding: const EdgeInsets.all(24),
+    children: [
+      Text(title, style: Theme.of(context).textTheme.headlineSmall),
+      const SizedBox(height: 8),
+      Text(text),
+    ],
+  );
+  Widget _overview(ManaSemanticReadModel model) {
+    final catalog = model.catalog;
+    if (catalog == null)
+      return _placeholder('Project overview', 'Semantic project overview.');
+    final legacy = ObservatoryOverview.fromCatalog(catalog);
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -376,204 +367,241 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
           'Project overview',
           style: Theme.of(context).textTheme.headlineSmall,
         ),
-        if (_project != null) _workspaceState(),
-        const SizedBox(height: 8),
-        Text(
-          _project == null
-              ? 'Saved inspect snapshot — limited mode'
-              : 'Project catalog — read only',
-        ),
-        if (_project?.frameworkCompatibility != 'mana-inspect/v1')
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.warning_amber),
-              title: Text('Inspect compatibility warning'),
-              subtitle: Text(
-                'Optional operations remain disabled unless advertised by Mana.',
-              ),
-            ),
-          ),
+        if (model.mode == ManaSemanticMode.legacyCatalog)
+          const Text('Legacy catalog compatibility mode.'),
         if (catalog.partial)
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.info_outline),
-              title: Text('Partial catalog'),
-              subtitle: Text(
-                'Some catalog entries could not be interpreted. Unknown data is not hidden.',
-              ),
-            ),
-          ),
-        _summary('Failed artifacts', model.failed.length, Icons.error_outline),
-        _summary(
-          'Blocking artifacts',
-          model.blocking.length,
-          Icons.block_outlined,
-        ),
+          const Card(child: ListTile(title: Text('Partial catalog'))),
         if (catalog.artifacts.isEmpty)
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.inbox_outlined),
-              title: Text('Empty project catalog'),
-              subtitle: Text('Mana did not report any inspectable artifacts.'),
-            ),
-          ),
-        _summary(
-          'Stale or missing evidence',
-          model.staleOrMissing.length,
-          Icons.link_off_outlined,
-        ),
+          const Card(child: ListTile(title: Text('Empty project catalog'))),
         const SizedBox(height: 16),
         Text(
           'Needs human attention',
           style: Theme.of(context).textTheme.titleMedium,
         ),
-        if (model.attention.isEmpty)
-          const ListTile(
-            leading: Icon(Icons.check_circle_outline),
-            title: Text('No catalog item currently requires attention.'),
-          ),
-        ...model.attention.map(
+        ...legacy.attention.map(
           (item) => ListTile(
-            leading: const Icon(Icons.priority_high),
             title: Text(item.artifact.id),
-            subtitle: Text('${item.reason} • ${item.artifact.kind}'),
             onTap: () => _openArtifact(item.artifact),
           ),
         ),
-        if (model.lastMeaningfulActivity != null)
+        if (legacy.lastMeaningfulActivity != null)
           ListTile(
-            leading: const Icon(Icons.update),
             title: const Text('Latest catalog activity'),
-            subtitle: Text(model.lastMeaningfulActivity!.id),
-            onTap: () => _openArtifact(model.lastMeaningfulActivity!),
+            subtitle: Text(legacy.lastMeaningfulActivity!.id),
+            onTap: () => _openArtifact(legacy.lastMeaningfulActivity!),
           ),
       ],
     );
   }
 
-  Widget _summary(String label, int count, IconData icon) => Card(
-    child: ListTile(
-      leading: Icon(icon),
-      title: Text(label),
-      trailing: Text(
-        '$count',
-        style: Theme.of(context).textTheme.headlineSmall,
-      ),
-    ),
-  );
-
-  Widget _workspaceState() {
-    final git = _project!.raw['git'];
-    final gitMap = git is Map ? git : const <Object?, Object?>{};
-    final branch = gitMap['branch']?.toString() ?? 'branch unavailable';
-    final dirty = gitMap['dirty'] == true
-        ? 'working tree has changes'
-        : 'working tree clean or unavailable';
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.account_tree_outlined),
-        title: const Text('Workspace state'),
-        subtitle: Text('$branch • $dirty'),
-      ),
-    );
-  }
-
-  Future<void> _chooseProject() async {
-    final controller = TextEditingController();
-    final projectRoot = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Open project'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Project root',
-            hintText: '/path/to/project',
-          ),
-          onSubmitted: (value) => Navigator.pop(context, value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Open'),
+  Widget _work(ManaSemanticReadModel model, ObservatoryRoute route) {
+    if (model.mode == ManaSemanticMode.legacyCatalog)
+      return _placeholder(
+        'Work',
+        'Work semantics are unavailable in legacy catalog mode.',
+      );
+    final work = model.workItems?.workItems ?? const <ManaWorkItemSummary>[];
+    final selected = route.workItemId == null
+        ? null
+        : work.where((w) => w.id == route.workItemId).firstOrNull;
+    if (selected == null)
+      return ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Text('Work', style: Theme.of(context).textTheme.headlineSmall),
+          ...work.map(
+            (w) => ListTile(
+              title: Text(w.id),
+              subtitle: Text(w.lifecycle.state.name),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _navigate(
+                ObservatoryRoute(
+                  destination: ObservatoryDestination.work,
+                  workItemId: w.id,
+                ),
+              ),
+            ),
           ),
         ],
-      ),
+      );
+    if (route.section == null)
+      return ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Text(selected.id, style: Theme.of(context).textTheme.headlineSmall),
+          ...ManaSectionId.values.map(
+            (section) => ListTile(
+              title: Text(section.name),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _navigate(
+                ObservatoryRoute(
+                  destination: ObservatoryDestination.work,
+                  workItemId: selected.id,
+                  section: section,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    final detail = _workDetails[selected.id];
+    final refs = detail == null
+        ? selected.artifacts.where((a) => a.sectionId == route.section).toList()
+        : detail.sections
+              .where((s) => s.id == route.section)
+              .expand((s) => s.artifacts)
+              .toList();
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Text(
+          route.section!.name,
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        ...refs.map((a) {
+          final summary = _summary(a);
+          return ListTile(
+            title: Text(a.label ?? a.id),
+            onTap: () => _openArtifact(
+              summary,
+              workItemId: selected.id,
+              section: route.section,
+            ),
+          );
+        }),
+      ],
     );
-    final trimmed = projectRoot?.trim();
-    controller.dispose();
-    if (trimmed != null && trimmed.isNotEmpty) {
-      await widget.onOpenProject!(trimmed);
-    }
   }
 
-  Widget _artifactList(
-    ManaInspectCatalog catalog,
-    String title,
-  ) => ListView.builder(
-    padding: const EdgeInsets.all(24),
-    itemCount: catalog.artifacts.length + 3,
-    itemBuilder: (context, index) {
-      if (index == 0) {
-        return Text(
-          title[0].toUpperCase() + title.substring(1),
-          style: Theme.of(context).textTheme.headlineSmall,
-        );
-      }
-      if (index == 1) {
-        return const Text(
-          'Generic catalog view; specialized renderers arrive in later phases.',
-        );
-      }
-      if (index == 2) return const SizedBox(height: 12);
-      final artifact = catalog.artifacts[index - 3];
-      return Card(
-        child: ListTile(
-          title: Text(artifact.id),
-          subtitle: Text(
-            '${artifact.family} • ${artifact.kind} • ${artifact.status}',
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _openArtifact(artifact),
-        ),
-      );
-    },
-  );
-
-  Widget _stateScaffold(
-    String title,
-    String message, {
-    required VoidCallback retry,
-  }) => Scaffold(
-    appBar: AppBar(title: const Text('Mana Familiar')),
-    body: Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 580),
-        child: Padding(
+  Widget _reviews(ManaSemanticReadModel model) =>
+      model.mode == ManaSemanticMode.legacyCatalog
+      ? ReviewInboxPage(
+          artifacts: model.catalog?.artifacts ?? const [],
+          onOpenArtifact: (a) => _openArtifact(a),
+        )
+      : ListView(
           padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.info_outline, size: 42),
-              const SizedBox(height: 12),
-              Text(title),
-              const SizedBox(height: 8),
-              SelectableText(message, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: retry,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Try again'),
+          children: [
+            Text('Reviews', style: Theme.of(context).textTheme.headlineSmall),
+            ...[
+              for (final work
+                  in model.workItems?.workItems ??
+                      const <ManaWorkItemSummary>[])
+                ...work.attentionItems,
+            ].map(
+              (item) => ListTile(
+                title: Text(item.label ?? item.id),
+                subtitle: Text(item.category),
+                onTap: () => _navigate(
+                  ObservatoryRoute(
+                    destination: ObservatoryDestination.reviews,
+                    workItemId: item.workItemId,
+                  ),
+                ),
               ),
-            ],
+            ),
+          ],
+        );
+  Widget _knowledge(ManaSemanticReadModel model) {
+    if (model.mode == ManaSemanticMode.legacyCatalog) {
+      return ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Text('Knowledge', style: Theme.of(context).textTheme.headlineSmall),
+          Text('Journeys', style: Theme.of(context).textTheme.titleMedium),
+          const Text(
+            'Legacy Journey navigation is retained separately from semantic project context.',
+          ),
+          const SizedBox(height: 12),
+          widget.knowledge,
+        ],
+      );
+    }
+    if (model.mode != ManaSemanticMode.fullSemantic)
+      return _placeholder(
+        'Knowledge',
+        'Project context is unavailable for this capability mode.',
+      );
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Text('Knowledge', style: Theme.of(context).textTheme.headlineSmall),
+        ...(model.projectContext?.categories ??
+                const <ManaProjectContextCategory>[])
+            .map(
+              (c) => ListTile(
+                title: Text(c.category),
+                onTap: () => _navigate(
+                  ObservatoryRoute(
+                    destination: ObservatoryDestination.knowledge,
+                    category: c.category,
+                  ),
+                ),
+              ),
+            ),
+      ],
+    );
+  }
+
+  Widget _activity(ManaSemanticReadModel model) {
+    if (model.mode == ManaSemanticMode.legacyCatalog)
+      return ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Text('Activity', style: Theme.of(context).textTheme.headlineSmall),
+          const Text('Legacy catalog inventory; it is not semantic activity.'),
+          const Text(
+            'Mana-reported operational timeline; no synthetic events.',
+          ),
+          ...(model.catalog?.artifacts ?? const <ManaInspectArtifactSummary>[])
+              .map(
+                (a) =>
+                    ListTile(title: Text(a.id), onTap: () => _openArtifact(a)),
+              ),
+        ],
+      );
+    if (model.mode != ManaSemanticMode.fullSemantic)
+      return _placeholder(
+        'Activity',
+        'Semantic activity is unavailable for this capability mode.',
+      );
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Text('Activity', style: Theme.of(context).textTheme.headlineSmall),
+        ...(model.activity?.events ?? const <ManaActivityEvent>[]).map(
+          (e) => ListTile(
+            title: Text(e.summary ?? e.id),
+            subtitle: Text(e.timestamp),
+            onTap: () {
+              final a = e.relatedArtifactIds.isEmpty
+                  ? null
+                  : _artifact(model, e.relatedArtifactIds.first);
+              if (a != null) _openArtifact(a, workItemId: e.workItemId);
+            },
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _advanced(ManaSemanticReadModel model) => ListView(
+    padding: const EdgeInsets.all(24),
+    children: [
+      Text('Advanced', style: Theme.of(context).textTheme.headlineSmall),
+      const Text('Artifacts and diagnostics'),
+      ...(model.catalog?.artifacts ?? const <ManaInspectArtifactSummary>[]).map(
+        (a) => ListTile(title: Text(a.id), onTap: () => _openArtifact(a)),
       ),
+    ],
+  );
+  Widget _errorState() => Scaffold(
+    body: Center(
+      child: FilledButton(onPressed: _load, child: const Text('Try again')),
     ),
   );
+}
+
+extension<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }
