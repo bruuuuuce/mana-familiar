@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 
 import '../application/mana_inspect.dart';
-import '../application/observatory_model.dart';
 import '../application/semantic_navigation.dart';
 import 'artifact_detail_view.dart';
 import 'review_inbox_page.dart';
@@ -59,6 +58,8 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   int _detailRequest = 0;
   final Map<String, ManaInspectArtifactDetail> _detailCache = {};
   final Map<String, ManaWorkItemResponse> _workDetails = {};
+  String _workFilter = 'all';
+  String _workSearch = '';
 
   @override
   void initState() {
@@ -356,10 +357,30 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     ],
   );
   Widget _overview(ManaSemanticReadModel model) {
-    final catalog = model.catalog;
-    if (catalog == null)
-      return _placeholder('Project overview', 'Semantic project overview.');
-    final legacy = ObservatoryOverview.fromCatalog(catalog);
+    if (model.mode == ManaSemanticMode.legacyCatalog)
+      return ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Text(
+            'Project overview',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const Text(
+            'Semantic cockpit is unavailable in legacy catalog mode. Use Advanced for the catalog.',
+          ),
+          const Text('Needs human attention'),
+          if (model.catalog?.artifacts.isEmpty ?? true)
+            const Text('Empty project catalog'),
+          if (model.catalog?.partial ?? false) const Text('Partial catalog'),
+        ],
+      );
+    final work = model.workItems?.workItems ?? const <ManaWorkItemSummary>[];
+    final attention = [for (final item in work) ...item.attentionItems]
+      ..sort((a, b) => b.severity.compareTo(a.severity));
+    final categories =
+        model.projectContext?.categories ??
+        const <ManaProjectContextCategory>[];
+    final activity = model.activity?.events ?? const <ManaActivityEvent>[];
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -367,32 +388,116 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
           'Project overview',
           style: Theme.of(context).textTheme.headlineSmall,
         ),
-        if (model.mode == ManaSemanticMode.legacyCatalog)
-          const Text('Legacy catalog compatibility mode.'),
-        if (catalog.partial)
-          const Card(child: ListTile(title: Text('Partial catalog'))),
-        if (catalog.artifacts.isEmpty)
-          const Card(child: ListTile(title: Text('Empty project catalog'))),
-        const SizedBox(height: 16),
-        Text(
-          'Needs human attention',
-          style: Theme.of(context).textTheme.titleMedium,
+        _cockpit(
+          'Needs attention',
+          attention.isEmpty
+              ? const [Text('No typed attention items reported by Mana.')]
+              : attention
+                    .map(
+                      (a) => ListTile(
+                        title: Text(a.label ?? a.id),
+                        subtitle: Text('${a.category} • ${a.severity}'),
+                        onTap: () => _navigate(
+                          ObservatoryRoute(
+                            destination: ObservatoryDestination.work,
+                            workItemId: a.workItemId,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
         ),
-        ...legacy.attention.map(
-          (item) => ListTile(
-            title: Text(item.artifact.id),
-            onTap: () => _openArtifact(item.artifact),
-          ),
+        _cockpit(
+          'Active / relevant work',
+          work.isEmpty
+              ? const [Text('No semantic work items reported.')]
+              : work
+                    .map(
+                      (w) => ListTile(
+                        title: Text(w.title.value ?? w.id),
+                        subtitle: Text(
+                          '${w.id} • ${w.lifecycle.state.name} • review ${w.review.state.name}',
+                        ),
+                        onTap: () => _navigate(
+                          ObservatoryRoute(
+                            destination: ObservatoryDestination.work,
+                            workItemId: w.id,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
         ),
-        if (legacy.lastMeaningfulActivity != null)
-          ListTile(
-            title: const Text('Latest catalog activity'),
-            subtitle: Text(legacy.lastMeaningfulActivity!.id),
-            onTap: () => _openArtifact(legacy.lastMeaningfulActivity!),
-          ),
+        _cockpit(
+          'Review summary',
+          work.map((w) => Text('${w.id}: ${w.review.state.name}')).toList(),
+        ),
+        _cockpit(
+          'Project context',
+          model.mode == ManaSemanticMode.fullSemantic
+              ? categories
+                    .map(
+                      (c) => ListTile(
+                        title: Text(c.category),
+                        subtitle: Text(
+                          '${c.artifacts.length} available • ${c.coverage}',
+                        ),
+                        onTap: () => _navigate(
+                          ObservatoryRoute(
+                            destination: ObservatoryDestination.knowledge,
+                            category: c.category,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList()
+              : const [
+                  Text('Project context is unavailable in WORK_SEMANTIC mode.'),
+                ],
+        ),
+        _cockpit(
+          'Recent activity',
+          model.mode == ManaSemanticMode.fullSemantic
+              ? activity
+                    .take(8)
+                    .map(
+                      (e) => ListTile(
+                        title: Text(e.summary ?? e.id),
+                        subtitle: Text(
+                          '${e.timestamp} • ${e.timestampProvenance.name}',
+                        ),
+                        onTap: () => _navigate(
+                          ObservatoryRoute(
+                            destination: ObservatoryDestination.activity,
+                            workItemId: e.workItemId,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList()
+              : const [
+                  Text(
+                    'Semantic activity is unavailable in WORK_SEMANTIC mode.',
+                  ),
+                ],
+        ),
       ],
     );
   }
+
+  Widget _cockpit(String title, List<Widget> children) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 6),
+          ...children,
+        ],
+      ),
+    ),
+  );
 
   Widget _work(ManaSemanticReadModel model, ObservatoryRoute route) {
     if (model.mode == ManaSemanticMode.legacyCatalog)
@@ -404,15 +509,51 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     final selected = route.workItemId == null
         ? null
         : work.where((w) => w.id == route.workItemId).firstOrNull;
-    if (selected == null)
+    if (selected == null) {
+      final visible = work.where((w) {
+        final search = '${w.id} ${w.title.value ?? ''} ${w.branch.value ?? ''}'
+            .toLowerCase()
+            .contains(_workSearch.toLowerCase());
+        final filter =
+            _workFilter == 'all' ||
+            (_workFilter == 'attention' && w.attentionItems.isNotEmpty) ||
+            (_workFilter == 'active' &&
+                w.lifecycle.state == ManaLifecycleState.inProgress) ||
+            (_workFilter == 'feature' && w.type == ManaWorkItemType.feature) ||
+            (_workFilter == 'session' && w.type == ManaWorkItemType.session);
+        return search && filter;
+      });
       return ListView(
         padding: const EdgeInsets.all(24),
         children: [
           Text('Work', style: Theme.of(context).textTheme.headlineSmall),
-          ...work.map(
+          TextField(
+            decoration: const InputDecoration(labelText: 'Search work'),
+            onChanged: (value) => setState(() => _workSearch = value),
+          ),
+          Wrap(
+            spacing: 8,
+            children: ['all', 'attention', 'active', 'feature', 'session']
+                .map(
+                  (f) => ChoiceChip(
+                    label: Text(f),
+                    selected: _workFilter == f,
+                    onSelected: (_) => setState(() => _workFilter = f),
+                  ),
+                )
+                .toList(),
+          ),
+          if (visible.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text('No work items match these controls.'),
+            ),
+          ...visible.map(
             (w) => ListTile(
-              title: Text(w.id),
-              subtitle: Text(w.lifecycle.state.name),
+              title: Text(w.title.value ?? w.id),
+              subtitle: Text(
+                '${w.id} • ${w.lifecycle.state.name} • ${w.attentionItems.length} attention • review ${w.review.state.name}',
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _navigate(
                 ObservatoryRoute(
@@ -424,6 +565,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
           ),
         ],
       );
+    }
     if (route.section == null)
       return ListView(
         padding: const EdgeInsets.all(24),
