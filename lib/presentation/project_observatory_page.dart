@@ -301,6 +301,27 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                 Expanded(
                   child: artifact == null
                       ? _routeBody(model, route)
+                      : route.destination == ObservatoryDestination.work &&
+                            route.workItemId != null
+                      ? Column(
+                          children: [
+                            _dossierHeader(model, route.workItemId!),
+                            Expanded(
+                              child: ArtifactDetailView(
+                                artifact: artifact,
+                                detail: _detail,
+                                loading: _detailLoading,
+                                error: _detailError,
+                                onOpenRelatedArtifact: (id) {
+                                  final related = _artifact(model, id);
+                                  if (related != null) _openArtifact(related);
+                                },
+                                sourceLoader: widget.client.source,
+                                projectRoot: widget.client.projectRoot,
+                              ),
+                            ),
+                          ],
+                        )
                       : ArtifactDetailView(
                           artifact: artifact,
                           detail: _detail,
@@ -570,8 +591,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       return ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Text(selected.id, style: Theme.of(context).textTheme.headlineSmall),
-          ...ManaSectionId.values.map(
+          _dossierHeader(model, selected.id),
+          const SizedBox(height: 12),
+          ..._dossierSections.map(
             (section) => ListTile(
               title: Text(section.name),
               trailing: const Icon(Icons.chevron_right),
@@ -593,14 +615,40 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
               .where((s) => s.id == route.section)
               .expand((s) => s.artifacts)
               .toList();
+    final activity = (model.activity?.events ?? const <ManaActivityEvent>[])
+        .where((event) => event.workItemId == selected.id)
+        .toList();
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
+        _dossierHeader(model, selected.id),
+        const SizedBox(height: 12),
         Text(
           route.section!.name,
           style: Theme.of(context).textTheme.headlineSmall,
         ),
-        ...refs.map((a) {
+        if (route.section == ManaSectionId.review)
+          Text(
+            'Review state: ${selected.review.state.name} (${selected.review.provenance.name})',
+          ),
+        if (route.section == ManaSectionId.timeline && activity.isNotEmpty)
+          ...activity.map(
+            (event) => ListTile(
+              title: Text(event.summary ?? event.id),
+              subtitle: Text(
+                '${event.timestamp} • ${event.timestampProvenance.name}',
+              ),
+            ),
+          ),
+        if (refs.isEmpty &&
+            !(route.section == ManaSectionId.timeline && activity.isNotEmpty))
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Text(
+              'No producer-owned material is available for this semantic section.',
+            ),
+          ),
+        ..._prioritized(route.section, refs).map((a) {
           final summary = _summary(a);
           return ListTile(
             title: Text(a.label ?? a.id),
@@ -612,6 +660,42 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
           );
         }),
       ],
+    );
+  }
+
+  static const _dossierSections = [
+    ManaSectionId.overview,
+    ManaSectionId.requirements,
+    ManaSectionId.plan,
+    ManaSectionId.decisions,
+    ManaSectionId.evidence,
+    ManaSectionId.review,
+    ManaSectionId.timeline,
+  ];
+  List<ManaArtifactReference> _prioritized(
+    ManaSectionId? section,
+    List<ManaArtifactReference> refs,
+  ) {
+    if (section != ManaSectionId.evidence) return refs;
+    const urgent = {'failed': 0, 'blocked': 1, 'stale': 2};
+    return [
+      ...refs,
+    ]..sort((a, b) => (urgent[a.status] ?? 3).compareTo(urgent[b.status] ?? 3));
+  }
+
+  Widget _dossierHeader(ManaSemanticReadModel model, String id) {
+    final item = model.workItems?.workItems
+        .where((w) => w.id == id)
+        .firstOrNull;
+    if (item == null) return const SizedBox.shrink();
+    return Card(
+      child: ListTile(
+        title: Text(item.title.value ?? item.id),
+        subtitle: Text(
+          '${item.id} • ${item.type.name} • ${item.lifecycle.state.name}${item.branch.value == null ? '' : ' • ${item.branch.value}'}',
+        ),
+        trailing: Text('Review ${item.review.state.name}'),
+      ),
     );
   }
 
