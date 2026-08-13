@@ -101,6 +101,19 @@ flutter test
 flutter build macos --debug
 ```
 
+### Cross-repository zero-token harness
+
+With a compatible local Mana checkout, C01 creates a temporary project,
+bootstraps it through Mana's supported path, and proves the resulting inspect
+contracts load in Familiar twice without model or network access:
+
+```sh
+tests/run-c01-zero-token-harness.sh --mana-root /path/to/mana
+```
+
+The runner rejects a missing or wrong Mana repository instead of silently
+skipping. It removes its temporary project on completion.
+
 ## Contract
 
 This consumer supports exactly `mana.learning.graph/v1`. Missing or unsupported
