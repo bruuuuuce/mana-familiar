@@ -7,6 +7,10 @@ Mana `mana-inspect-contract/v1` response schemas:
 - `mana.inspect.artifacts/v1`
 - `mana.inspect.artifact/v1`
 - `mana.inspect.source/v1`
+- `mana.inspect.work-items/v1`
+- `mana.inspect.work-item/v1`
+- `mana.inspect.project-context/v1`
+- `mana.inspect.activity/v1`
 
 Before requesting optional detail or source relations, Familiar calls
 `mana inspect project --json` and only invokes operations advertised in its
@@ -14,6 +18,18 @@ Before requesting optional detail or source relations, Familiar calls
 artifact families, relation types, statuses, and payload fields are retained
 as raw data and otherwise safely ignored. An unknown schema is rejected; it is
 never treated as a partially compatible v1 response.
+
+Semantic mode is negotiated only from exact operation/schema pairs:
+
+- FULL_SEMANTIC requires `work-items`, `work-item`, `project-context`, and
+  `activity`;
+- WORK_SEMANTIC requires both work operations but lacks at least one global
+  semantic operation;
+- LEGACY_CATALOG is selected when either work operation is unavailable.
+
+An advertised operation that later fails produces a visible refresh warning.
+Previously successful data for the same project and unchanged mode is retained;
+it is never retained across a project or capability-mode change.
 
 ## Connection modes
 
@@ -33,6 +49,13 @@ schemas, absent `.mana`, and partial catalogs remain distinct client states.
 Familiar does not scan `.mana` as an offline fallback; saved inspect responses
 are the offline fallback.
 
+The process transport uses structured arguments without a shell, a 30-second
+timeout, a 16 MiB response bound, bounded/redacted stderr, and explicit process
+termination on timeout. Work-item IDs are validated before invocation. Typed
+semantic responses reject unsafe `.mana` references, malformed ownership,
+duplicate work/event IDs, duplicate sections/categories, and fake global
+ownership.
+
 ## Artifact payload rendering
 
 Artifact payloads are producer-owned and untrusted. Familiar dispatches through
@@ -41,6 +64,16 @@ artifact family/kind, content type, then metadata-only fallback. JSON, text,
 and Markdown previews are bounded; Markdown is inert text with no link opening
 or HTML execution. Unsupported, malformed, binary, oversized, deeply nested,
 or future payloads remain visible as metadata rather than being interpreted.
+
+## Markdown security policy
+
+Reader mode uses native Flutter widgets, never a WebView. HTML, script, iframe,
+embed, and object markup is inert and omitted from Reader mode. Link labels may
+be rendered, but document-provided `javascript:`, `file:`, `data:`, relative,
+and remote destinations are never opened. Remote images are not fetched.
+Source and Metadata are selectable inert text and do not trigger filesystem or
+network access. Only producer-declared source relations can request a source
+operation, whose path must be safe, project-relative, and outside `.mana`.
 
 ### Operational renderers
 

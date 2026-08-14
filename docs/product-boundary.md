@@ -10,13 +10,14 @@ viewing, and local UI preferences. Artifact data and paths are untrusted: the
 client accepts only its documented schema and reads artifact-relative assets
 only after containment, regular-file, symlink, and size checks.
 
-The current product is the project observatory. Its Knowledge module preserves
-the Learning Journey explorer for `mana.learning.graph/v1` under
-**Knowledge > Journeys** and exposes other Knowledge categories only when
-Mana's versioned inspect catalog reports matching artifacts. It does not add a
+The current product is the project observatory. FULL_SEMANTIC exposes Overview,
+Work, Reviews, the eight producer-owned Knowledge categories, Activity, and
+Advanced. Knowledge and dossier documents remain in their typed semantic
+parent and render through the inert native reader. The product does not add a
 competing generic `.mana` parser, knowledge database, or write surface.
 
-The Review Inbox derives its queue from the versioned Mana inspect catalog. It
-may copy a documented CLI handoff only when all typed arguments are present;
-Familiar never executes it. Missing action metadata remains visible as a
-missing requirement rather than a guessed command.
+Reviews in semantic modes derives only from typed work-item review, attention,
+ownership, and review-section references. Unknown review state remains sparse.
+Legacy catalog ReviewInboxModel and KnowledgeModulePage classification is
+retained solely for LEGACY_CATALOG compatibility and cannot affect semantic
+routes. Missing action metadata remains unavailable rather than guessed.

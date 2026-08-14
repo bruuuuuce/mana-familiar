@@ -349,6 +349,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
             child: Column(
               children: [
                 _breadcrumbs(model, route, artifact),
+                if (model.refreshError != null) _refreshWarning(),
                 Expanded(
                   child: artifact == null
                       ? _routeBody(model, route)
@@ -478,6 +479,30 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       ),
     );
   }
+
+  Widget _refreshWarning() => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+    color: Theme.of(context).colorScheme.errorContainer,
+    child: Row(
+      children: [
+        Icon(
+          Icons.sync_problem_outlined,
+          size: 18,
+          color: Theme.of(context).colorScheme.onErrorContainer,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Refresh incomplete. Showing the last successful data.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onErrorContainer,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _routeBody(ManaSemanticReadModel model, ObservatoryRoute route) =>
       switch (route.destination) {
@@ -640,7 +665,10 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                   (e) => _quietRow(
                     leading: Icon(_activityIcon(e.kind), size: 20),
                     title: _activityLabel(e),
-                    subtitle: _readableTimestamp(e.timestamp),
+                    subtitle: _readableTimestamp(
+                      e.timestamp,
+                      e.timestampProvenance,
+                    ),
                     onTap: () => _navigate(
                       ObservatoryRoute(
                         destination: ObservatoryDestination.activity,
@@ -1082,7 +1110,10 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       _quietRow(
         leading: const Icon(Icons.schedule_outlined),
         title: _activityLabel(event),
-        subtitle: _readableTimestamp(event.timestamp),
+        subtitle: _readableTimestamp(
+          event.timestamp,
+          event.timestampProvenance,
+        ),
       ),
   ];
 
@@ -1619,8 +1650,8 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     String? previousDay;
     return [
       for (final event in events) ...[
-        if (_activityDayLabel(event.timestamp) != previousDay)
-          _activityDayHeading(previousDay = _activityDayLabel(event.timestamp)),
+        if (_activityDayLabel(event) != previousDay)
+          _activityDayHeading(previousDay = _activityDayLabel(event)),
         _activityTimelineRow(model, event),
       ],
     ];
@@ -1636,7 +1667,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     ManaActivityEvent event,
   ) {
     final target = _activityTarget(model, event);
-    final time = _activityTime(event.timestamp);
+    final time = _activityTime(event);
     final contextLabel = event.workItemId == null
         ? 'Project'
         : _workDisplayId(event.workItemId!);
@@ -2053,8 +2084,8 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     ManaActivityKind.unknown => Icons.bolt_outlined,
   };
 
-  String _readableTimestamp(String value) {
-    final time = _parseTimestamp(value);
+  String _readableTimestamp(String value, ManaTimestampProvenance provenance) {
+    final time = _parseTimestamp(value, provenance);
     if (time == null) return 'Time unavailable';
     final local = time.toLocal();
     const months = [
@@ -2075,9 +2106,10 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     return '${local.day} ${months[local.month - 1]} ${local.year} • ${local.hour}:$minute';
   }
 
-  DateTime? _parseTimestamp(String value) {
-    var time = DateTime.tryParse(value);
-    if (time != null) return time;
+  DateTime? _parseTimestamp(String value, ManaTimestampProvenance provenance) {
+    if (provenance == ManaTimestampProvenance.explicitDomainTimestamp) {
+      return DateTime.tryParse(value);
+    }
     final epoch = int.tryParse(value);
     if (epoch == null) return null;
     return DateTime.fromMillisecondsSinceEpoch(
@@ -2086,8 +2118,11 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     );
   }
 
-  String _activityDayLabel(String timestamp) {
-    final time = _parseTimestamp(timestamp)?.toLocal();
+  String _activityDayLabel(ManaActivityEvent event) {
+    final time = _parseTimestamp(
+      event.timestamp,
+      event.timestampProvenance,
+    )?.toLocal();
     if (time == null) return 'Date unavailable';
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -2111,8 +2146,11 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     return '${time.day} ${months[time.month - 1]} ${time.year}';
   }
 
-  String _activityTime(String timestamp) {
-    final time = _parseTimestamp(timestamp)?.toLocal();
+  String _activityTime(ManaActivityEvent event) {
+    final time = _parseTimestamp(
+      event.timestamp,
+      event.timestampProvenance,
+    )?.toLocal();
     if (time == null) return '—';
     return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }

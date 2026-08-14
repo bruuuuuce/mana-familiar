@@ -37,6 +37,27 @@ void main() {
     expect(catalog.raw['future'], isTrue);
   });
 
+  test('rejects unsafe producer artifact and source paths', () {
+    final catalog = ManaInspectCatalog.fromJson({
+      'schema': inspectArtifactsSchema,
+      'artifacts': [
+        _artifact,
+        {..._artifact, 'artifact_id': 'unsafe', 'path': '.mana/../secret'},
+      ],
+      'guarantees': const {},
+      'diagnostics': const [],
+    });
+    expect(catalog.partial, isTrue);
+    expect(catalog.artifacts.single.id, 'journey:jrn_test');
+    expect(
+      () => ManaInspectSourceRelations.fromJson({
+        ..._canonicalSource,
+        'source': {'path': '../secret', 'availability': 'present'},
+      }),
+      throwsA(isA<ManaInspectException>()),
+    );
+  });
+
   test('rejects unsupported schema rather than guessing compatibility', () {
     expect(
       () => ManaInspectProject.fromJson({

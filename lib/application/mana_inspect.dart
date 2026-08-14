@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../safe_path.dart';
 
@@ -97,18 +98,34 @@ class ManaArtifactReference {
   final String id, path, kind, status;
   final String? workItemId, label;
   final ManaSectionId? sectionId;
-  factory ManaArtifactReference.fromJson(Map<String, dynamic> json) =>
-      ManaArtifactReference(
-        id: _string(json['artifact_id'], 'artifact_id'),
-        path: _string(json['path'], 'path'),
-        kind: _string(json['kind'], 'kind'),
-        status: _string(json['status'], 'status'),
-        workItemId: json['work_item_id'] is String
-            ? json['work_item_id'] as String
-            : null,
-        sectionId: _section(json['section_id']),
-        label: json['label'] is String ? json['label'] as String : null,
+  factory ManaArtifactReference.fromJson(Map<String, dynamic> json) {
+    final path = _string(json['path'], 'path');
+    if (!path.startsWith('.mana/') ||
+        !SafePathPolicy.isSafeRelativePath(path)) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Artifact references must use safe .mana-relative paths.',
       );
+    }
+    final workItemId = json['work_item_id'];
+    if (workItemId != null &&
+        (workItemId is! String || !_isWorkItemId(workItemId))) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Artifact work_item_id is malformed.',
+      );
+    }
+    final sectionValue = json['section_id'];
+    return ManaArtifactReference(
+      id: _string(json['artifact_id'], 'artifact_id'),
+      path: path,
+      kind: _string(json['kind'], 'kind'),
+      status: _string(json['status'], 'status'),
+      workItemId: workItemId as String?,
+      sectionId: sectionValue == null ? null : _requiredSection(sectionValue),
+      label: json['label'] is String ? json['label'] as String : null,
+    );
+  }
 }
 
 class ManaLifecycle {
@@ -207,28 +224,45 @@ class ManaWorkItemSummary {
   final ManaReview review;
   final List<ManaAttentionItem> attentionItems;
   final List<ManaArtifactReference> artifacts;
-  factory ManaWorkItemSummary.fromJson(Map<String, dynamic> json) =>
-      ManaWorkItemSummary(
-        id: _string(json['work_item_id'], 'work_item_id'),
-        type: _workType(json['work_item_type']),
-        externalTicketId: ManaSemanticField.fromJson(
-          _map(json['external_ticket_id']),
-        ),
-        title: ManaSemanticField.fromJson(_map(json['title'])),
-        purpose: ManaSemanticField.fromJson(_map(json['purpose'])),
-        branch: ManaSemanticField.fromJson(_map(json['branch'])),
-        canonicalBranch: json['canonical_branch'] is bool
-            ? json['canonical_branch'] as bool
-            : null,
-        lifecycle: ManaLifecycle.fromJson(_map(json['lifecycle'])),
-        review: ManaReview.fromJson(_map(json['review'])),
-        attentionItems: _objects(
-          json['attention_items'],
-        ).map(ManaAttentionItem.fromJson).toList(growable: false),
-        artifacts: _objects(
-          json['artifacts'],
-        ).map(ManaArtifactReference.fromJson).toList(growable: false),
+  factory ManaWorkItemSummary.fromJson(Map<String, dynamic> json) {
+    final id = _string(json['work_item_id'], 'work_item_id');
+    if (!_isWorkItemId(id)) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'work_item_id is not a stable feature/session identity.',
       );
+    }
+    final attentionItems = _objects(
+      json['attention_items'],
+    ).map(ManaAttentionItem.fromJson).toList(growable: false);
+    final artifacts = _objects(
+      json['artifacts'],
+    ).map(ManaArtifactReference.fromJson).toList(growable: false);
+    if (attentionItems.any((item) => item.workItemId != id) ||
+        artifacts.any((artifact) => artifact.workItemId != id)) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Work-item summary ownership is inconsistent.',
+      );
+    }
+    return ManaWorkItemSummary(
+      id: id,
+      type: _workType(json['work_item_type']),
+      externalTicketId: ManaSemanticField.fromJson(
+        _map(json['external_ticket_id']),
+      ),
+      title: ManaSemanticField.fromJson(_map(json['title'])),
+      purpose: ManaSemanticField.fromJson(_map(json['purpose'])),
+      branch: ManaSemanticField.fromJson(_map(json['branch'])),
+      canonicalBranch: json['canonical_branch'] is bool
+          ? json['canonical_branch'] as bool
+          : null,
+      lifecycle: ManaLifecycle.fromJson(_map(json['lifecycle'])),
+      review: ManaReview.fromJson(_map(json['review'])),
+      attentionItems: attentionItems,
+      artifacts: artifacts,
+    );
+  }
 }
 
 class ManaWorkItemsResponse {
@@ -242,10 +276,12 @@ class ManaWorkItemsResponse {
   final List<ManaDiagnostic> diagnostics;
   factory ManaWorkItemsResponse.fromJson(Map<String, dynamic> json) {
     _requireSchema(json, inspectWorkItemsSchema);
+    final workItems = _objects(
+      json['work_items'],
+    ).map(ManaWorkItemSummary.fromJson).toList(growable: false);
+    _requireUnique(workItems.map((item) => item.id), 'work_item_id');
     return ManaWorkItemsResponse(
-      workItems: _objects(
-        json['work_items'],
-      ).map(ManaWorkItemSummary.fromJson).toList(growable: false),
+      workItems: workItems,
       coverage: _string(json['coverage'], 'coverage'),
       diagnostics: _objects(
         json['diagnostics'],
@@ -290,14 +326,36 @@ class ManaWorkItemResponse {
   final List<ManaDiagnostic> diagnostics;
   factory ManaWorkItemResponse.fromJson(Map<String, dynamic> json) {
     _requireSchema(json, inspectWorkItemSchema);
+    final workItem = ManaWorkItemSummary.fromJson(_map(json['work_item']));
+    final sections = _objects(
+      json['sections'],
+    ).map(ManaWorkItemSection.fromJson).toList(growable: false);
+    _requireUniqueSections(sections);
+    for (final section in sections) {
+      if (section.artifacts.any(
+        (artifact) =>
+            artifact.workItemId != workItem.id ||
+            artifact.sectionId != section.id,
+      )) {
+        throw const ManaInspectException(
+          ManaInspectFailure.malformedJson,
+          'Section artifact ownership is inconsistent.',
+        );
+      }
+    }
+    final attentionItems = _objects(
+      json['attention_items'],
+    ).map(ManaAttentionItem.fromJson).toList(growable: false);
+    if (attentionItems.any((item) => item.workItemId != workItem.id)) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Work-item attention ownership is inconsistent.',
+      );
+    }
     return ManaWorkItemResponse(
-      workItem: ManaWorkItemSummary.fromJson(_map(json['work_item'])),
-      sections: _objects(
-        json['sections'],
-      ).map(ManaWorkItemSection.fromJson).toList(growable: false),
-      attentionItems: _objects(
-        json['attention_items'],
-      ).map(ManaAttentionItem.fromJson).toList(growable: false),
+      workItem: workItem,
+      sections: sections,
+      attentionItems: attentionItems,
       coverage: _string(json['coverage'], 'coverage'),
       diagnostics: _objects(
         json['diagnostics'],
@@ -335,10 +393,22 @@ class ManaProjectContextResponse {
   final List<ManaDiagnostic> diagnostics;
   factory ManaProjectContextResponse.fromJson(Map<String, dynamic> json) {
     _requireSchema(json, inspectProjectContextSchema);
+    final categories = _objects(
+      json['categories'],
+    ).map(ManaProjectContextCategory.fromJson).toList(growable: false);
+    _requireExactCategories(categories);
+    if (categories.any(
+      (category) => category.artifacts.any(
+        (artifact) => artifact.workItemId != null || artifact.sectionId != null,
+      ),
+    )) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Project-context artifacts must remain project-global.',
+      );
+    }
     return ManaProjectContextResponse(
-      categories: _objects(
-        json['categories'],
-      ).map(ManaProjectContextCategory.fromJson).toList(growable: false),
+      categories: categories,
       coverage: _string(json['coverage'], 'coverage'),
       diagnostics: _objects(
         json['diagnostics'],
@@ -366,14 +436,20 @@ class ManaActivityEvent {
   final List<String> relatedArtifactIds;
   factory ManaActivityEvent.fromJson(Map<String, dynamic> json) {
     final timestamp = _map(json['timestamp']);
+    final workItemId = json['work_item_id'];
+    if (workItemId != null &&
+        (workItemId is! String || !_isWorkItemId(workItemId))) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Activity work_item_id is malformed.',
+      );
+    }
     return ManaActivityEvent(
       id: _string(json['event_id'], 'event_id'),
       timestamp: _string(timestamp['value'], 'timestamp.value'),
       timestampProvenance: _timestampProvenance(timestamp['provenance']),
       kind: _activityKind(json['event_kind']),
-      workItemId: json['work_item_id'] is String
-          ? json['work_item_id'] as String
-          : null,
+      workItemId: workItemId as String?,
       relatedArtifactIds: _strings(json['related_artifact_ids']),
       summary: json['summary'] is String ? json['summary'] as String : null,
       provenance: _provenance(json['provenance']),
@@ -392,10 +468,12 @@ class ManaActivityResponse {
   final List<ManaDiagnostic> diagnostics;
   factory ManaActivityResponse.fromJson(Map<String, dynamic> json) {
     _requireSchema(json, inspectActivitySchema);
+    final events = _objects(
+      json['events'],
+    ).map(ManaActivityEvent.fromJson).toList(growable: false);
+    _requireUnique(events.map((event) => event.id), 'event_id');
     return ManaActivityResponse(
-      events: _objects(
-        json['events'],
-      ).map(ManaActivityEvent.fromJson).toList(growable: false),
+      events: events,
       coverage: _string(json['coverage'], 'coverage'),
       diagnostics: _objects(
         json['diagnostics'],
@@ -510,15 +588,24 @@ class ManaInspectArtifactSummary {
   final String kind;
   final String status;
   final Map<String, dynamic> raw;
-  factory ManaInspectArtifactSummary.fromJson(Map<String, dynamic> json) =>
-      ManaInspectArtifactSummary(
-        id: _string(json['artifact_id'], 'artifact_id'),
-        path: _string(json['path'], 'path'),
-        family: _string(json['family'], 'family'),
-        kind: _string(json['kind'], 'kind'),
-        status: _string(json['status'], 'status'),
-        raw: json,
+  factory ManaInspectArtifactSummary.fromJson(Map<String, dynamic> json) {
+    final path = _string(json['path'], 'path');
+    if (!path.startsWith('.mana/') ||
+        !SafePathPolicy.isSafeRelativePath(path)) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Artifact summaries must use safe .mana-relative paths.',
       );
+    }
+    return ManaInspectArtifactSummary(
+      id: _string(json['artifact_id'], 'artifact_id'),
+      path: path,
+      family: _string(json['family'], 'family'),
+      kind: _string(json['kind'], 'kind'),
+      status: _string(json['status'], 'status'),
+      raw: json,
+    );
+  }
 }
 
 class ManaInspectCatalog {
@@ -597,8 +684,15 @@ class ManaInspectSourceRelations {
   factory ManaInspectSourceRelations.fromJson(Map<String, dynamic> json) {
     _requireSchema(json, inspectSourceSchema);
     final source = _map(json['source']);
+    final path = _string(source['path'], 'source.path');
+    if (!SafePathPolicy.isSafeRelativePath(path) || path.startsWith('.mana/')) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Source response path is not safe and project-relative.',
+      );
+    }
     return ManaInspectSourceRelations(
-      path: _string(source['path'], 'source.path'),
+      path: path,
       availability: _string(source['availability'], 'source.availability'),
       coverage: _string(json['coverage'], 'coverage'),
       relations: _objects(json['relations']),
@@ -619,18 +713,21 @@ class ManaInspectClient {
     required this.projectRoot,
     this.manaRoot,
     this.snapshotPath,
+    this.processTimeout = const Duration(seconds: 30),
     ManaProcessRunner? run,
   }) : _run =
            run ??
-           ((executable, arguments, {workingDirectory}) => Process.run(
+           ((executable, arguments, {workingDirectory}) => _runInspectProcess(
              executable,
              arguments,
              workingDirectory: workingDirectory,
+             timeout: processTimeout,
            ));
 
   final String projectRoot;
   final String? manaRoot;
   final String? snapshotPath;
+  final Duration processTimeout;
   final ManaProcessRunner _run;
 
   ManaInspectMode get mode {
@@ -776,7 +873,7 @@ class ManaInspectClient {
     if (result.exitCode != 0) {
       throw ManaInspectException(
         ManaInspectFailure.command,
-        'Exit ${result.exitCode}: ${result.stderr}'.trim(),
+        'Exit ${result.exitCode}: ${_safeProcessDiagnostic(result.stderr, projectRoot)}',
       );
     }
     return _decode(result.stdout.toString());
@@ -840,6 +937,7 @@ class ManaSemanticRepository {
   final ManaInspectClient client;
   Future<ManaSemanticReadModel>? _refreshing;
   final Map<String, Future<ManaWorkItemResponse>> _details = {};
+  ManaSemanticReadModel? _latest;
 
   Future<ManaSemanticReadModel> refresh() =>
       _refreshing ??= _refresh().whenComplete(() => _refreshing = null);
@@ -852,7 +950,27 @@ class ManaSemanticRepository {
   );
 
   Future<ManaSemanticReadModel> _refresh() async {
-    final project = await client.project();
+    ManaInspectProject project;
+    try {
+      project = await client.project();
+    } catch (error) {
+      final previous = _latest;
+      if (previous == null) rethrow;
+      return ManaSemanticReadModel(
+        project: previous.project,
+        mode: previous.mode,
+        catalog: previous.catalog,
+        workItems: previous.workItems,
+        projectContext: previous.projectContext,
+        activity: previous.activity,
+        refreshError: error,
+      );
+    }
+    final previous = _latest;
+    final mayRetain =
+        previous != null &&
+        previous.project.projectId == project.projectId &&
+        previous.mode == project.semanticMode;
     ManaInspectCatalog? catalog;
     ManaWorkItemsResponse? workItems;
     ManaProjectContextResponse? context;
@@ -904,56 +1022,30 @@ class ManaSemanticRepository {
       );
     }
     await Future.wait(tasks);
-    return ManaSemanticReadModel(
+    final model = ManaSemanticReadModel(
       project: project,
       mode: project.semanticMode,
-      catalog: catalog,
-      workItems: workItems,
-      projectContext: context,
-      activity: activity,
+      catalog:
+          catalog ??
+          (mayRetain && project.supports('artifacts', inspectArtifactsSchema)
+              ? previous.catalog
+              : null),
+      workItems:
+          workItems ??
+          (mayRetain && project.supportsWorkItems ? previous.workItems : null),
+      projectContext:
+          context ??
+          (mayRetain && project.supportsProjectContext
+              ? previous.projectContext
+              : null),
+      activity:
+          activity ??
+          (mayRetain && project.supportsActivity ? previous.activity : null),
       refreshError: error,
     );
-  }
-}
-
-class ManaInspectRefreshService {
-  ManaInspectRefreshService(
-    this.client, {
-    this.debounce = const Duration(milliseconds: 300),
-  });
-  final ManaInspectClient client;
-  final Duration debounce;
-  StreamSubscription<FileSystemEvent>? _watch;
-  Timer? _timer;
-  Stream<ManaInspectCatalog> watchCatalog() {
-    final controller = StreamController<ManaInspectCatalog>();
-    final root = Directory(
-      '${client.projectRoot}${Platform.pathSeparator}.mana',
-    );
-    if (!root.existsSync()) {
-      controller.addError(
-        const ManaInspectException(
-          ManaInspectFailure.missingMana,
-          '.mana is not available for refresh.',
-        ),
-      );
-      return controller.stream;
-    }
-    _watch = root.watch(recursive: true).listen((_) {
-      _timer?.cancel();
-      _timer = Timer(debounce, () async {
-        try {
-          controller.add(await client.catalog());
-        } catch (error, trace) {
-          controller.addError(error, trace);
-        }
-      });
-    }, onError: controller.addError);
-    controller.onCancel = () async {
-      _timer?.cancel();
-      await _watch?.cancel();
-    };
-    return controller.stream;
+    _latest = model;
+    if (!mayRetain || workItems != null) _details.clear();
+    return model;
   }
 }
 
@@ -1008,8 +1100,13 @@ List<dynamic> _list(Object? value) {
 }
 
 List<Map<String, dynamic>> _objects(Object? value) => _list(value)
-    .whereType<Map>()
-    .map((value) => value.cast<String, dynamic>())
+    .map((value) {
+      if (value is Map) return value.cast<String, dynamic>();
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Expected an object array entry.',
+      );
+    })
     .toList(growable: false);
 String _string(Object? value, String field) {
   if (value is String && value.isNotEmpty) return value;
@@ -1021,8 +1118,157 @@ String _string(Object? value, String field) {
 
 String _unknownString(Object? value) =>
     value is String && value.isNotEmpty ? value : 'unknown';
-List<String> _strings(Object? value) =>
-    _list(value).whereType<String>().toList(growable: false);
+List<String> _strings(Object? value) => _list(value)
+    .map((value) {
+      if (value is String) return value;
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Expected a string array entry.',
+      );
+    })
+    .toList(growable: false);
+
+bool _isWorkItemId(String value) =>
+    RegExp(r'^(feature|session):[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(value);
+
+void _requireUnique(Iterable<String> values, String field) {
+  final seen = <String>{};
+  for (final value in values) {
+    if (!seen.add(value)) {
+      throw ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Duplicate $field.',
+      );
+    }
+  }
+}
+
+void _requireUniqueSections(List<ManaWorkItemSection> sections) {
+  final actual = sections.map((section) => section.id).toSet();
+  if (actual.length != sections.length) {
+    throw const ManaInspectException(
+      ManaInspectFailure.malformedJson,
+      'Work-item section_id values must be unique.',
+    );
+  }
+}
+
+const _projectContextCategories = <String>{
+  'architecture',
+  'project_decisions',
+  'integrations',
+  'engineering_guards',
+  'glossary',
+  'learning_journeys',
+  'testing_policy',
+  'database_policy',
+};
+
+void _requireExactCategories(List<ManaProjectContextCategory> categories) {
+  final actual = categories.map((category) => category.category).toSet();
+  if (actual.length != categories.length ||
+      actual.length != _projectContextCategories.length ||
+      !actual.containsAll(_projectContextCategories)) {
+    throw const ManaInspectException(
+      ManaInspectFailure.malformedJson,
+      'Project context must contain each frozen category exactly once.',
+    );
+  }
+}
+
+String _safeProcessDiagnostic(Object? stderr, String projectRoot) {
+  var text = stderr.toString().replaceAll(RegExp(r'[\x00-\x1F\x7F]+'), ' ');
+  final roots = <String>{projectRoot};
+  try {
+    roots.add(Directory(projectRoot).absolute.path);
+  } on FileSystemException {
+    // The user-facing diagnostic remains bounded even for a missing root.
+  }
+  for (final root in roots.where((value) => value.isNotEmpty)) {
+    text = text.replaceAll(root, '<project>');
+  }
+  text = text.replaceAllMapped(
+    RegExp(r'(^|\s)/(?:[^/\s:]+/)*[^/\s:]+'),
+    (match) => '${match.group(1)}<host-path>',
+  );
+  text = text.trim();
+  if (text.isEmpty) return 'inspect command failed';
+  const limit = 512;
+  return text.length <= limit ? text : '${text.substring(0, limit)}…';
+}
+
+Future<ProcessResult> _runInspectProcess(
+  String executable,
+  List<String> arguments, {
+  String? workingDirectory,
+  required Duration timeout,
+}) async {
+  final process = await Process.start(
+    executable,
+    arguments,
+    workingDirectory: workingDirectory,
+    runInShell: false,
+  );
+  final stdout = _collectBounded(process.stdout, 16 * 1024 * 1024);
+  final stderr = _collectBounded(process.stderr, 8 * 1024);
+  int exitCode;
+  try {
+    exitCode = await process.exitCode.timeout(timeout);
+  } on TimeoutException {
+    process.kill(ProcessSignal.sigterm);
+    try {
+      await process.exitCode.timeout(const Duration(seconds: 2));
+    } on TimeoutException {
+      process.kill(ProcessSignal.sigkill);
+      await process.exitCode;
+    }
+    await stdout;
+    await stderr;
+    throw ProcessException(
+      executable,
+      arguments,
+      'Inspect process exceeded its ${timeout.inSeconds}-second limit.',
+    );
+  }
+  final output = await stdout;
+  final errors = await stderr;
+  if (output.truncated) {
+    throw ProcessException(
+      executable,
+      arguments,
+      'Inspect response exceeded the 16 MiB transport limit.',
+    );
+  }
+  return ProcessResult(
+    process.pid,
+    exitCode,
+    output.text,
+    '${errors.text}${errors.truncated ? '…' : ''}',
+  );
+}
+
+Future<({String text, bool truncated})> _collectBounded(
+  Stream<List<int>> stream,
+  int limit,
+) async {
+  final bytes = BytesBuilder(copy: false);
+  var retained = 0;
+  var truncated = false;
+  await for (final chunk in stream) {
+    final available = limit - retained;
+    if (available > 0) {
+      final take = chunk.length < available ? chunk.length : available;
+      bytes.add(chunk.take(take).toList(growable: false));
+      retained += take;
+    }
+    if (chunk.length > available) truncated = true;
+  }
+  return (
+    text: utf8.decode(bytes.takeBytes(), allowMalformed: true),
+    truncated: truncated,
+  );
+}
+
 ManaProvenance _provenance(Object? value) => switch (value) {
   'explicit_workspace_manifest' => ManaProvenance.explicitWorkspaceManifest,
   'canonical_path' => ManaProvenance.canonicalPath,
