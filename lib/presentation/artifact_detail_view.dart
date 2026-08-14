@@ -443,8 +443,8 @@ class ArtifactDetailView extends StatelessWidget {
   }
 }
 
-/// Registry entry for Journey artifacts. Existing direct Journey exploration is
-/// deliberately retained; richer in-shell navigation is scheduled for F08.
+/// Registry entry for Journey artifacts. Direct Journey exploration remains
+/// isolated in the legacy compatibility experience.
 class _JourneyArtifactModule extends StatelessWidget {
   const _JourneyArtifactModule();
 

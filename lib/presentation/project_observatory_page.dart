@@ -7,8 +7,8 @@ import '../application/semantic_navigation.dart';
 import 'artifact_detail_view.dart';
 import 'review_inbox_page.dart';
 
-/// F11 semantic navigation shell. Content remains intentionally lightweight;
-/// later phases own the cockpit, reader, and dossier presentations.
+/// Semantic navigation shell for the project observatory. Routes retain typed
+/// work, context, activity, and document ownership through the presentation.
 class ProjectObservatoryPage extends StatefulWidget {
   const ProjectObservatoryPage({
     super.key,
