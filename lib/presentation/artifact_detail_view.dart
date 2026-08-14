@@ -21,6 +21,8 @@ class ArtifactDetailView extends StatelessWidget {
     this.onOpenRelatedArtifact,
     this.sourceLoader,
     this.projectRoot,
+    this.documentPresentation = false,
+    this.contextualTitle,
   });
 
   final ManaInspectArtifactSummary artifact;
@@ -31,6 +33,12 @@ class ArtifactDetailView extends StatelessWidget {
   final ValueChanged<String>? onOpenRelatedArtifact;
   final Future<ManaInspectSourceRelations> Function(String path)? sourceLoader;
   final String? projectRoot;
+
+  /// True for the normal dossier/Knowledge reader path. Technical artifact
+  /// chrome remains available in Metadata and Advanced, but should not lead
+  /// the reading experience.
+  final bool documentPresentation;
+  final String? contextualTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -55,13 +63,15 @@ class ArtifactDetailView extends StatelessWidget {
             rootArtifactId: artifact.id,
           );
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(32, 18, 32, 40),
       children: [
         Text(
-          'Artifact detail',
+          documentPresentation
+              ? (contextualTitle ?? 'Document')
+              : 'Artifact detail',
           style: Theme.of(context).textTheme.headlineSmall,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         _summary(context),
         if (loading)
           const Padding(
@@ -79,7 +89,7 @@ class ArtifactDetailView extends StatelessWidget {
         if (plan != null) ...[
           _warnings(loadedDetail!),
           _payload(context, plan, loadedDetail),
-          _rawPayload(rawPayload),
+          if (!documentPresentation) _rawPayload(rawPayload),
           _relations(relations),
           _sourceAnchors(loadedDetail),
           _provenance(loadedDetail),
@@ -98,15 +108,39 @@ class ArtifactDetailView extends StatelessWidget {
     );
   }
 
-  Widget _summary(BuildContext context) => Card(
-    child: ListTile(
-      title: Text(artifact.id),
-      subtitle: Text(
-        '${artifact.family} • ${artifact.kind} • ${artifact.status}',
-      ),
-      trailing: const Icon(Icons.inventory_2_outlined),
-    ),
-  );
+  Widget _summary(BuildContext context) => documentPresentation
+      ? Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Row(
+            children: [
+              Icon(
+                Icons.article_outlined,
+                size: 20,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _documentAvailability(),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        )
+      : Card(
+          child: ListTile(
+            leading: const Icon(Icons.inventory_2_outlined),
+            title: Text(artifact.id),
+            subtitle: Text(
+              '${artifact.family} • ${artifact.kind} • ${artifact.status}',
+            ),
+          ),
+        );
+
+  String _documentAvailability() => artifact.status == 'available'
+      ? 'Ready to read'
+      : 'Document status: ${artifact.status}';
 
   Widget _warnings(ManaInspectArtifactDetail detail) {
     final messages = <String>[];
@@ -137,41 +171,45 @@ class ArtifactDetailView extends StatelessWidget {
     BuildContext context,
     ArtifactRenderPlan plan,
     ManaInspectArtifactDetail detail,
-  ) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Payload', style: Theme.of(context).textTheme.titleMedium),
+  ) {
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!documentPresentation) ...[
+          Text('Content', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 6),
           Text(plan.reason),
           const SizedBox(height: 10),
-          switch (plan.view) {
-            ArtifactPayloadView.journey => const _JourneyArtifactModule(),
-            ArtifactPayloadView.verification => _verification(detail),
-            ArtifactPayloadView.repair => _repair(detail),
-            ArtifactPayloadView.review => _review(detail),
-            ArtifactPayloadView.evidence => _evidence(detail),
-            ArtifactPayloadView.decision => _decision(detail),
-            ArtifactPayloadView.governance => _governance(detail),
-            ArtifactPayloadView.json ||
-            ArtifactPayloadView.text => SelectableText(plan.text ?? ''),
-            ArtifactPayloadView.markdown => MarkdownNoteView(
-              markdown: plan.text ?? '',
-              source: plan.sourceText,
-              artifact: artifact,
-              detail: detail,
-              onOpenRelatedArtifact: onOpenRelatedArtifact,
-            ),
-            ArtifactPayloadView.metadata => const Text(
-              'Metadata only; payload content is not displayed.',
-            ),
-          },
         ],
-      ),
-    ),
-  );
+        switch (plan.view) {
+          ArtifactPayloadView.journey => const _JourneyArtifactModule(),
+          ArtifactPayloadView.verification => _verification(detail),
+          ArtifactPayloadView.repair => _repair(detail),
+          ArtifactPayloadView.review => _review(detail),
+          ArtifactPayloadView.evidence => _evidence(detail),
+          ArtifactPayloadView.decision => _decision(detail),
+          ArtifactPayloadView.governance => _governance(detail),
+          ArtifactPayloadView.json ||
+          ArtifactPayloadView.text => SelectableText(plan.text ?? ''),
+          ArtifactPayloadView.markdown => MarkdownNoteView(
+            markdown: plan.text ?? '',
+            source: plan.sourceText,
+            artifact: artifact,
+            detail: detail,
+            onOpenRelatedArtifact: onOpenRelatedArtifact,
+            documentPresentation: documentPresentation,
+          ),
+          ArtifactPayloadView.metadata => const Text(
+            'Metadata only; payload content is not displayed.',
+          ),
+        },
+      ],
+    );
+    if (documentPresentation) return content;
+    return Card(
+      child: Padding(padding: const EdgeInsets.all(16), child: content),
+    );
+  }
 
   Widget _relations(List<RelationPreview> relations) {
     if (relations.isEmpty) return const SizedBox.shrink();
@@ -428,6 +466,7 @@ class MarkdownNoteView extends StatefulWidget {
     this.artifact,
     this.detail,
     this.onOpenRelatedArtifact,
+    this.documentPresentation = false,
   });
 
   final String markdown;
@@ -435,6 +474,7 @@ class MarkdownNoteView extends StatefulWidget {
   final ManaInspectArtifactSummary? artifact;
   final ManaInspectArtifactDetail? detail;
   final ValueChanged<String>? onOpenRelatedArtifact;
+  final bool documentPresentation;
 
   @override
   State<MarkdownNoteView> createState() => _MarkdownNoteViewState();
@@ -450,23 +490,27 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          children: MarkdownReaderMode.values
-              .map(
-                (mode) => ChoiceChip(
-                  label: Text(switch (mode) {
-                    MarkdownReaderMode.reader => 'Reader',
-                    MarkdownReaderMode.source => 'Source',
-                    MarkdownReaderMode.metadata => 'Metadata',
-                  }),
-                  selected: _mode == mode,
-                  onSelected: (_) => setState(() => _mode = mode),
-                ),
-              )
-              .toList(),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SegmentedButton<MarkdownReaderMode>(
+            segments: MarkdownReaderMode.values
+                .map(
+                  (mode) => ButtonSegment(
+                    value: mode,
+                    label: Text(switch (mode) {
+                      MarkdownReaderMode.reader => 'Reader',
+                      MarkdownReaderMode.source => 'Source',
+                      MarkdownReaderMode.metadata => 'Metadata',
+                    }),
+                  ),
+                )
+                .toList(),
+            selected: {_mode},
+            showSelectedIcon: false,
+            onSelectionChanged: (modes) => setState(() => _mode = modes.first),
+          ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 20),
         if (_mode == MarkdownReaderMode.source)
           SelectableText(
             widget.source ?? widget.markdown,
@@ -476,41 +520,72 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
         else if (_mode == MarkdownReaderMode.metadata)
           _metadata()
         else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (headings.isNotEmpty)
-                SizedBox(
-                  width: 180,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('On this page'),
-                      ...headings.map(
-                        (h) => Padding(
-                          padding: EdgeInsets.only(left: (h.level - 1) * 8.0),
-                          child: Text('• ${h.value}'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              Expanded(
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 760),
-                    child: SelectionArea(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: blocks
-                            .map((block) => block.build(context))
-                            .toList(),
-                      ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final showOutline =
+                  headings.isNotEmpty && constraints.maxWidth >= 760;
+              final document = Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 800),
+                  child: SelectionArea(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: blocks
+                          .map((block) => block.build(context))
+                          .toList(),
                     ),
                   ),
                 ),
-              ),
-            ],
+              );
+              if (!showOutline) return document;
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: document),
+                  const SizedBox(width: 26),
+                  SizedBox(
+                    width: 176,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.zero,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'On this page',
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
+                            const SizedBox(height: 8),
+                            ...headings
+                                .take(12)
+                                .map(
+                                  (h) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 6),
+                                    child: Text(
+                                      h.value,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall,
+                                    ),
+                                  ),
+                                ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
       ],
     );
@@ -519,22 +594,27 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
   Widget _metadata() {
     final artifact = widget.artifact;
     final raw = artifact?.raw ?? const <String, dynamic>{};
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: SelectableText(
-          [
-            'Artifact ID: ${artifact?.id ?? 'unavailable'}',
-            'Kind/family: ${artifact?.kind ?? 'unavailable'} / ${artifact?.family ?? 'unavailable'}',
-            'Path: ${artifact?.path ?? 'unavailable'}',
-            'Status: ${artifact?.status ?? 'unknown'}',
-            'work_item_id: ${raw['work_item_id'] ?? raw['workspace'] ?? 'unavailable'}',
-            'section_id: ${raw['section_id'] ?? 'unavailable'}',
-            'revision: ${raw['revision_id'] ?? 'unavailable'}',
-            'provenance: ${raw['provenance'] ?? 'unavailable'}',
-            'diagnostics: ${widget.detail?.raw['diagnostics'] ?? raw['diagnostic'] ?? 'none'}',
-          ].join('\n'),
-        ),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: SelectableText(
+        [
+          'Artifact ID: ${artifact?.id ?? 'unavailable'}',
+          'Kind/family: ${artifact?.kind ?? 'unavailable'} / ${artifact?.family ?? 'unavailable'}',
+          'Path: ${artifact?.path ?? 'unavailable'}',
+          'Status: ${artifact?.status ?? 'unknown'}',
+          'work_item_id: ${raw['work_item_id'] ?? raw['workspace'] ?? 'unavailable'}',
+          'section_id: ${raw['section_id'] ?? 'unavailable'}',
+          'revision: ${raw['revision_id'] ?? 'unavailable'}',
+          'provenance: ${raw['provenance'] ?? 'unavailable'}',
+          'diagnostics: ${widget.detail?.raw['diagnostics'] ?? raw['diagnostic'] ?? 'none'}',
+        ].join('\n'),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
       ),
     );
   }

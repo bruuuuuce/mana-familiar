@@ -12,6 +12,10 @@ enum ObservatoryDestination {
   advanced,
 }
 
+/// Presentation-only destinations inside the explicitly technical Advanced
+/// area. They are intentionally not semantic work or knowledge categories.
+enum AdvancedSection { artifacts, diagnostics }
+
 class ObservatoryRoute {
   const ObservatoryRoute({
     required this.destination,
@@ -19,26 +23,33 @@ class ObservatoryRoute {
     this.section,
     this.category,
     this.artifactId,
+    this.advancedSection,
   });
   final ObservatoryDestination destination;
   final String? workItemId, category, artifactId;
   final ManaSectionId? section;
+  final AdvancedSection? advancedSection;
 
   ObservatoryRoute copyWith({
     String? workItemId,
     ManaSectionId? section,
     String? category,
     String? artifactId,
+    AdvancedSection? advancedSection,
     bool clearWorkItem = false,
     bool clearSection = false,
     bool clearCategory = false,
     bool clearArtifact = false,
+    bool clearAdvancedSection = false,
   }) => ObservatoryRoute(
     destination: destination,
     workItemId: clearWorkItem ? null : workItemId ?? this.workItemId,
     section: clearSection ? null : section ?? this.section,
     category: clearCategory ? null : category ?? this.category,
     artifactId: clearArtifact ? null : artifactId ?? this.artifactId,
+    advancedSection: clearAdvancedSection
+        ? null
+        : advancedSection ?? this.advancedSection,
   );
 
   @override
@@ -48,10 +59,17 @@ class ObservatoryRoute {
       workItemId == other.workItemId &&
       section == other.section &&
       category == other.category &&
-      artifactId == other.artifactId;
+      artifactId == other.artifactId &&
+      advancedSection == other.advancedSection;
   @override
-  int get hashCode =>
-      Object.hash(destination, workItemId, section, category, artifactId);
+  int get hashCode => Object.hash(
+    destination,
+    workItemId,
+    section,
+    category,
+    artifactId,
+    advancedSection,
+  );
 }
 
 class ObservatoryNavigationState {
@@ -113,6 +131,12 @@ List<String> observatoryBreadcrumbs(
   if (route.workItemId != null) values.add(route.workItemId!);
   if (route.section != null) values.add(_sectionLabel(route.section!));
   if (route.category != null) values.add(route.category!);
+  if (route.advancedSection != null) {
+    values.add(switch (route.advancedSection!) {
+      AdvancedSection.artifacts => 'Artifacts',
+      AdvancedSection.diagnostics => 'Inspect diagnostics',
+    });
+  }
   if (route.artifactId != null) values.add(artifactLabel ?? route.artifactId!);
   return values;
 }
