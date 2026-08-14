@@ -51,7 +51,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Review Inbox'), findsOneWidget);
+    expect(find.text('Limited catalog mode'), findsOneWidget);
     expect(find.text('Copy command'), findsOneWidget);
     expect(
       find.text('Command unavailable: required action metadata is absent.'),

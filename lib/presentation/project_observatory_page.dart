@@ -44,10 +44,12 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   );
   late final ObservatoryNavigationState _navigation =
       ObservatoryNavigationState(
-        widget.initialRoute ??
-            const ObservatoryRoute(
-              destination: ObservatoryDestination.overview,
-            ),
+        _normalizeDossierRoute(
+          widget.initialRoute ??
+              const ObservatoryRoute(
+                destination: ObservatoryDestination.overview,
+              ),
+        ),
       );
   ManaSemanticReadModel? _model;
   Object? _error;
@@ -60,6 +62,12 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   final Map<String, ManaWorkItemResponse> _workDetails = {};
   String _workFilter = 'all';
   String _workSearch = '';
+  ManaActivityKind? _activityKindFilter;
+  String? _activityWorkItemFilter;
+  ManaTimestampProvenance? _activityTimeFilter;
+  String? _advancedFamilyFilter;
+  String? _advancedKindFilter;
+  String? _advancedStatusFilter;
 
   @override
   void initState() {
@@ -107,7 +115,24 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     }
   }
 
+  static ObservatoryRoute _normalizeDossierRoute(ObservatoryRoute route) {
+    if (route.destination != ObservatoryDestination.work ||
+        route.workItemId == null ||
+        route.section != null) {
+      return route;
+    }
+    return ObservatoryRoute(
+      destination: route.destination,
+      workItemId: route.workItemId,
+      section: ManaSectionId.overview,
+      artifactId: route.artifactId,
+      category: route.category,
+      advancedSection: route.advancedSection,
+    );
+  }
+
   void _navigate(ObservatoryRoute route) {
+    route = _normalizeDossierRoute(route);
     if (_navigation.navigate(route))
       setState(() {
         _detail = null;
@@ -167,6 +192,13 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         if (ref.id == id) return _summary(ref);
       }
     }
+    for (final category
+        in model.projectContext?.categories ??
+            const <ManaProjectContextCategory>[]) {
+      for (final ref in category.artifacts) {
+        if (ref.id == id) return _summary(ref);
+      }
+    }
     return null;
   }
 
@@ -177,8 +209,26 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         family: 'semantic',
         kind: ref.kind,
         status: ref.status,
-        raw: const {},
+        raw: ref.label == null ? const {} : {'label': ref.label},
       );
+
+  ManaArtifactReference? _reference(ManaSemanticReadModel model, String id) {
+    for (final work
+        in model.workItems?.workItems ?? const <ManaWorkItemSummary>[]) {
+      for (final reference in work.artifacts) {
+        if (reference.id == id) return reference;
+      }
+    }
+    for (final category
+        in model.projectContext?.categories ??
+            const <ManaProjectContextCategory>[]) {
+      for (final reference in category.artifacts) {
+        if (reference.id == id) return reference;
+      }
+    }
+    return null;
+  }
+
   void _openArtifact(
     ManaInspectArtifactSummary artifact, {
     String? workItemId,
@@ -191,6 +241,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       section: section ?? _navigation.current.section,
       category: category ?? _navigation.current.category,
       artifactId: artifact.id,
+      advancedSection: _navigation.current.advancedSection,
     ),
   );
   void _loadDetailIfNeeded() {
@@ -239,7 +290,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         : _artifact(model, route.artifactId!);
     return Scaffold(
       appBar: AppBar(
-        title: Text(model.project.projectId),
+        title: _projectTitle(model.project),
         actions: [
           IconButton(
             onPressed: _navigation.canGoBack ? _back : null,
@@ -297,7 +348,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
           Expanded(
             child: Column(
               children: [
-                _breadcrumbs(route, artifact),
+                _breadcrumbs(model, route, artifact),
                 Expanded(
                   child: artifact == null
                       ? _routeBody(model, route)
@@ -306,6 +357,55 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                       ? Column(
                           children: [
                             _dossierHeader(model, route.workItemId!),
+                            _dossierNavigation(
+                              route.workItemId!,
+                              route.section ?? ManaSectionId.overview,
+                            ),
+                            Expanded(
+                              child: ArtifactDetailView(
+                                artifact: artifact,
+                                detail: _detail,
+                                loading: _detailLoading,
+                                error: _detailError,
+                                onOpenRelatedArtifact: (id) {
+                                  final related = _artifact(model, id);
+                                  if (related != null) _openArtifact(related);
+                                },
+                                sourceLoader: widget.client.source,
+                                projectRoot: widget.client.projectRoot,
+                                documentPresentation: true,
+                                contextualTitle:
+                                    '${_sectionLabel(route.section ?? ManaSectionId.overview)} document',
+                              ),
+                            ),
+                          ],
+                        )
+                      : route.destination == ObservatoryDestination.knowledge
+                      ? ArtifactDetailView(
+                          artifact: artifact,
+                          detail: _detail,
+                          loading: _detailLoading,
+                          error: _detailError,
+                          onOpenRelatedArtifact: (id) {
+                            final related = _artifact(model, id);
+                            if (related != null) _openArtifact(related);
+                          },
+                          sourceLoader: widget.client.source,
+                          projectRoot: widget.client.projectRoot,
+                          documentPresentation: true,
+                          contextualTitle: 'Project context document',
+                        )
+                      : route.destination == ObservatoryDestination.advanced
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(32, 12, 32, 0),
+                              child: Text(
+                                'Advanced artifact detail',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                            ),
                             Expanded(
                               child: ArtifactDetailView(
                                 artifact: artifact,
@@ -344,22 +444,41 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   }
 
   Widget _breadcrumbs(
+    ManaSemanticReadModel model,
     ObservatoryRoute route,
     ManaInspectArtifactSummary? artifact,
-  ) => Padding(
-    padding: const EdgeInsets.all(12),
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        observatoryBreadcrumbs(
-          route,
-          projectLabel: 'Project',
-          artifactLabel: artifact?.id,
-        ).join(' > '),
-        key: const Key('semantic-breadcrumbs'),
+  ) {
+    final labels = observatoryBreadcrumbs(
+      route,
+      projectLabel: 'Project',
+      artifactLabel: artifact == null
+          ? null
+          : _reference(model, artifact.id)?.label ?? _artifactLabel(artifact),
+    );
+    final workItem = route.workItemId == null
+        ? null
+        : model.workItems?.workItems
+              .where((item) => item.id == route.workItemId)
+              .firstOrNull;
+    if (workItem != null) {
+      final index = labels.indexOf(route.workItemId!);
+      if (index >= 0) labels[index] = _workPrimaryLabel(workItem);
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 14, 24, 6),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          labels.join(' > '),
+          key: const Key('semantic-breadcrumbs'),
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
       ),
-    ),
-  );
+    );
+  }
+
   Widget _routeBody(ManaSemanticReadModel model, ObservatoryRoute route) =>
       switch (route.destination) {
         ObservatoryDestination.overview => _overview(model),
@@ -402,120 +521,345 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         model.projectContext?.categories ??
         const <ManaProjectContextCategory>[];
     final activity = model.activity?.events ?? const <ManaActivityEvent>[];
+    final populatedCategories = categories
+        .where((category) => category.artifacts.isNotEmpty)
+        .toList();
+    final contextPreview = populatedCategories.take(4).toList();
+    final missingCategoryCount = categories.length - populatedCategories.length;
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
       children: [
-        Text(
-          'Project overview',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        _cockpit(
-          'Needs attention',
-          attention.isEmpty
-              ? const [Text('No typed attention items reported by Mana.')]
-              : attention
-                    .map(
-                      (a) => ListTile(
-                        title: Text(a.label ?? a.id),
-                        subtitle: Text('${a.category} • ${a.severity}'),
-                        onTap: () => _navigate(
-                          ObservatoryRoute(
-                            destination: ObservatoryDestination.work,
-                            workItemId: a.workItemId,
-                          ),
-                        ),
+        _cockpitIdentity(model.project, work: work, attention: attention),
+        const SizedBox(height: 30),
+        if (attention.isEmpty)
+          _healthyAttentionState()
+        else
+          _emphasisSurface(
+            title: 'Needs attention',
+            icon: Icons.priority_high_rounded,
+            children: attention
+                .map(
+                  (a) => _quietRow(
+                    leading: Icon(
+                      Icons.error_outline,
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                    title: a.label ?? a.id,
+                    subtitle: _humanize(a.category),
+                    trailing: _statusPill(a.severity),
+                    onTap: () => _navigate(
+                      ObservatoryRoute(
+                        destination: ObservatoryDestination.work,
+                        workItemId: a.workItemId,
                       ),
-                    )
-                    .toList(),
-        ),
-        _cockpit(
-          'Active / relevant work',
-          work.isEmpty
-              ? const [Text('No semantic work items reported.')]
-              : work
-                    .map(
-                      (w) => ListTile(
-                        title: Text(w.title.value ?? w.id),
-                        subtitle: Text(
-                          '${w.id} • ${w.lifecycle.state.name} • review ${w.review.state.name}',
-                        ),
-                        onTap: () => _navigate(
-                          ObservatoryRoute(
-                            destination: ObservatoryDestination.work,
-                            workItemId: w.id,
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList(),
-        ),
-        _cockpit(
-          'Review summary',
-          work.map((w) => Text('${w.id}: ${w.review.state.name}')).toList(),
-        ),
-        _cockpit(
-          'Project context',
-          model.mode == ManaSemanticMode.fullSemantic
-              ? categories
-                    .map(
-                      (c) => ListTile(
-                        title: Text(c.category),
-                        subtitle: Text(
-                          '${c.artifacts.length} available • ${c.coverage}',
-                        ),
-                        onTap: () => _navigate(
-                          ObservatoryRoute(
-                            destination: ObservatoryDestination.knowledge,
-                            category: c.category,
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList()
-              : const [
-                  Text('Project context is unavailable in WORK_SEMANTIC mode.'),
-                ],
-        ),
-        _cockpit(
-          'Recent activity',
-          model.mode == ManaSemanticMode.fullSemantic
-              ? activity
-                    .take(8)
-                    .map(
-                      (e) => ListTile(
-                        title: Text(e.summary ?? e.id),
-                        subtitle: Text(
-                          '${e.timestamp} • ${e.timestampProvenance.name}',
-                        ),
-                        onTap: () => _navigate(
-                          ObservatoryRoute(
-                            destination: ObservatoryDestination.activity,
-                            workItemId: e.workItemId,
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList()
-              : const [
-                  Text(
-                    'Semantic activity is unavailable in WORK_SEMANTIC mode.',
+                    ),
                   ),
-                ],
-        ),
+                )
+                .toList(),
+          ),
+        const SizedBox(height: 28),
+        _sectionHeading('Active / relevant work'),
+        const SizedBox(height: 10),
+        if (work.isEmpty)
+          const _ObservatoryEmptyState(
+            icon: Icons.work_outline,
+            title: 'No work reported yet',
+            message:
+                'Mana has not reported semantic work items for this project.',
+          )
+        else
+          ...work
+              .where(
+                (w) =>
+                    w.lifecycle.state != ManaLifecycleState.unknown ||
+                    w.attentionItems.isNotEmpty ||
+                    w.title.value != null,
+              )
+              .take(6)
+              .map(_cockpitWorkRow),
+        if (work.any((w) => w.review.state != ManaReviewState.unknown)) ...[
+          const SizedBox(height: 28),
+          _sectionHeading('Review summary'),
+          ...work
+              .where((w) => w.review.state != ManaReviewState.unknown)
+              .map(
+                (w) => _quietRow(
+                  title: _workPrimaryLabel(w),
+                  trailing: _statusPill(_humanize(w.review.state.name)),
+                ),
+              ),
+        ],
+        const SizedBox(height: 28),
+        _sectionHeading('Project context'),
+        const SizedBox(height: 8),
+        if (model.mode == ManaSemanticMode.fullSemantic) ...[
+          if (populatedCategories.isEmpty)
+            const Text('No reusable project context has been reported yet.')
+          else
+            ...contextPreview.map(
+              (c) => _quietRow(
+                leading: const Icon(Icons.menu_book_outlined),
+                title: _humanize(c.category),
+                subtitle:
+                    '${c.artifacts.length} document${c.artifacts.length == 1 ? '' : 's'} available',
+                trailing: const Icon(Icons.arrow_forward_ios, size: 15),
+                onTap: () => _navigate(
+                  ObservatoryRoute(
+                    destination: ObservatoryDestination.knowledge,
+                    category: c.category,
+                  ),
+                ),
+              ),
+            ),
+          if (populatedCategories.length > contextPreview.length ||
+              missingCategoryCount > 0)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => _navigate(
+                  const ObservatoryRoute(
+                    destination: ObservatoryDestination.knowledge,
+                  ),
+                ),
+                icon: const Icon(Icons.arrow_forward, size: 18),
+                label: const Text('View all project knowledge'),
+              ),
+            ),
+        ] else
+          const Text('Project context is unavailable in WORK_SEMANTIC mode.'),
+        const SizedBox(height: 28),
+        _sectionHeading('Recent activity'),
+        const SizedBox(height: 8),
+        if (model.mode == ManaSemanticMode.fullSemantic)
+          if (activity.isEmpty)
+            const Text('No recent project activity was reported.')
+          else
+            ...activity
+                .take(8)
+                .map(
+                  (e) => _quietRow(
+                    leading: Icon(_activityIcon(e.kind), size: 20),
+                    title: _activityLabel(e),
+                    subtitle: _readableTimestamp(e.timestamp),
+                    onTap: () => _navigate(
+                      ObservatoryRoute(
+                        destination: ObservatoryDestination.activity,
+                        workItemId: e.workItemId,
+                      ),
+                    ),
+                  ),
+                )
+        else
+          const Text('Semantic activity is unavailable in WORK_SEMANTIC mode.'),
       ],
     );
   }
 
-  Widget _cockpit(String title, List<Widget> children) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _cockpitIdentity(
+    ManaInspectProject project, {
+    required List<ManaWorkItemSummary> work,
+    required List<ManaAttentionItem> attention,
+  }) => Row(
+    crossAxisAlignment: CrossAxisAlignment.center,
+    children: [
+      Container(
+        width: 64,
+        height: 64,
+        padding: const EdgeInsets.all(7),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primaryContainer,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Image.asset(
+          'assets/branding/mana-familiar-logo.png',
+          key: const Key('cockpit-brand-logo'),
+          fit: BoxFit.contain,
+        ),
+      ),
+      const SizedBox(width: 16),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Project observatory',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Mana Familiar • ${work.length} ${work.length == 1 ? 'work item' : 'work items'}${attention.isEmpty ? '' : ' • ${attention.length} need attention'}',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              _shortProjectIdentity(project.projectId),
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  Widget _sectionHeading(String title) =>
+      Text(title, style: Theme.of(context).textTheme.titleLarge);
+
+  Widget _healthyAttentionState() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _sectionHeading('Needs attention'),
+      const SizedBox(height: 8),
+      Row(
         children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 6),
-          ...children,
+          Icon(
+            Icons.check_circle_outline,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Nothing needs attention',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                Text(
+                  'Mana has not reported any issues requiring action.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
+      ),
+    ],
+  );
+
+  Widget _emphasisSurface({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Theme.of(
+        context,
+      ).colorScheme.errorContainer.withValues(alpha: .45),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon),
+            const SizedBox(width: 8),
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ...children,
+      ],
+    ),
+  );
+
+  Widget _quietRow({
+    Widget? leading,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    VoidCallback? onTap,
+  }) => Material(
+    color: Colors.transparent,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            if (leading != null) ...[leading, const SizedBox(width: 12)],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleMedium),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (trailing != null) ...[const SizedBox(width: 12), trailing],
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _cockpitWorkRow(ManaWorkItemSummary item) => Material(
+    color: Theme.of(context).colorScheme.surfaceContainerLow,
+    borderRadius: BorderRadius.circular(14),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => _navigate(
+        ObservatoryRoute(
+          destination: ObservatoryDestination.work,
+          workItemId: item.id,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            _workTypeIcon(item.type),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _workPrimaryLabel(item),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  if (_workSecondaryLabel(item) != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      _workSecondaryLabel(item)!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            _workStatus(item),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -545,13 +889,23 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         return search && filter;
       });
       return ListView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
         children: [
-          Text('Work', style: Theme.of(context).textTheme.headlineSmall),
+          Text('Work', style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 4),
+          Text(
+            'A semantic queue of the work Mana knows about.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 20),
           TextField(
-            decoration: const InputDecoration(labelText: 'Search work'),
+            decoration: const InputDecoration(
+              labelText: 'Search work',
+              prefixIcon: Icon(Icons.search),
+            ),
             onChanged: (value) => setState(() => _workSearch = value),
           ),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             children: ['all', 'attention', 'active', 'feature', 'session']
@@ -569,99 +923,168 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
               padding: EdgeInsets.all(12),
               child: Text('No work items match these controls.'),
             ),
-          ...visible.map(
-            (w) => ListTile(
-              title: Text(w.title.value ?? w.id),
-              subtitle: Text(
-                '${w.id} • ${w.lifecycle.state.name} • ${w.attentionItems.length} attention • review ${w.review.state.name}',
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _navigate(
-                ObservatoryRoute(
-                  destination: ObservatoryDestination.work,
-                  workItemId: w.id,
-                ),
-              ),
-            ),
-          ),
+          const SizedBox(height: 12),
+          ...visible.map((w) => _workQueueRow(w)),
         ],
       );
     }
-    if (route.section == null)
-      return ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          _dossierHeader(model, selected.id),
-          const SizedBox(height: 12),
-          ..._dossierSections.map(
-            (section) => ListTile(
-              title: Text(section.name),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _navigate(
-                ObservatoryRoute(
-                  destination: ObservatoryDestination.work,
-                  workItemId: selected.id,
-                  section: section,
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
+    final section = route.section ?? ManaSectionId.overview;
     final detail = _workDetails[selected.id];
     final refs = detail == null
-        ? selected.artifacts.where((a) => a.sectionId == route.section).toList()
+        ? selected.artifacts.where((a) => a.sectionId == section).toList()
         : detail.sections
-              .where((s) => s.id == route.section)
+              .where((s) => s.id == section)
               .expand((s) => s.artifacts)
               .toList();
     final activity = (model.activity?.events ?? const <ManaActivityEvent>[])
         .where((event) => event.workItemId == selected.id)
         .toList();
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
       children: [
         _dossierHeader(model, selected.id),
-        const SizedBox(height: 12),
+        _dossierNavigation(selected.id, section),
+        const SizedBox(height: 26),
         Text(
-          route.section!.name,
-          style: Theme.of(context).textTheme.headlineSmall,
+          _sectionLabel(section),
+          style: Theme.of(context).textTheme.headlineMedium,
         ),
-        if (route.section == ManaSectionId.review)
-          Text(
-            'Review state: ${selected.review.state.name} (${selected.review.provenance.name})',
-          ),
-        if (route.section == ManaSectionId.timeline && activity.isNotEmpty)
-          ...activity.map(
-            (event) => ListTile(
-              title: Text(event.summary ?? event.id),
-              subtitle: Text(
-                '${event.timestamp} • ${event.timestampProvenance.name}',
+        if (section == ManaSectionId.review)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              selected.review.state == ManaReviewState.unknown
+                  ? 'Mana has not reported a review state for this work item.'
+                  : 'Review state: ${_humanize(selected.review.state.name)}',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ),
+        if (section == ManaSectionId.timeline && activity.isNotEmpty)
+          ..._timelineRows(activity),
         if (refs.isEmpty &&
-            !(route.section == ManaSectionId.timeline && activity.isNotEmpty))
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Text(
-              'No producer-owned material is available for this semantic section.',
-            ),
+            !(section == ManaSectionId.timeline && activity.isNotEmpty))
+          Padding(
+            padding: const EdgeInsets.only(top: 18),
+            child: _sectionEmptyState(section),
           ),
-        ..._prioritized(route.section, refs).map((a) {
+        const SizedBox(height: 8),
+        ..._prioritized(section, refs).map((a) {
           final summary = _summary(a);
-          return ListTile(
-            title: Text(a.label ?? a.id),
+          return _artifactRow(
+            a,
             onTap: () => _openArtifact(
               summary,
               workItemId: selected.id,
-              section: route.section,
+              section: section,
             ),
           );
         }),
       ],
     );
   }
+
+  Widget _workQueueRow(ManaWorkItemSummary item) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Material(
+      color: Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _navigate(
+          ObservatoryRoute(
+            destination: ObservatoryDestination.work,
+            workItemId: item.id,
+          ),
+        ),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            border: Border.all(color: Theme.of(context).dividerColor),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              _workTypeIcon(item.type),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _workPrimaryLabel(item),
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (_workSecondaryLabel(item) != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        _workSecondaryLabel(item)!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      _humanize(item.type.name),
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _workStatus(item),
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _artifactRow(
+    ManaArtifactReference artifact, {
+    required VoidCallback onTap,
+  }) => Material(
+    color: Colors.transparent,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        child: Row(
+          children: [
+            Icon(_artifactIcon(artifact.kind)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                artifact.label ?? 'Document',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            if (artifact.status != 'available')
+              _statusPill(_humanize(artifact.status)),
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  List<Widget> _timelineRows(List<ManaActivityEvent> events) => [
+    for (final event in events)
+      _quietRow(
+        leading: const Icon(Icons.schedule_outlined),
+        title: _activityLabel(event),
+        subtitle: _readableTimestamp(event.timestamp),
+      ),
+  ];
 
   static const _dossierSections = [
     ManaSectionId.overview,
@@ -688,55 +1111,254 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         .where((w) => w.id == id)
         .firstOrNull;
     if (item == null) return const SizedBox.shrink();
-    return Card(
-      child: ListTile(
-        title: Text(item.title.value ?? item.id),
-        subtitle: Text(
-          '${item.id} • ${item.type.name} • ${item.lifecycle.state.name}${item.branch.value == null ? '' : ' • ${item.branch.value}'}',
+    final facts = <Widget>[
+      _statusPill(_humanize(item.type.name)),
+      if (item.lifecycle.state != ManaLifecycleState.unknown)
+        _statusPill(_humanize(item.lifecycle.state.name)),
+      if (item.review.state != ManaReviewState.unknown)
+        _statusPill('Review ${_humanize(item.review.state.name)}'),
+    ];
+    return Container(
+      padding: const EdgeInsets.fromLTRB(4, 2, 4, 14),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: Theme.of(context).dividerColor),
         ),
-        trailing: Text('Review ${item.review.state.name}'),
       ),
-    );
-  }
-
-  Widget _reviews(ManaSemanticReadModel model) =>
-      model.mode == ManaSemanticMode.legacyCatalog
-      ? ReviewInboxPage(
-          artifacts: model.catalog?.artifacts ?? const [],
-          onOpenArtifact: (a) => _openArtifact(a),
-        )
-      : ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Text('Reviews', style: Theme.of(context).textTheme.headlineSmall),
-            ...[
-              for (final work
-                  in model.workItems?.workItems ??
-                      const <ManaWorkItemSummary>[])
-                ...work.attentionItems,
-            ].map(
-              (item) => ListTile(
-                title: Text(item.label ?? item.id),
-                subtitle: Text(item.category),
-                onTap: () => _navigate(
-                  ObservatoryRoute(
-                    destination: ObservatoryDestination.reviews,
-                    workItemId: item.workItemId,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _workPrimaryLabel(item),
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          if (item.title.value != null &&
+              item.title.value != _workPrimaryLabel(item)) ...[
+            const SizedBox(height: 3),
+            Text(
+              item.title.value!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Wrap(spacing: 7, runSpacing: 7, children: facts),
+          if (item.branch.value != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Tooltip(
+                message: item.branch.value!,
+                child: Text(
+                  'Branch · ${_compactTechnicalLabel(item.branch.value!)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dossierNavigation(String id, ManaSectionId selected) => Padding(
+    padding: const EdgeInsets.only(top: 10, bottom: 2),
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: _dossierSections
+            .map(
+              (section) => _dossierTab(
+                id: id,
+                section: section,
+                selected: section == selected,
+              ),
+            )
+            .toList(),
+      ),
+    ),
+  );
+
+  Widget _dossierTab({
+    required String id,
+    required ManaSectionId section,
+    required bool selected,
+  }) => Material(
+    color: Colors.transparent,
+    child: InkWell(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+      onTap: () => _navigate(
+        ObservatoryRoute(
+          destination: ObservatoryDestination.work,
+          workItemId: id,
+          section: section,
+        ),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
+        decoration: BoxDecoration(
+          color: selected
+              ? Theme.of(
+                  context,
+                ).colorScheme.secondaryContainer.withValues(alpha: .55)
+              : Colors.transparent,
+          border: Border(
+            bottom: BorderSide(
+              width: selected ? 3 : 1,
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).dividerColor,
+            ),
+          ),
+        ),
+        child: Text(
+          _sectionLabel(section),
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: selected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _reviews(ManaSemanticReadModel model) {
+    if (model.mode == ManaSemanticMode.legacyCatalog) {
+      return ReviewInboxPage(
+        artifacts: model.catalog?.artifacts ?? const [],
+        onOpenArtifact: (artifact) => _openArtifact(artifact),
+      );
+    }
+    final work = model.workItems?.workItems ?? const <ManaWorkItemSummary>[];
+    final reviewable = work.where(_hasStructuredReviewMaterial).toList();
+    final attention = reviewable.where(
+      (item) => item.attentionItems.isNotEmpty,
+    );
+    final known = reviewable.where(
+      (item) =>
+          item.attentionItems.isEmpty &&
+          item.review.state != ManaReviewState.unknown,
+    );
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
+      children: [
+        Text('Reviews', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Review state and attention reported by Mana, organized by work item.',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 24),
+        if (reviewable.isEmpty)
+          const _ObservatoryEmptyState(
+            icon: Icons.rate_review_outlined,
+            title: 'No structured review information reported',
+            message:
+                'Mana has not reported review state, review material, or attention for the current work items.',
+          )
+        else ...[
+          if (attention.isNotEmpty) ...[
+            _sectionHeading('Needs attention'),
+            const SizedBox(height: 8),
+            ...attention.map(_reviewWorkRow),
+            if (known.isNotEmpty) const SizedBox(height: 24),
           ],
-        );
+          if (known.isNotEmpty) ...[
+            _sectionHeading('Review status'),
+            const SizedBox(height: 8),
+            ...known.map(_reviewWorkRow),
+          ],
+          if (attention.isEmpty && known.isEmpty)
+            const _ObservatoryEmptyState(
+              icon: Icons.rate_review_outlined,
+              title: 'No structured review information reported',
+              message:
+                  'Mana has not reported a known review state for the current work items.',
+            ),
+        ],
+      ],
+    );
+  }
+
+  bool _hasStructuredReviewMaterial(ManaWorkItemSummary item) =>
+      item.review.state != ManaReviewState.unknown ||
+      item.attentionItems.isNotEmpty ||
+      item.artifacts.any(
+        (artifact) => artifact.sectionId == ManaSectionId.review,
+      );
+
+  ManaSectionId _reviewTarget(ManaWorkItemSummary item) {
+    for (final attention in item.attentionItems) {
+      for (final id in attention.relatedArtifactIds) {
+        final reference = item.artifacts
+            .where((artifact) => artifact.id == id)
+            .firstOrNull;
+        if (reference?.sectionId case final section?
+            when section == ManaSectionId.review ||
+                section == ManaSectionId.decisions ||
+                section == ManaSectionId.evidence) {
+          return section;
+        }
+      }
+    }
+    if (item.artifacts.any(
+          (artifact) => artifact.sectionId == ManaSectionId.review,
+        ) ||
+        item.review.state != ManaReviewState.unknown) {
+      return ManaSectionId.review;
+    }
+    return ManaSectionId.overview;
+  }
+
+  Widget _reviewWorkRow(ManaWorkItemSummary item) {
+    final target = _reviewTarget(item);
+    final attention = item.attentionItems;
+    final detail = attention.isEmpty
+        ? 'Review ${_humanize(item.review.state.name)}'
+        : '${attention.length} item${attention.length == 1 ? '' : 's'} needs attention';
+    return _quietRow(
+      leading: Icon(
+        attention.isEmpty ? Icons.rate_review_outlined : Icons.priority_high,
+        color: attention.isEmpty ? null : Theme.of(context).colorScheme.error,
+      ),
+      title: _workPrimaryLabel(item),
+      subtitle: detail,
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => _navigate(
+        ObservatoryRoute(
+          destination: ObservatoryDestination.work,
+          workItemId: item.id,
+          section: target,
+        ),
+      ),
+    );
+  }
+
   Widget _knowledge(ManaSemanticReadModel model) {
     if (model.mode == ManaSemanticMode.legacyCatalog) {
       return ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Text('Knowledge', style: Theme.of(context).textTheme.headlineSmall),
-          Text('Journeys', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Limited catalog mode',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Legacy journeys',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const Text(
-            'Legacy Journey navigation is retained separately from semantic project context.',
+            'Semantic project context is unavailable. Legacy Journey navigation is retained separately for catalog compatibility.',
           ),
           const SizedBox(height: 12),
           widget.knowledge,
@@ -748,42 +1370,127 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         'Knowledge',
         'Project context is unavailable for this capability mode.',
       );
+    final categories =
+        model.projectContext?.categories ??
+        const <ManaProjectContextCategory>[];
+    final selected = _navigation.current.category == null
+        ? null
+        : categories
+              .where(
+                (category) => category.category == _navigation.current.category,
+              )
+              .firstOrNull;
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
       children: [
-        Text('Knowledge', style: Theme.of(context).textTheme.headlineSmall),
-        ...(model.projectContext?.categories ??
-                const <ManaProjectContextCategory>[])
-            .map(
-              (c) => ListTile(
-                title: Text(c.category),
-                onTap: () => _navigate(
-                  ObservatoryRoute(
-                    destination: ObservatoryDestination.knowledge,
-                    category: c.category,
-                  ),
+        Text('Knowledge', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Reusable project context reported by Mana.',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        if (selected != null) ...[
+          const SizedBox(height: 28),
+          Text(
+            _humanize(selected.category),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 10),
+          if (selected.artifacts.isEmpty)
+            const _ObservatoryEmptyState(
+              icon: Icons.menu_book_outlined,
+              title: 'No material reported yet',
+              message:
+                  'Mana reports this context category, but no document is currently available.',
+            )
+          else if (selected.artifacts.length == 1)
+            _contextDocumentRow(
+              selected.artifacts.single,
+              onTap: () => _openArtifact(
+                _summary(selected.artifacts.single),
+                category: selected.category,
+              ),
+            )
+          else
+            ...selected.artifacts.map(
+              (artifact) => _contextDocumentRow(
+                artifact,
+                onTap: () => _openArtifact(
+                  _summary(artifact),
+                  category: selected.category,
                 ),
               ),
             ),
+          const SizedBox(height: 22),
+          const Divider(),
+        ],
+        const SizedBox(height: 14),
+        ...categories
+            .where((category) => category.artifacts.isNotEmpty)
+            .map(_knowledgeCategoryRow),
+        if (categories.any((category) => category.artifacts.isEmpty)) ...[
+          const SizedBox(height: 18),
+          Text(
+            'Other categories',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          ...categories
+              .where((category) => category.artifacts.isEmpty)
+              .map(_knowledgeCategoryRow),
+        ],
       ],
     );
   }
+
+  Widget _contextDocumentRow(
+    ManaArtifactReference artifact, {
+    required VoidCallback onTap,
+  }) => _quietRow(
+    leading: Icon(_artifactIcon(artifact.kind)),
+    title: artifact.label ?? 'Project context document',
+    subtitle: 'Open document',
+    trailing: const Icon(Icons.arrow_forward_ios, size: 15),
+    onTap: onTap,
+  );
+
+  Widget _knowledgeCategoryRow(
+    ManaProjectContextCategory category,
+  ) => _quietRow(
+    leading: Icon(
+      category.artifacts.isEmpty
+          ? Icons.menu_book_outlined
+          : Icons.auto_stories_outlined,
+    ),
+    title: _humanize(category.category),
+    subtitle: category.artifacts.isEmpty
+        ? 'No material yet'
+        : '${category.artifacts.length} document${category.artifacts.length == 1 ? '' : 's'}',
+    trailing: const Icon(Icons.chevron_right),
+    onTap: () => _navigate(
+      ObservatoryRoute(
+        destination: ObservatoryDestination.knowledge,
+        category: category.category,
+      ),
+    ),
+  );
 
   Widget _activity(ManaSemanticReadModel model) {
     if (model.mode == ManaSemanticMode.legacyCatalog)
       return ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Text('Activity', style: Theme.of(context).textTheme.headlineSmall),
-          const Text('Legacy catalog inventory; it is not semantic activity.'),
-          const Text(
-            'Mana-reported operational timeline; no synthetic events.',
+          Text('Activity', style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 8),
+          const _ObservatoryEmptyState(
+            icon: Icons.bolt_outlined,
+            title: 'Semantic activity is unavailable',
+            message:
+                'This project is using legacy catalog compatibility. Open Advanced to inspect catalog artifacts.',
           ),
-          ...(model.catalog?.artifacts ?? const <ManaInspectArtifactSummary>[])
-              .map(
-                (a) =>
-                    ListTile(title: Text(a.id), onTap: () => _openArtifact(a)),
-              ),
         ],
       );
     if (model.mode != ManaSemanticMode.fullSemantic)
@@ -792,38 +1499,688 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         'Semantic activity is unavailable for this capability mode.',
       );
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
       children: [
-        Text('Activity', style: Theme.of(context).textTheme.headlineSmall),
-        ...(model.activity?.events ?? const <ManaActivityEvent>[]).map(
-          (e) => ListTile(
-            title: Text(e.summary ?? e.id),
-            subtitle: Text(e.timestamp),
-            onTap: () {
-              final a = e.relatedArtifactIds.isEmpty
-                  ? null
-                  : _artifact(model, e.relatedArtifactIds.first);
-              if (a != null) _openArtifact(a, workItemId: e.workItemId);
-            },
+        Text('Activity', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Mana-reported project activity, kept in producer order.',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
+        const SizedBox(height: 18),
+        _activityFilters(model),
+        const SizedBox(height: 14),
+        ..._activityTimeline(model),
       ],
     );
   }
 
-  Widget _advanced(ManaSemanticReadModel model) => ListView(
-    padding: const EdgeInsets.all(24),
-    children: [
-      Text('Advanced', style: Theme.of(context).textTheme.headlineSmall),
-      const Text('Artifacts and diagnostics'),
-      ...(model.catalog?.artifacts ?? const <ManaInspectArtifactSummary>[]).map(
-        (a) => ListTile(title: Text(a.id), onTap: () => _openArtifact(a)),
+  Widget _activityFilters(ManaSemanticReadModel model) {
+    final events = model.activity?.events ?? const <ManaActivityEvent>[];
+    final kinds = events.map((event) => event.kind).toSet().toList();
+    final workIds = events
+        .map((event) => event.workItemId)
+        .whereType<String>()
+        .toSet()
+        .toList();
+    final provenance = events
+        .map((event) => event.timestampProvenance)
+        .toSet()
+        .toList();
+    if (kinds.length < 2 && workIds.length < 2 && provenance.length < 2) {
+      return const SizedBox.shrink();
+    }
+    return Wrap(
+      spacing: 10,
+      runSpacing: 8,
+      children: [
+        if (kinds.length > 1)
+          DropdownButton<ManaActivityKind?>(
+            value: _activityKindFilter,
+            hint: const Text('All activity'),
+            onChanged: (value) => setState(() => _activityKindFilter = value),
+            items: [
+              const DropdownMenuItem<ManaActivityKind?>(
+                value: null,
+                child: Text('All activity'),
+              ),
+              ...kinds.map(
+                (kind) => DropdownMenuItem<ManaActivityKind?>(
+                  value: kind,
+                  child: Text(_humanize(kind.name)),
+                ),
+              ),
+            ],
+          ),
+        if (workIds.length > 1)
+          DropdownButton<String?>(
+            value: _activityWorkItemFilter,
+            hint: const Text('All work'),
+            onChanged: (value) =>
+                setState(() => _activityWorkItemFilter = value),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('All work'),
+              ),
+              ...workIds.map(
+                (id) => DropdownMenuItem<String?>(
+                  value: id,
+                  child: Text(_workDisplayId(id)),
+                ),
+              ),
+            ],
+          ),
+        if (provenance.length > 1)
+          DropdownButton<ManaTimestampProvenance?>(
+            value: _activityTimeFilter,
+            hint: const Text('All time sources'),
+            onChanged: (value) => setState(() => _activityTimeFilter = value),
+            items: [
+              const DropdownMenuItem<ManaTimestampProvenance?>(
+                value: null,
+                child: Text('All time sources'),
+              ),
+              ...provenance.map(
+                (value) => DropdownMenuItem<ManaTimestampProvenance?>(
+                  value: value,
+                  child: Text(_humanize(value.name)),
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  List<Widget> _activityTimeline(ManaSemanticReadModel model) {
+    final events = (model.activity?.events ?? const <ManaActivityEvent>[])
+        .where(
+          (event) =>
+              (_activityKindFilter == null ||
+                  event.kind == _activityKindFilter) &&
+              (_activityWorkItemFilter == null ||
+                  event.workItemId == _activityWorkItemFilter) &&
+              (_activityTimeFilter == null ||
+                  event.timestampProvenance == _activityTimeFilter),
+        )
+        .toList();
+    if (events.isEmpty) {
+      return const [
+        _ObservatoryEmptyState(
+          icon: Icons.bolt_outlined,
+          title: 'No matching activity',
+          message: 'Mana has not reported activity matching these filters.',
+        ),
+      ];
+    }
+    String? previousDay;
+    return [
+      for (final event in events) ...[
+        if (_activityDayLabel(event.timestamp) != previousDay)
+          _activityDayHeading(previousDay = _activityDayLabel(event.timestamp)),
+        _activityTimelineRow(model, event),
+      ],
+    ];
+  }
+
+  Widget _activityDayHeading(String day) => Padding(
+    padding: const EdgeInsets.only(top: 8, bottom: 6),
+    child: Text(day, style: Theme.of(context).textTheme.titleMedium),
+  );
+
+  Widget _activityTimelineRow(
+    ManaSemanticReadModel model,
+    ManaActivityEvent event,
+  ) {
+    final target = _activityTarget(model, event);
+    final time = _activityTime(event.timestamp);
+    final contextLabel = event.workItemId == null
+        ? 'Project'
+        : _workDisplayId(event.workItemId!);
+    final provenance =
+        event.timestampProvenance ==
+            ManaTimestampProvenance.filesystemMtimeEpoch
+        ? 'filesystem time'
+        : null;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: target == null ? null : () => _navigate(target),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 52,
+                child: Text(
+                  time,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              Container(
+                width: 2,
+                height: 42,
+                margin: const EdgeInsets.only(right: 12, top: 1),
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      contextLabel,
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      _activityLabel(event),
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    if (provenance != null)
+                      Text(
+                        provenance,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (target != null) const Icon(Icons.chevron_right, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  ObservatoryRoute? _activityTarget(
+    ManaSemanticReadModel model,
+    ManaActivityEvent event,
+  ) {
+    final reference = event.relatedArtifactIds
+        .map((id) => _reference(model, id))
+        .whereType<ManaArtifactReference>()
+        .firstOrNull;
+    if (event.workItemId case final workItemId?) {
+      return ObservatoryRoute(
+        destination: ObservatoryDestination.work,
+        workItemId: workItemId,
+        section: reference?.sectionId ?? ManaSectionId.overview,
+        artifactId: reference?.id,
+      );
+    }
+    if (reference != null) {
+      final category = (model.projectContext?.categories ?? const [])
+          .where(
+            (value) => value.artifacts.any((item) => item.id == reference.id),
+          )
+          .firstOrNull;
+      if (category != null) {
+        return ObservatoryRoute(
+          destination: ObservatoryDestination.knowledge,
+          category: category.category,
+          artifactId: reference.id,
+        );
+      }
+    }
+    return null;
+  }
+
+  Widget _advanced(ManaSemanticReadModel model) {
+    final section =
+        _navigation.current.advancedSection ?? AdvancedSection.artifacts;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
+      children: [
+        Text('Advanced', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Technical inspect data, compatibility, and diagnostics.',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _advancedNavigation(section),
+        const SizedBox(height: 20),
+        switch (section) {
+          AdvancedSection.artifacts => _advancedArtifactCatalog(model),
+          AdvancedSection.diagnostics => _advancedDiagnostics(model),
+        },
+      ],
+    );
+  }
+
+  Widget _advancedNavigation(AdvancedSection selected) => Wrap(
+    spacing: 8,
+    children: AdvancedSection.values
+        .map(
+          (section) => ChoiceChip(
+            label: Text(switch (section) {
+              AdvancedSection.artifacts => 'Artifact catalog',
+              AdvancedSection.diagnostics => 'Inspect diagnostics',
+            }),
+            selected: section == selected,
+            onSelected: (_) => _navigate(
+              ObservatoryRoute(
+                destination: ObservatoryDestination.advanced,
+                advancedSection: section,
+              ),
+            ),
+          ),
+        )
+        .toList(),
+  );
+
+  Widget _advancedArtifactCatalog(ManaSemanticReadModel model) {
+    final artifacts =
+        model.catalog?.artifacts ?? const <ManaInspectArtifactSummary>[];
+    if (artifacts.isEmpty) {
+      return const _ObservatoryEmptyState(
+        icon: Icons.inventory_2_outlined,
+        title: 'Artifact catalog unavailable',
+        message:
+            'Mana has not made a catalog available for this project capability mode.',
+      );
+    }
+    final families = artifacts
+        .map((artifact) => artifact.family)
+        .toSet()
+        .toList();
+    final kinds = artifacts.map((artifact) => artifact.kind).toSet().toList();
+    final statuses = artifacts
+        .map((artifact) => artifact.status)
+        .toSet()
+        .toList();
+    final visible = artifacts
+        .where(
+          (artifact) =>
+              (_advancedFamilyFilter == null ||
+                  artifact.family == _advancedFamilyFilter) &&
+              (_advancedKindFilter == null ||
+                  artifact.kind == _advancedKindFilter) &&
+              (_advancedStatusFilter == null ||
+                  artifact.status == _advancedStatusFilter),
+        )
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Artifact catalog', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 4),
+        Text(
+          'Raw catalog identity and paths are intentionally kept in Advanced.',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          children: [
+            _advancedFilter(
+              value: _advancedFamilyFilter,
+              label: 'All families',
+              values: families,
+              onChanged: (value) =>
+                  setState(() => _advancedFamilyFilter = value),
+            ),
+            _advancedFilter(
+              value: _advancedKindFilter,
+              label: 'All kinds',
+              values: kinds,
+              onChanged: (value) => setState(() => _advancedKindFilter = value),
+            ),
+            _advancedFilter(
+              value: _advancedStatusFilter,
+              label: 'All states',
+              values: statuses,
+              onChanged: (value) =>
+                  setState(() => _advancedStatusFilter = value),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        if (visible.isEmpty)
+          const Text('No catalog artifacts match these controls.')
+        else
+          ...visible.map(
+            (artifact) => _quietRow(
+              leading: Icon(_artifactIcon(artifact.kind)),
+              title: artifact.id,
+              subtitle:
+                  '${artifact.kind} • ${artifact.status}\n${artifact.path}',
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _openArtifact(artifact),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _advancedFilter({
+    required String? value,
+    required String label,
+    required List<String> values,
+    required ValueChanged<String?> onChanged,
+  }) => DropdownButton<String?>(
+    value: value,
+    hint: Text(label),
+    onChanged: onChanged,
+    items: [
+      DropdownMenuItem<String?>(value: null, child: Text(label)),
+      ...values.map(
+        (item) => DropdownMenuItem<String?>(
+          value: item,
+          child: Text(_humanize(item)),
+        ),
       ),
     ],
   );
+
+  Widget _advancedDiagnostics(ManaSemanticReadModel model) {
+    final diagnostics = <ManaDiagnostic>[
+      ...?model.workItems?.diagnostics,
+      ...?model.projectContext?.diagnostics,
+      ...?model.activity?.diagnostics,
+      for (final detail in _workDetails.values) ...detail.diagnostics,
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Inspect diagnostics',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Producer-reported coverage and diagnostic metadata.',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _diagnosticCoverage(model),
+        const SizedBox(height: 12),
+        if (diagnostics.isEmpty)
+          const _ObservatoryEmptyState(
+            icon: Icons.rule_folder_outlined,
+            title: 'No inspect diagnostics reported',
+            message:
+                'Mana did not include diagnostics in the available responses.',
+          )
+        else
+          ...diagnostics.map(
+            (diagnostic) => _quietRow(
+              leading: Icon(_diagnosticIcon(diagnostic.severity)),
+              title: _humanize(diagnostic.kind),
+              subtitle:
+                  '${_humanize(diagnostic.severity)} • ${_humanize(diagnostic.provenance.name)}\n${diagnostic.id}',
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _diagnosticCoverage(ManaSemanticReadModel model) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      if (model.workItems != null)
+        _statusPill('Work: ${model.workItems!.coverage}'),
+      if (model.projectContext != null)
+        _statusPill('Context: ${model.projectContext!.coverage}'),
+      if (model.activity != null)
+        _statusPill('Activity: ${model.activity!.coverage}'),
+      if (model.catalog?.partial ?? false) _statusPill('Catalog partial'),
+    ],
+  );
+
+  IconData _diagnosticIcon(String severity) => switch (severity) {
+    'error' || 'critical' => Icons.error_outline,
+    'warning' => Icons.warning_amber_outlined,
+    _ => Icons.info_outline,
+  };
   Widget _errorState() => Scaffold(
     body: Center(
       child: FilledButton(onPressed: _load, child: const Text('Try again')),
+    ),
+  );
+
+  Widget _projectTitle(ManaInspectProject project) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text('Mana Familiar'),
+      Text(
+        _shortProjectIdentity(project.projectId),
+        style: const TextStyle(fontSize: 12),
+      ),
+    ],
+  );
+
+  String _shortProjectIdentity(String id) => id.length > 28
+      ? '${id.substring(0, 12)}…${id.substring(id.length - 8)}'
+      : id;
+
+  String _compactTechnicalLabel(String value) => value.length > 54
+      ? '${value.substring(0, 34)}…${value.substring(value.length - 14)}'
+      : value;
+
+  String _workPrimaryLabel(ManaWorkItemSummary item) =>
+      item.externalTicketId.value ??
+      item.title.value ??
+      _workDisplayId(item.id);
+
+  String _workDisplayId(String id) =>
+      id.contains(':') ? id.split(':').last : id;
+
+  String? _workSecondaryLabel(ManaWorkItemSummary item) =>
+      item.title.value ?? item.purpose.value;
+
+  Widget _workTypeIcon(ManaWorkItemType type) => CircleAvatar(
+    radius: 18,
+    child: Icon(
+      type == ManaWorkItemType.session
+          ? Icons.history_outlined
+          : Icons.flag_outlined,
+    ),
+  );
+
+  Widget _workStatus(ManaWorkItemSummary item) =>
+      item.lifecycle.state == ManaLifecycleState.unknown
+      ? const SizedBox.shrink()
+      : _statusPill(_humanize(item.lifecycle.state.name));
+
+  Widget _statusPill(String value) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(value, style: Theme.of(context).textTheme.labelMedium),
+  );
+
+  Widget _sectionEmptyState(ManaSectionId section) => _ObservatoryEmptyState(
+    icon: switch (section) {
+      ManaSectionId.evidence => Icons.fact_check_outlined,
+      ManaSectionId.review => Icons.rate_review_outlined,
+      ManaSectionId.timeline => Icons.schedule_outlined,
+      _ => Icons.article_outlined,
+    },
+    title: 'Nothing reported for ${_sectionLabel(section).toLowerCase()}',
+    message: section == ManaSectionId.evidence
+        ? 'Mana has not reported evidence for this work item.'
+        : 'Mana has not reported documents or material for this semantic section.',
+  );
+
+  IconData _artifactIcon(String kind) => switch (kind) {
+    'markdown' => Icons.article_outlined,
+    'verification-result' => Icons.fact_check_outlined,
+    _ => Icons.insert_drive_file_outlined,
+  };
+
+  String _artifactLabel(ManaInspectArtifactSummary artifact) =>
+      artifact.raw['label'] is String
+      ? artifact.raw['label'] as String
+      : 'Document';
+
+  String _activityLabel(ManaActivityEvent event) =>
+      event.summary ??
+      switch (event.kind) {
+        ManaActivityKind.workspaceCreated => 'Workspace created',
+        ManaActivityKind.verificationCompleted => 'Verification completed',
+        ManaActivityKind.reviewRecorded => 'Review recorded',
+        ManaActivityKind.decisionRecorded => 'Decision recorded',
+        ManaActivityKind.artifactUpdated => 'Document updated',
+        ManaActivityKind.unknown => 'Project activity recorded',
+      };
+
+  IconData _activityIcon(ManaActivityKind kind) => switch (kind) {
+    ManaActivityKind.workspaceCreated => Icons.add_circle_outline,
+    ManaActivityKind.verificationCompleted => Icons.fact_check_outlined,
+    ManaActivityKind.reviewRecorded => Icons.rate_review_outlined,
+    ManaActivityKind.decisionRecorded => Icons.account_tree_outlined,
+    ManaActivityKind.artifactUpdated => Icons.edit_note_outlined,
+    ManaActivityKind.unknown => Icons.bolt_outlined,
+  };
+
+  String _readableTimestamp(String value) {
+    final time = _parseTimestamp(value);
+    if (time == null) return 'Time unavailable';
+    final local = time.toLocal();
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '${local.day} ${months[local.month - 1]} ${local.year} • ${local.hour}:$minute';
+  }
+
+  DateTime? _parseTimestamp(String value) {
+    var time = DateTime.tryParse(value);
+    if (time != null) return time;
+    final epoch = int.tryParse(value);
+    if (epoch == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(
+      value.length > 10 ? epoch : epoch * 1000,
+      isUtc: true,
+    );
+  }
+
+  String _activityDayLabel(String timestamp) {
+    final time = _parseTimestamp(timestamp)?.toLocal();
+    if (time == null) return 'Date unavailable';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = DateTime(time.year, time.month, time.day);
+    if (date == today) return 'Today';
+    if (date == today.subtract(const Duration(days: 1))) return 'Yesterday';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${time.day} ${months[time.month - 1]} ${time.year}';
+  }
+
+  String _activityTime(String timestamp) {
+    final time = _parseTimestamp(timestamp)?.toLocal();
+    if (time == null) return '—';
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _humanize(String value) {
+    final separated = value
+        .replaceAll('_', ' ')
+        .replaceAllMapped(
+          RegExp(r'([a-z])([A-Z])'),
+          (match) => '${match.group(1)} ${match.group(2)}',
+        );
+    if (separated.isEmpty) return separated;
+    return '${separated[0].toUpperCase()}${separated.substring(1)}';
+  }
+
+  String _sectionLabel(ManaSectionId section) => switch (section) {
+    ManaSectionId.overview => 'Overview',
+    ManaSectionId.requirements => 'Requirements',
+    ManaSectionId.plan => 'Plan',
+    ManaSectionId.decisions => 'Decisions',
+    ManaSectionId.evidence => 'Evidence',
+    ManaSectionId.review => 'Review',
+    ManaSectionId.timeline => 'Timeline',
+    ManaSectionId.artifacts => 'Artifacts',
+  };
+}
+
+class _ObservatoryEmptyState extends StatelessWidget {
+  const _ObservatoryEmptyState({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+  final IconData icon;
+  final String title, message;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          icon,
+          size: 24,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 3),
+              Text(
+                message,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     ),
   );
 }

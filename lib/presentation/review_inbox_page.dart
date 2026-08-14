@@ -4,8 +4,8 @@ import 'package:flutter/services.dart';
 import '../application/mana_inspect.dart';
 import '../application/review_inbox_model.dart';
 
-/// Read-only attention queue. It only copies a producer-documented command;
-/// no command is started from this client.
+/// Legacy-catalog compatibility view. Its catalog signals are deliberately
+/// non-authoritative and never participate in semantic review navigation.
 class ReviewInboxPage extends StatefulWidget {
   const ReviewInboxPage({
     super.key,
@@ -38,12 +38,12 @@ class _ReviewInboxPageState extends State<ReviewInboxPage> {
       itemCount: itemCount,
       itemBuilder: (context, index) => switch (index) {
         0 => Text(
-          'Review Inbox',
+          'Limited catalog mode',
           style: Theme.of(context).textTheme.headlineSmall,
         ),
         1 => const SizedBox(height: 4),
         2 => const Text(
-          'Mana Familiar observes and hands off. Mana performs governed actions; this view never executes a command.',
+          'Semantic review state is unavailable. These legacy catalog signals are non-authoritative; use Advanced for raw catalog inspection.',
         ),
         3 => const SizedBox(height: 12),
         4 => DropdownButton<ReviewInboxFilter>(
