@@ -117,6 +117,7 @@ void main() {
 
       expect(find.text('Review recorded'), findsOneWidget);
       expect(find.text('filesystem time'), findsOneWidget);
+      expect(find.text('30 May 2024'), findsOneWidget);
       expect(
         find.text('artifact-update:file:.mana/features/IG-100/review.md'),
         findsNothing,

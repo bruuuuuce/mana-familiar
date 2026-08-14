@@ -154,6 +154,176 @@ void main() {
       expect(calls.toSet().length, calls.length);
     },
   );
+
+  test(
+    'later refresh failures retain prior data without leaking across modes',
+    () async {
+      final root = await Directory.systemTemp.createTemp('semantic-retain-');
+      addTearDown(() => root.delete(recursive: true));
+      await File('${root.path}/mana').writeAsString('');
+      var generation = 0;
+      final client = ManaInspectClient(
+        projectRoot: root.path,
+        run: (_, args, {workingDirectory}) async {
+          final operation = args[args.indexOf('inspect') + 1];
+          if (operation == 'project') generation++;
+          if (generation == 2 && operation == 'activity') {
+            return ProcessResult(0, 5, '', 'temporarily unavailable');
+          }
+          if (generation == 3 && operation == 'project') {
+            return ProcessResult(
+              0,
+              0,
+              jsonEncode({
+                ..._projectWithSemantic,
+                'operations': const [
+                  {'name': 'project', 'schema': inspectProjectSchema},
+                  {'name': 'artifacts', 'schema': inspectArtifactsSchema},
+                ],
+              }),
+              '',
+            );
+          }
+          final response = switch (operation) {
+            'project' => _projectWithSemantic,
+            'artifacts' => fixture('mixed-artifacts.json'),
+            'work-items' => fixture('work-items.json'),
+            'project-context' => fixture('project-context.json'),
+            'activity' => fixture('activity.json'),
+            _ => throw StateError(operation),
+          };
+          return ProcessResult(0, 0, jsonEncode(response), '');
+        },
+      );
+      final repository = ManaSemanticRepository(client);
+
+      final first = await repository.refresh();
+      final second = await repository.refresh();
+      final legacy = await repository.refresh();
+
+      expect(first.activity, isNotNull);
+      expect(second.activity, same(first.activity));
+      expect(second.refreshError, isNotNull);
+      expect(legacy.mode, ManaSemanticMode.legacyCatalog);
+      expect(legacy.workItems, isNull);
+      expect(legacy.projectContext, isNull);
+      expect(legacy.activity, isNull);
+    },
+  );
+
+  test(
+    'rejects invalid identity, ownership, paths, sections, and duplicates',
+    () {
+      final duplicateWork = fixture('work-items.json');
+      (duplicateWork['work_items'] as List).add(
+        jsonDecode(jsonEncode((duplicateWork['work_items'] as List).first)),
+      );
+      expect(
+        () => ManaWorkItemsResponse.fromJson(duplicateWork),
+        throwsA(isA<ManaInspectException>()),
+      );
+
+      final unsafe = fixture('work-items.json');
+      (((unsafe['work_items'] as List).first as Map)['artifacts'] as List)
+              .first['path'] =
+          '.mana/features/PROJ-24342/../secret';
+      expect(
+        () => ManaWorkItemsResponse.fromJson(unsafe),
+        throwsA(isA<ManaInspectException>()),
+      );
+
+      final wrongOwner = fixture('feature-work-item.json');
+      ((((wrongOwner['sections'] as List).first as Map)['artifacts'] as List)
+                  .first
+              as Map)['work_item_id'] =
+          'feature:OTHER';
+      expect(
+        () => ManaWorkItemResponse.fromJson(wrongOwner),
+        throwsA(isA<ManaInspectException>()),
+      );
+
+      final duplicateSection = fixture('feature-work-item.json');
+      (duplicateSection['sections'] as List).add(
+        jsonDecode(jsonEncode((duplicateSection['sections'] as List).first)),
+      );
+      expect(
+        () => ManaWorkItemResponse.fromJson(duplicateSection),
+        throwsA(isA<ManaInspectException>()),
+      );
+
+      final globalOwner = fixture('project-context.json');
+      final category = (globalOwner['categories'] as List).first as Map;
+      ((category['artifacts'] as List).first as Map)['work_item_id'] =
+          'feature:PROJ-24342';
+      expect(
+        () => ManaProjectContextResponse.fromJson(globalOwner),
+        throwsA(isA<ManaInspectException>()),
+      );
+
+      final duplicateEvent = fixture('activity.json');
+      (duplicateEvent['events'] as List).add(
+        jsonDecode(jsonEncode((duplicateEvent['events'] as List).first)),
+      );
+      expect(
+        () => ManaActivityResponse.fromJson(duplicateEvent),
+        throwsA(isA<ManaInspectException>()),
+      );
+    },
+  );
+
+  test('bounds and redacts process diagnostics', () async {
+    final root = await Directory.systemTemp.createTemp('semantic-stderr-');
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}/mana').writeAsString('');
+    final client = ManaInspectClient(
+      projectRoot: root.path,
+      run: (_, _, {workingDirectory}) async => ProcessResult(
+        0,
+        5,
+        '',
+        '${root.path}/private.json ${'/host-secret' * 200}',
+      ),
+    );
+
+    try {
+      await client.project();
+      fail('Expected a command failure.');
+    } on ManaInspectException catch (error) {
+      expect(error.kind, ManaInspectFailure.command);
+      expect(error.message, isNot(contains(root.path)));
+      expect(error.message, isNot(contains('/host-secret')));
+      expect(error.message, contains('<project>'));
+      expect(error.message.length, lessThan(560));
+    }
+  });
+
+  test('times out and terminates an unresponsive inspect process', () async {
+    final root = await Directory.systemTemp.createTemp('semantic-timeout-');
+    addTearDown(() => root.delete(recursive: true));
+    final wrapper = File('${root.path}/mana');
+    await wrapper.writeAsString(
+      "#!/bin/sh\ntrap 'exit 0' TERM\nwhile :; do :; done\n",
+    );
+    expect((await Process.run('chmod', ['+x', wrapper.path])).exitCode, 0);
+    final stopwatch = Stopwatch()..start();
+    final client = ManaInspectClient(
+      projectRoot: root.path,
+      processTimeout: const Duration(milliseconds: 100),
+    );
+
+    await expectLater(
+      client.project(),
+      throwsA(
+        isA<ManaInspectException>().having(
+          (error) => error.kind,
+          'kind',
+          ManaInspectFailure.transport,
+        ),
+      ),
+    );
+    stopwatch.stop();
+    expect(stopwatch.elapsed, lessThan(const Duration(seconds: 3)));
+  });
 }
 
 const _projectWithSemantic = {
