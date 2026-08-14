@@ -75,6 +75,45 @@ void main() {
     expect(find.text('Attempts: 2', skipOffstage: false), findsOneWidget);
   });
 
+  testWidgets('renders Markdown workspace notes as a readable document', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ArtifactDetailView(
+          artifact: ManaInspectArtifactSummary.fromJson({
+            ..._summaryJson('markdown'),
+            'content_type': 'text/markdown',
+          }),
+          detail: ManaInspectArtifactDetail.fromJson({
+            'schema': inspectArtifactSchema,
+            'artifact': {
+              ..._summaryJson('markdown'),
+              'content_type': 'text/markdown',
+            },
+            'payload': {
+              'kind': 'text',
+              'value':
+                  '# Missing Tests\n\n- Status: `warning`\n\n| Area | Severity |\n|---|---|\n| Capture | warning |\n\n```bash\nflutter test\n```',
+            },
+            'relations': [],
+          }),
+        ),
+      ),
+    );
+    expect(find.text('Missing Tests', skipOffstage: false), findsOneWidget);
+    expect(
+      find.textContaining('Status:', findRichText: true, skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('warning', findRichText: true, skipOffstage: false),
+      findsAtLeastNWidgets(2),
+    );
+    expect(find.text('Capture', skipOffstage: false), findsOneWidget);
+    expect(find.text('flutter test', skipOffstage: false), findsOneWidget);
+  });
+
   testWidgets(
     'opens a non-cyclic related artifact only when the host resolves it',
     (tester) async {

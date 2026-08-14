@@ -43,10 +43,9 @@ void main() {
     );
     await tester.tap(find.text('Activity'));
     await tester.pump();
-    expect(
-      find.text('Mana-reported operational timeline; no synthetic events.'),
-      findsOneWidget,
-    );
+    expect(find.text('Semantic activity is unavailable'), findsOneWidget);
+    await tester.tap(find.text('Advanced'));
+    await tester.pump();
     await tester.tap(find.text('verification:failed'));
     await tester.pump();
     await tester.pump();
@@ -54,16 +53,19 @@ void main() {
     expect(find.text('Mana verification result'), findsOneWidget);
     await tester.tap(find.byTooltip('Back'));
     await tester.pump();
-    expect(find.text('Activity'), findsNWidgets(2));
+    expect(find.text('Artifact catalog'), findsAtLeastNWidgets(1));
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pump();
+    expect(find.text('Semantic activity is unavailable'), findsOneWidget);
     await tester.tap(find.byTooltip('Back'));
     await tester.pump();
     expect(find.text('Project overview'), findsOneWidget);
     await tester.tap(find.text('Reviews'));
     await tester.pump();
-    expect(find.text('Review Inbox'), findsOneWidget);
+    expect(find.text('Limited catalog mode'), findsOneWidget);
     await tester.tap(find.text('Knowledge'));
     await tester.pump();
-    expect(find.text('Journeys'), findsOneWidget);
+    expect(find.text('Legacy journeys'), findsOneWidget);
   });
 
   testWidgets('makes empty and partial catalog state explicit', (tester) async {

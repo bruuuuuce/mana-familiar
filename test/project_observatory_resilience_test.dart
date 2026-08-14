@@ -26,7 +26,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Activity'));
+      await tester.tap(find.text('Advanced'));
       await tester.pump();
       await tester.tap(find.text('verification:one'));
       await tester.pump();

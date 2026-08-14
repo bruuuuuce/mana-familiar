@@ -13,6 +13,8 @@ enum KnowledgeSection {
 
 /// Hosts the established Journey explorer as one Knowledge subsection. Other
 /// sections expose only catalogued Mana artifacts and never synthesize a KB.
+/// Legacy catalog compatibility explorer. Semantic project context is rendered
+/// by ProjectObservatoryPage and never calls this path/family classifier.
 class KnowledgeModulePage extends StatefulWidget {
   const KnowledgeModulePage({
     super.key,

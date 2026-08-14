@@ -54,29 +54,51 @@ void main() {
       }),
     ),
   );
-  testWidgets('dossier exposes only the seven stable semantic sections', (
-    tester,
-  ) async {
-    await tester.pumpWidget(page());
-    for (final label in [
-      'overview',
-      'requirements',
-      'plan',
-      'decisions',
-      'evidence',
-      'review',
-      'timeline',
-    ]) {
-      expect(find.text(label), findsOneWidget);
-    }
-    expect(find.text('artifacts'), findsNothing);
-  });
+  testWidgets(
+    'work item opens directly in Overview with stable section navigation',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1440, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(page());
+      for (final label in [
+        'Overview',
+        'Requirements',
+        'Plan',
+        'Decisions',
+        'Evidence',
+        'Review',
+        'Timeline',
+      ]) {
+        expect(find.text(label), findsAtLeastNWidgets(1));
+      }
+      expect(find.text('artifacts'), findsNothing);
+      expect(
+        find.text('Choose a section to explore this work item.'),
+        findsNothing,
+      );
+      expect(find.text('Dossier'), findsNothing);
+      expect(find.text('Overview'), findsAtLeastNWidgets(2));
+
+      await tester.tap(find.text('Requirements').first);
+      await tester.pump();
+      expect(find.text('Requirements'), findsAtLeastNWidgets(2));
+      await tester.tap(find.text('Plan').first);
+      await tester.pump();
+      expect(find.text('Plan'), findsAtLeastNWidgets(2));
+      await tester.tap(find.text('Evidence').first);
+      await tester.pump();
+      expect(find.text('Evidence'), findsAtLeastNWidgets(2));
+    },
+  );
   testWidgets('dossier keeps work identity and review unknown state', (
     tester,
   ) async {
     await tester.pumpWidget(page(section: ManaSectionId.review));
-    expect(find.text('feature:PROJ-24342'), findsOneWidget);
-    expect(find.textContaining('Review state: unknown'), findsOneWidget);
+    expect(find.text('PROJ-24342'), findsOneWidget);
+    expect(
+      find.text('Mana has not reported a review state for this work item.'),
+      findsOneWidget,
+    );
   });
   testWidgets('work semantic dossier remains available', (tester) async {
     await tester.pumpWidget(
@@ -85,6 +107,6 @@ void main() {
         section: ManaSectionId.evidence,
       ),
     );
-    expect(find.text('evidence'), findsOneWidget);
+    expect(find.text('Evidence'), findsAtLeastNWidgets(2));
   });
 }

@@ -64,7 +64,7 @@ void main() {
 
     final list = tester.widget<ListView>(find.byType(ListView));
     expect(list.childrenDelegate, isA<SliverChildBuilderDelegate>());
-    expect(find.text('Review Inbox'), findsOneWidget);
+    expect(find.text('Limited catalog mode'), findsOneWidget);
     expect(stopwatch.elapsed, lessThan(const Duration(seconds: 5)));
     // ignore: avoid_print
     print(
