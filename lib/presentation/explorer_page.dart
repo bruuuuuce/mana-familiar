@@ -482,12 +482,18 @@ class _JourneyPickerPageState extends State<JourneyPickerPage> {
     return Future.wait(
       ids.map((id) async {
         try {
+          final graph = await widget.store.load(id);
           return _JourneyChoice(
             id: id,
-            title: (await widget.store.load(id)).title,
+            title: graph.title,
+            description: journeyScopeDescription(graph),
           );
         } catch (_) {
-          return _JourneyChoice(id: id, title: id);
+          return _JourneyChoice(
+            id: id,
+            title: 'Learning Journey',
+            description: 'Journey details are currently unavailable.',
+          );
         }
       }),
     );
@@ -524,7 +530,11 @@ class _JourneyPickerPageState extends State<JourneyPickerPage> {
               child: ListTile(
                 leading: const Icon(Icons.route_outlined),
                 title: Text(choice.title),
-                subtitle: Text(choice.id),
+                subtitle: Text(
+                  choice.description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => widget.onOpenJourney(choice.id),
               ),
@@ -537,10 +547,27 @@ class _JourneyPickerPageState extends State<JourneyPickerPage> {
 }
 
 class _JourneyChoice {
-  const _JourneyChoice({required this.id, required this.title});
+  const _JourneyChoice({
+    required this.id,
+    required this.title,
+    required this.description,
+  });
 
   final String id;
   final String title;
+  final String description;
+}
+
+String journeyScopeDescription(JourneyGraph graph) {
+  final scope = graph.raw['journey']?['scope'] as Map<String, dynamic>?;
+  final start = scope?['start'] as Map<String, dynamic>?;
+  final termination = scope?['termination'] as Map<String, dynamic>?;
+  final startValue = start?['value'] as String?;
+  final terminationValue = termination?['condition'] as String?;
+  if (startValue != null && terminationValue != null) {
+    return '$startValue → $terminationValue';
+  }
+  return startValue ?? terminationValue ?? 'No journey scope was reported.';
 }
 
 enum ExplorerViewMode { journey, graph }
@@ -574,6 +601,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
   String? journeyId, error;
   ResolvedSource? source;
   List<String> journeys = [];
+  final Map<String, String> _journeyTitles = {};
   List<Map<String, dynamic>> labels = [];
   StreamSubscription<void>? watcher;
   bool navigatorVisible = true;
@@ -622,6 +650,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
           : loaded.initialNodeId;
       setState(() {
         journeyId = id;
+        _journeyTitles[id] = loaded.title;
         graph = loaded;
         error = null;
         // A source is route-owned UI state. Never let a prior Journey's
@@ -834,8 +863,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   Text(
-                    journeyId ?? '',
+                    journeyScopeDescription(graph!),
                     style: Theme.of(context).textTheme.labelSmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -859,7 +890,12 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 DropdownButton<String>(
                   value: journeyId,
                   items: journeys
-                      .map((id) => DropdownMenuItem(value: id, child: Text(id)))
+                      .map(
+                        (id) => DropdownMenuItem(
+                          value: id,
+                          child: Text(_journeyTitles[id] ?? 'Learning Journey'),
+                        ),
+                      )
                       .toList(),
                   onChanged: (id) {
                     if (id != null) _open(id);
@@ -993,7 +1029,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
     builder: (dialogContext) => AlertDialog(
       title: const Text('Graph relation'),
       content: Text(
-        '${relation.kind} · ${relation.style.name}\n${relation.from} → ${relation.to}',
+        '${relation.kind} · ${relation.style.name}\n'
+        '${graph!.node(relation.from)?['label'] ?? 'Unknown step'} → '
+        '${graph!.node(relation.to)?['label'] ?? 'Unknown step'}',
       ),
       actions: [
         TextButton(
@@ -1021,6 +1059,21 @@ class _ExplorerPageState extends State<ExplorerPage> {
         .map((id) => graph!.node(id)?['label'] as String? ?? id)
         .toList();
     return labels.isEmpty ? route.nodeId : labels.join('  ›  ');
+  }
+
+  String? _nodeNarrative(String nodeId) {
+    final anchorIds = graph!
+        .anchorsFor(nodeId)
+        .map((anchor) => anchor['id'])
+        .whereType<String>()
+        .toSet();
+    for (final evidence in graph!.evidence) {
+      if (anchorIds.contains(evidence['anchor_id']) &&
+          evidence['summary'] is String) {
+        return evidence['summary'] as String;
+      }
+    }
+    return null;
   }
 
   Widget _panelHeading(String title, VoidCallback onCollapse) => Padding(
@@ -1200,7 +1253,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
                             '${diagram['kind']} diagram',
                       ),
                       subtitle: Text(
-                        '${diagram['kind']} • ${diagram['id']} • selected node ${node['id']}',
+                        '${diagram['kind']} diagram • includes this journey step',
                       ),
                       trailing: const Icon(Icons.open_in_new),
                       onTap: () => _openDiagram(diagram),
@@ -1227,6 +1280,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
         node['label'] as String? ?? node['id'] as String,
         style: Theme.of(context).textTheme.headlineSmall,
       ),
+      if (_nodeNarrative(node['id'] as String) case final narrative?) ...[
+        const SizedBox(height: 4),
+        Text(narrative),
+      ],
       Text(
         'State: ${node['state'] ?? 'discovered'} • ${node['disposition'] ?? 'primary'}',
       ),
@@ -1300,7 +1357,6 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 evidence.kind,
                 if (evidence.relationship != null) evidence.relationship!,
                 if (evidence.location != null) evidence.location!.reference,
-                evidence.id,
               ].join(' • '),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
@@ -1500,7 +1556,6 @@ class _ExplorerPageState extends State<ExplorerPage> {
                           if (relation.edge['rationale'] is String &&
                               (relation.edge['rationale'] as String).isNotEmpty)
                             relation.edge['rationale'] as String,
-                          relation.targetId,
                         ].join(' • '),
                       ),
                       onTap: () => _navigate(
@@ -1519,7 +1574,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
                           : Icons.arrow_forward,
                     ),
                     title: Text(relation.label),
-                    subtitle: Text('${relation.kind} • ${relation.targetId}'),
+                    subtitle: Text(relation.kind),
                     onTap: () => _navigate(
                       ExplorerRoute(
                         journeyId: journeyId!,
