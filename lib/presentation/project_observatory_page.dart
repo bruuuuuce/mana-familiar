@@ -18,6 +18,7 @@ class ProjectObservatoryPage extends StatefulWidget {
     required this.client,
     required this.knowledge,
     this.knowledgeBuilder,
+    this.learningJourneysBuilder,
     this.initialProject,
     this.initialCatalog,
     this.initialReadModel,
@@ -31,6 +32,8 @@ class ProjectObservatoryPage extends StatefulWidget {
   final ManaInspectClient client;
   final Widget knowledge;
   final Widget Function(String? journeyId)? knowledgeBuilder;
+  final Widget Function(ValueChanged<String> onOpenJourney)?
+  learningJourneysBuilder;
   final ManaInspectProject? initialProject;
   final ManaInspectCatalog? initialCatalog;
   final ManaSemanticReadModel? initialReadModel;
@@ -1764,8 +1767,14 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       .toList();
 
   Widget _learningJourneys(ManaProjectContextCategory category) {
+    final journeyId = _navigation.current.journeyId;
+    if (journeyId != null) {
+      return widget.knowledgeBuilder?.call(journeyId) ?? widget.knowledge;
+    }
     if (_journeysFor(category).isNotEmpty) {
-      return widget.knowledgeBuilder?.call(null) ?? widget.knowledge;
+      return widget.learningJourneysBuilder?.call(_openJourney) ??
+          widget.knowledgeBuilder?.call(null) ??
+          widget.knowledge;
     }
     return ListView(
       padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
@@ -1780,6 +1789,14 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       ],
     );
   }
+
+  void _openJourney(String journeyId) => _navigate(
+    ObservatoryRoute(
+      destination: ObservatoryDestination.knowledge,
+      category: 'learning_journeys',
+      journeyId: journeyId,
+    ),
+  );
 
   Widget _knowledgeCategoryRow(ManaProjectContextCategory category) {
     final isLearningJourneys = _isLearningJourneys(category);
