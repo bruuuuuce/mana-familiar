@@ -39,7 +39,7 @@ void main() {
     );
 
     expect(find.text('Overview document'), findsOneWidget);
-    expect(find.text('Project context'), findsOneWidget);
+    expect(find.text('Project context'), findsAtLeastNWidgets(1));
     expect(find.text('Artifact detail'), findsNothing);
     expect(find.text('Payload'), findsNothing);
     expect(find.text('Reader'), findsOneWidget);

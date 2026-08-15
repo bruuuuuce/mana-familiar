@@ -426,6 +426,7 @@ class ManaActivityEvent {
     required this.workItemId,
     required this.relatedArtifactIds,
     required this.provenance,
+    this.target,
     this.summary,
   });
   final String id, timestamp;
@@ -434,6 +435,7 @@ class ManaActivityEvent {
   final ManaActivityKind kind;
   final String? workItemId, summary;
   final List<String> relatedArtifactIds;
+  final ManaActivityTarget? target;
   factory ManaActivityEvent.fromJson(Map<String, dynamic> json) {
     final timestamp = _map(json['timestamp']);
     final workItemId = json['work_item_id'];
@@ -451,8 +453,79 @@ class ManaActivityEvent {
       kind: _activityKind(json['event_kind']),
       workItemId: workItemId as String?,
       relatedArtifactIds: _strings(json['related_artifact_ids']),
+      target: json['target'] == null
+          ? null
+          : ManaActivityTarget.fromJson(_map(json['target'])),
       summary: json['summary'] is String ? json['summary'] as String : null,
       provenance: _provenance(json['provenance']),
+    );
+  }
+}
+
+class ManaActivityTarget {
+  const ManaActivityTarget({
+    required this.artifactId,
+    required this.workItemId,
+    required this.sectionId,
+    required this.projectContextCategory,
+    required this.label,
+  });
+
+  final String artifactId;
+  final String? workItemId;
+  final ManaSectionId? sectionId;
+  final String? projectContextCategory;
+  final String? label;
+
+  factory ManaActivityTarget.fromJson(Map<String, dynamic> json) {
+    for (final field in const [
+      'artifact_id',
+      'work_item_id',
+      'section_id',
+      'project_context_category',
+      'label',
+    ]) {
+      if (!json.containsKey(field)) {
+        throw const ManaInspectException(
+          ManaInspectFailure.malformedJson,
+          'Activity target is missing a required field.',
+        );
+      }
+    }
+    final workItemId = json['work_item_id'];
+    if (workItemId != null &&
+        (workItemId is! String || !_isWorkItemId(workItemId))) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Activity target work_item_id is malformed.',
+      );
+    }
+    final category = json['project_context_category'];
+    if (category != null &&
+        (category is! String ||
+            !_projectContextCategories.contains(category))) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Activity target project_context_category is malformed.',
+      );
+    }
+    final label = json['label'];
+    if (label != null &&
+        (label is! String ||
+            label.isEmpty ||
+            utf8.encode(label).length > 256)) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Activity target label is malformed.',
+      );
+    }
+    final section = json['section_id'];
+    return ManaActivityTarget(
+      artifactId: _string(json['artifact_id'], 'target.artifact_id'),
+      workItemId: workItemId as String?,
+      sectionId: section == null ? null : _requiredSection(section),
+      projectContextCategory: category as String?,
+      label: label as String?,
     );
   }
 }
