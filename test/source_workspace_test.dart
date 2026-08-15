@@ -93,6 +93,32 @@ void main() {
     expect(resolved.state, SourceState.missing);
     expect(resolved.available, isFalse);
   });
+
+  test(
+    'blocks a source anchor whose symlink escapes the project root',
+    () async {
+      final root = await Directory.systemTemp.createTemp('mana-source-root-');
+      final outside = await Directory.systemTemp.createTemp('mana-source-out-');
+      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => outside.delete(recursive: true));
+      final outsideFile = File('${outside.path}/secret.dart');
+      await outsideFile.writeAsString('void secret() {}');
+      await Directory('${root.path}/lib').create();
+      await Link('${root.path}/lib/escape.dart').create(outsideFile.path);
+
+      final resolved = await SourceResolver().resolve(
+        SourceLocation(
+          projectRoot: root.path,
+          path: 'lib/escape.dart',
+          startLine: 1,
+          endLine: 1,
+        ),
+      );
+
+      expect(resolved.state, SourceState.blocked);
+      expect(resolved.status, contains('escapes its allowed root'));
+    },
+  );
 }
 
 Future<String> _git(String root, List<String> arguments) async {

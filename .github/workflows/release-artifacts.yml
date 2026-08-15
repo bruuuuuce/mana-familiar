@@ -1,0 +1,71 @@
+name: Release artifacts
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    name: macOS release archive
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: mana-familiar
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mana-familiar
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build macos --release
+      - name: Package application and checksum
+        run: |
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent \
+            'build/macos/Build/Products/Release/Mana Familiar.app' \
+            dist/Mana-Familiar-macos.zip
+          shasum -a 256 dist/Mana-Familiar-macos.zip > dist/Mana-Familiar-macos.zip.sha256
+      - name: Attach release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload '${{ github.event.release.tag_name }}' \
+            dist/Mana-Familiar-macos.zip \
+            dist/Mana-Familiar-macos.zip.sha256 \
+            --clobber
+
+  windows:
+    name: Windows release archive
+    runs-on: windows-2022
+    defaults:
+      run:
+        working-directory: mana-familiar
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mana-familiar
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: Package application and checksum
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path 'build/windows/x64/runner/Release/*' -DestinationPath 'dist/Mana-Familiar-windows-x64.zip' -Force
+          (Get-FileHash 'dist/Mana-Familiar-windows-x64.zip' -Algorithm SHA256).Hash.ToLower() + '  Mana-Familiar-windows-x64.zip' | Set-Content -NoNewline 'dist/Mana-Familiar-windows-x64.zip.sha256'
+      - name: Attach release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload '${{ github.event.release.tag_name }}' dist/Mana-Familiar-windows-x64.zip dist/Mana-Familiar-windows-x64.zip.sha256 --clobber
