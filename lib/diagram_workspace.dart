@@ -373,7 +373,7 @@ class _DiagramWorkspaceState extends State<DiagramWorkspace> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              '${document.kind.toUpperCase()} • ${document.id}',
+              '${document.kind == 'component' ? 'Component' : 'Sequence'} diagram',
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 20),
@@ -448,19 +448,25 @@ class _DiagramWorkspaceState extends State<DiagramWorkspace> {
         ? null
         : widget.graph.edges.where((e) => e['id'] == edgeId).firstOrNull;
     final kind = edge?['kind'] as String? ?? binding.semanticRole;
+    final from = _nodeLabel(edge?['from'] as String?);
+    final to = _nodeLabel(edge?['to'] as String?);
     return Semantics(
       button: true,
-      label: '$kind relation, ${edge?['from'] ?? '?'} to ${edge?['to'] ?? '?'}',
+      label: '$kind relation, $from to $to',
       child: ListTile(
         leading: Icon(
           (edge?['kind'] == 'LOOP_BACK') ? Icons.loop : Icons.arrow_forward,
         ),
         title: Text(kind),
-        subtitle: Text('${edge?['from'] ?? '?'} → ${edge?['to'] ?? '?'}'),
+        subtitle: Text('$from → $to'),
         onTap: () => _activate(binding),
       ),
     );
   }
+
+  String _nodeLabel(String? id) => id == null
+      ? 'Unknown step'
+      : widget.graph.node(id)?['label'] as String? ?? 'Unknown step';
 
   void _activate(DiagramElementBinding binding) {
     setState(() => _selectedElement = binding.elementId);

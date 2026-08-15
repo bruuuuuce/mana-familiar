@@ -18,6 +18,7 @@ class ProjectObservatoryPage extends StatefulWidget {
     required this.client,
     required this.knowledge,
     this.knowledgeBuilder,
+    this.learningJourneysBuilder,
     this.initialProject,
     this.initialCatalog,
     this.initialReadModel,
@@ -31,6 +32,8 @@ class ProjectObservatoryPage extends StatefulWidget {
   final ManaInspectClient client;
   final Widget knowledge;
   final Widget Function(String? journeyId)? knowledgeBuilder;
+  final Widget Function(ValueChanged<String> onOpenJourney)?
+  learningJourneysBuilder;
   final ManaInspectProject? initialProject;
   final ManaInspectCatalog? initialCatalog;
   final ManaSemanticReadModel? initialReadModel;
@@ -648,6 +651,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     final hasDestinationChild =
         route.workItemId != null ||
         route.category != null ||
+        route.journeyId != null ||
         route.advancedSection != null ||
         route.artifactId != null;
     entries.add(
@@ -695,10 +699,25 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         _SemanticBreadcrumb(
           role: 'category',
           label: labels[labelIndex++],
+          route: route.artifactId != null || route.journeyId != null
+              ? ObservatoryRoute(
+                  destination: ObservatoryDestination.knowledge,
+                  category: route.category,
+                )
+              : null,
+        ),
+      );
+    }
+    if (route.journeyId != null) {
+      entries.add(
+        _SemanticBreadcrumb(
+          role: 'journey',
+          label: labels[labelIndex++],
           route: route.artifactId != null
               ? ObservatoryRoute(
                   destination: ObservatoryDestination.knowledge,
                   category: route.category,
+                  journeyId: route.journeyId,
                 )
               : null,
         ),
@@ -1675,6 +1694,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                 (category) => category.category == _navigation.current.category,
               )
               .firstOrNull;
+    if (selected != null && _isLearningJourneys(selected)) {
+      return _learningJourneys(selected);
+    }
     return ListView(
       padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
       children: [
@@ -1751,7 +1773,50 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     onTap: onTap,
   );
 
+  bool _isLearningJourneys(ManaProjectContextCategory category) =>
+      category.category == 'learning_journeys';
+
+  List<ManaArtifactReference> _journeysFor(
+    ManaProjectContextCategory category,
+  ) => category.artifacts
+      .where((artifact) => artifact.kind == 'journey')
+      .toList();
+
+  Widget _learningJourneys(ManaProjectContextCategory category) {
+    final journeyId = _navigation.current.journeyId;
+    if (journeyId != null) {
+      return widget.knowledgeBuilder?.call(journeyId) ?? widget.knowledge;
+    }
+    if (_journeysFor(category).isNotEmpty) {
+      return widget.learningJourneysBuilder?.call(_openJourney) ??
+          widget.knowledgeBuilder?.call(null) ??
+          widget.knowledge;
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
+      children: const [
+        Text('Knowledge'),
+        SizedBox(height: 28),
+        _ObservatoryEmptyState(
+          icon: Icons.route_outlined,
+          title: 'No Learning Journeys reported yet',
+          message: 'Mana has not reported a Journey manifest for this project.',
+        ),
+      ],
+    );
+  }
+
+  void _openJourney(String journeyId) => _navigate(
+    ObservatoryRoute(
+      destination: ObservatoryDestination.knowledge,
+      category: 'learning_journeys',
+      journeyId: journeyId,
+    ),
+  );
+
   Widget _knowledgeCategoryRow(ManaProjectContextCategory category) {
+    final isLearningJourneys = _isLearningJourneys(category);
+    final journeyCount = _journeysFor(category).length;
     final onlyDocument = category.artifacts.length == 1
         ? category.artifacts.single
         : null;
@@ -1762,11 +1827,15 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
             : Icons.auto_stories_outlined,
       ),
       title: _humanize(category.category),
-      subtitle: category.artifacts.isEmpty
+      subtitle: isLearningJourneys
+          ? journeyCount == 0
+                ? 'No journeys yet'
+                : '$journeyCount journey${journeyCount == 1 ? '' : 's'}'
+          : category.artifacts.isEmpty
           ? 'No material yet'
           : '${category.artifacts.length} document${category.artifacts.length == 1 ? '' : 's'}',
       trailing: const Icon(Icons.chevron_right),
-      onTap: () => onlyDocument == null
+      onTap: () => isLearningJourneys || onlyDocument == null
           ? _navigate(
               ObservatoryRoute(
                 destination: ObservatoryDestination.knowledge,
