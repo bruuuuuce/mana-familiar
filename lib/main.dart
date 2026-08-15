@@ -20,7 +20,7 @@ Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   final config = ExplorerConfig.parse(args);
   final preferences = await ExplorerPreferences.load(config);
-  if (config.fixturePath == null) {
+  if (config.fixturePath == null && config.hasExplicitProjectRoot) {
     await preferences.rememberProjectRoot(config.projectRoot);
   }
   runApp(ManaFamiliarApp(config: config, preferences: preferences));
