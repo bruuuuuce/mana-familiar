@@ -168,8 +168,7 @@ class ExternalEditorLauncher {
     SourceLocation location,
   ) {
     final values = {
-      'file':
-          '${location.projectRoot}${Platform.pathSeparator}${location.path}',
+      'file': _sourceFilePath(location),
       'path': location.path,
       'line': '${location.startLine}',
       'column': '1',
@@ -190,6 +189,17 @@ class ExternalEditorLauncher {
       profile.executable!,
       profile.arguments.map(expand).toList(),
     );
+  }
+
+  static String _sourceFilePath(SourceLocation location) {
+    final separator = location.projectRoot.contains('\\') ? '\\' : '/';
+    final root =
+        location.projectRoot.endsWith('/') ||
+            location.projectRoot.endsWith('\\')
+        ? location.projectRoot.substring(0, location.projectRoot.length - 1)
+        : location.projectRoot;
+    final relative = location.path.replaceAll(RegExp(r'[\\/]+'), separator);
+    return '$root$separator$relative';
   }
 
   Future<void> launch(
