@@ -154,17 +154,16 @@ The fixture is materialized Journey JSON and never persists data under `.mana`.
 
 ## Supported platforms
 
-macOS desktop is the supported application target. Web scaffolding is retained
-for possible future work, but browser runtime is not supported because inspect
-processes and explicitly requested local source/editor integration require
-desktop APIs.
+macOS and Windows desktop are supported application targets. Web scaffolding
+is retained for possible future work, but browser runtime is not supported
+because inspect processes and explicitly requested local source/editor
+integration require desktop APIs.
 
 ## Local packaging and release review
 
 See [release readiness](docs/release-readiness.md) for source and ad-hoc local
-build steps, the future Developer ID/notarization sequence, the compatibility
-matrix, and known limitations. A debug macOS build is CI-validated; no signed,
-notarized, or published release is claimed by this repository.
+build steps, automated release artifacts, the future Developer
+ID/notarization sequence, the compatibility matrix, and known limitations.
 
 ## License
 
