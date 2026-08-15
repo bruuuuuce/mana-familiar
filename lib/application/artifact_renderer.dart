@@ -493,6 +493,21 @@ List<RelationPreview> boundedRelationPreviews(
 }
 
 String safeMarkdownText(String text) {
+  final fenced = RegExp(r'^```[^\n]*\n[\s\S]*?^```\s*$', multiLine: true);
+  final output = StringBuffer();
+  var cursor = 0;
+  for (final match in fenced.allMatches(text)) {
+    output.write(_safeMarkdownProse(text.substring(cursor, match.start)));
+    // Fenced source remains inert Flutter text. Keeping it byte-for-byte here
+    // lets bounded diagram renderers validate directives before rendering.
+    output.write(match.group(0));
+    cursor = match.end;
+  }
+  output.write(_safeMarkdownProse(text.substring(cursor)));
+  return output.toString();
+}
+
+String _safeMarkdownProse(String text) {
   var safe = text
       .replaceAll(
         RegExp(r'<script\b[^>]*>[\s\S]*?</script\s*>', caseSensitive: false),

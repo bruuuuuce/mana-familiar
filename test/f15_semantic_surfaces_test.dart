@@ -41,7 +41,8 @@ void main() {
     await tester.tap(find.text('IG-100'));
     await tester.pump();
     expect(find.text('Review'), findsAtLeastNWidgets(1));
-    expect(find.text('Project > Work > IG-100 > Review'), findsOneWidget);
+    expect(find.byKey(const ValueKey('breadcrumb-work-item')), findsOneWidget);
+    expect(find.byKey(const ValueKey('breadcrumb-section')), findsOneWidget);
   });
 
   testWidgets('Reviews is calm when every review state is unavailable', (
@@ -97,10 +98,8 @@ void main() {
     expect(find.text('Open document'), findsOneWidget);
     await tester.tap(find.text('Open document'));
     await tester.pump();
-    expect(
-      find.text('Project > Knowledge > architecture > Architecture'),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('breadcrumb-category')), findsOneWidget);
+    expect(find.byKey(const ValueKey('breadcrumb-document')), findsOneWidget);
   });
 
   testWidgets(
@@ -116,19 +115,135 @@ void main() {
       );
 
       expect(find.text('Review recorded'), findsOneWidget);
-      expect(find.text('filesystem time'), findsOneWidget);
       expect(find.text('30 May 2024'), findsOneWidget);
       expect(
         find.text('artifact-update:file:.mana/features/IG-100/review.md'),
         findsNothing,
       );
 
+      await tester.drag(find.byType(ListView).last, const Offset(0, -400));
+      await tester.pumpAndSettle();
+      expect(find.text('filesystem time'), findsAtLeastNWidgets(1));
+      expect(find.text('Review notes updated'), findsOneWidget);
+
       await tester.tap(find.text('Review recorded'));
       await tester.pump();
       expect(
-        find.text('Project > Work > IG-100 > Review > Review notes'),
+        find.byKey(const ValueKey('breadcrumb-work-item')),
         findsOneWidget,
       );
+      expect(find.byKey(const ValueKey('breadcrumb-section')), findsOneWidget);
+      expect(find.byKey(const ValueKey('breadcrumb-document')), findsOneWidget);
+    },
+  );
+
+  testWidgets('dossier rows use typed labels and an honest untitled fallback', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      page(
+        _semanticModel(),
+        route: const ObservatoryRoute(
+          destination: ObservatoryDestination.work,
+          workItemId: 'feature:IG-100',
+          section: ManaSectionId.plan,
+        ),
+      ),
+    );
+
+    expect(find.text('Technical Task Breakdown'), findsOneWidget);
+    expect(find.text('Untitled document'), findsOneWidget);
+    expect(find.text('.mana/features/IG-100/task-breakdown.md'), findsNothing);
+    expect(find.text('Document'), findsNothing);
+  });
+
+  testWidgets(
+    'Activity resolves project-global targets and leaves stale targets inert',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        page(
+          _semanticModel(),
+          route: const ObservatoryRoute(
+            destination: ObservatoryDestination.activity,
+          ),
+        ),
+      );
+
+      expect(find.text('Architecture updated'), findsOneWidget);
+      expect(find.text('Unavailable document updated'), findsOneWidget);
+      expect(find.textContaining('changed'), findsNothing);
+
+      final unresolvedRow = find.ancestor(
+        of: find.text('Unavailable document updated'),
+        matching: find.byType(InkWell),
+      );
+      expect(tester.widget<InkWell>(unresolvedRow.first).onTap, isNull);
+
+      await tester.tap(find.text('Architecture updated'));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('breadcrumb-category')), findsOneWidget);
+      expect(find.byKey(const ValueKey('breadcrumb-document')), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'semantic breadcrumbs navigate typed parents and keep leaf inert',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        page(
+          _semanticModel(),
+          route: const ObservatoryRoute(
+            destination: ObservatoryDestination.work,
+            workItemId: 'feature:IG-100',
+            section: ManaSectionId.plan,
+            artifactId: 'file:.mana/features/IG-100/task-breakdown.md',
+          ),
+          detailLoader: (_) async => ManaInspectArtifactDetail.fromJson({
+            'schema': inspectArtifactSchema,
+            'artifact': _planSummary,
+            'payload': {'kind': 'text', 'value': '# Technical Task Breakdown'},
+            'relations': const [],
+          }),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final leaf = find.byKey(const ValueKey('breadcrumb-document'));
+      expect(leaf, findsOneWidget);
+      expect(
+        find.ancestor(of: leaf, matching: find.byType(TextButton)),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('breadcrumb-section')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('breadcrumb-document')), findsNothing);
+      expect(find.text('Technical Task Breakdown'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('breadcrumb-work-item')));
+      await tester.pump();
+      expect(find.text('Overview'), findsAtLeastNWidgets(2));
+
+      await tester.tap(find.byKey(const ValueKey('breadcrumb-destination')));
+      await tester.pump();
+      expect(find.text('Work'), findsAtLeastNWidgets(1));
+
+      await tester.tap(find.byKey(const ValueKey('breadcrumb-project')));
+      await tester.pump();
+      expect(find.text('Project observatory'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pump();
+      expect(find.text('Work'), findsAtLeastNWidgets(1));
+      await tester.tap(find.byTooltip('Forward'));
+      await tester.pump();
+      expect(find.text('Project observatory'), findsOneWidget);
     },
   );
 
@@ -277,7 +392,9 @@ Map<String, dynamic> _workItem(String id, {required String review}) => {
           },
         ]
       : const [],
-  'artifacts': id == 'feature:IG-100' ? [_reviewReference] : const [],
+  'artifacts': id == 'feature:IG-100'
+      ? [_reviewReference, _planReference, _untitledPlanReference]
+      : const [],
 };
 
 const _reviewReference = {
@@ -288,6 +405,34 @@ const _reviewReference = {
   'work_item_id': 'feature:IG-100',
   'section_id': 'review',
   'label': 'Review notes',
+};
+
+const _planReference = {
+  'artifact_id': 'file:.mana/features/IG-100/task-breakdown.md',
+  'path': '.mana/features/IG-100/task-breakdown.md',
+  'kind': 'markdown',
+  'status': 'available',
+  'work_item_id': 'feature:IG-100',
+  'section_id': 'plan',
+  'label': 'Technical Task Breakdown',
+};
+
+const _untitledPlanReference = {
+  'artifact_id': 'file:.mana/features/IG-100/untitled.md',
+  'path': '.mana/features/IG-100/untitled.md',
+  'kind': 'markdown',
+  'status': 'available',
+  'work_item_id': 'feature:IG-100',
+  'section_id': 'plan',
+  'label': null,
+};
+
+const _planSummary = {
+  'artifact_id': 'file:.mana/features/IG-100/task-breakdown.md',
+  'path': '.mana/features/IG-100/task-breakdown.md',
+  'family': 'workspace',
+  'kind': 'markdown',
+  'status': 'available',
 };
 
 final _workItems = {
@@ -350,6 +495,13 @@ const _activity = {
       'event_kind': 'review_recorded',
       'work_item_id': 'feature:IG-100',
       'related_artifact_ids': ['file:.mana/features/IG-100/review.md'],
+      'target': {
+        'artifact_id': 'file:.mana/features/IG-100/review.md',
+        'work_item_id': 'feature:IG-100',
+        'section_id': 'review',
+        'project_context_category': null,
+        'label': 'Review notes',
+      },
       'summary': 'Review recorded',
       'provenance': 'explicit_workspace_manifest',
     },
@@ -362,6 +514,51 @@ const _activity = {
       'event_kind': 'artifact_updated',
       'work_item_id': 'feature:IG-100',
       'related_artifact_ids': [],
+      'target': {
+        'artifact_id': 'file:.mana/features/IG-100/review.md',
+        'work_item_id': 'feature:IG-100',
+        'section_id': 'review',
+        'project_context_category': null,
+        'label': 'Review notes',
+      },
+      'summary': null,
+      'provenance': 'conservative_fallback',
+    },
+    {
+      'event_id': 'artifact-update:file:.mana/global/architecture.md',
+      'timestamp': {
+        'value': '1717064000',
+        'provenance': 'filesystem_mtime_epoch',
+      },
+      'event_kind': 'artifact_updated',
+      'work_item_id': null,
+      'related_artifact_ids': ['file:.mana/global/architecture.md'],
+      'target': {
+        'artifact_id': 'file:.mana/global/architecture.md',
+        'work_item_id': null,
+        'section_id': null,
+        'project_context_category': 'architecture',
+        'label': 'Architecture',
+      },
+      'summary': null,
+      'provenance': 'conservative_fallback',
+    },
+    {
+      'event_id': 'artifact-update:file:.mana/global/removed.md',
+      'timestamp': {
+        'value': '1717063900',
+        'provenance': 'filesystem_mtime_epoch',
+      },
+      'event_kind': 'artifact_updated',
+      'work_item_id': null,
+      'related_artifact_ids': ['file:.mana/global/removed.md'],
+      'target': {
+        'artifact_id': 'file:.mana/global/removed.md',
+        'work_item_id': null,
+        'section_id': null,
+        'project_context_category': 'architecture',
+        'label': 'Unavailable document',
+      },
       'summary': null,
       'provenance': 'conservative_fallback',
     },
@@ -376,6 +573,14 @@ const _catalog = {
     {
       'artifact_id': 'file:.mana/features/IG-100/review.md',
       'path': '.mana/features/IG-100/review.md',
+      'family': 'workspace',
+      'kind': 'markdown',
+      'status': 'available',
+    },
+    _planSummary,
+    {
+      'artifact_id': 'file:.mana/features/IG-100/untitled.md',
+      'path': '.mana/features/IG-100/untitled.md',
       'family': 'workspace',
       'kind': 'markdown',
       'status': 'available',
