@@ -156,6 +156,27 @@ class JourneyStore {
 
   bool _isSafeJourneyId(String id) => SafePathPolicy.isSafeRelativePath(id);
 
+  /// Prefer the project's Mana wrapper: it carries the project's linked
+  /// `MANA_HOME`, while `manaRoot` is only a fallback for producer-root use.
+  Future<ProcessResult> _runManaCommand({
+    required String wrapperCommand,
+    required String script,
+    required List<String> arguments,
+  }) {
+    final wrapper = File('${config.projectRoot}${Platform.pathSeparator}mana');
+    if (wrapper.existsSync()) {
+      return Process.run(wrapper.path, [
+        wrapperCommand,
+        ...arguments,
+      ], workingDirectory: config.projectRoot);
+    }
+    return Process.run('${config.manaRoot}/scripts/$script', [
+      '--project-root',
+      config.projectRoot,
+      ...arguments,
+    ], workingDirectory: config.projectRoot);
+  }
+
   Future<SafeFile> _fixtureFile() async {
     final fixture = config.fixturePath;
     if (fixture == null || fixture.isEmpty) {
@@ -205,9 +226,10 @@ class JourneyStore {
       }
       return graph;
     }
-    final result = await Process.run(
-      '${config.manaRoot}/scripts/mana-journey.sh',
-      ['--project-root', config.projectRoot, 'materialize', id],
+    final result = await _runManaCommand(
+      wrapperCommand: 'journey',
+      script: 'mana-journey.sh',
+      arguments: ['materialize', id],
     );
     if (result.exitCode != 0) throw StateError(result.stderr.toString());
     return JourneyGraph.decode(result.stdout.toString());
@@ -235,17 +257,11 @@ class JourneyStore {
 
   Future<List<Map<String, dynamic>>> labels(String id, String node) async {
     if (config.fixturePath != null && config.fixturePath!.isNotEmpty) return [];
-    final result =
-        await Process.run('${config.manaRoot}/scripts/mana-concepts.sh', [
-          '--project-root',
-          config.projectRoot,
-          'labels',
-          '--journey',
-          id,
-          '--node',
-          node,
-          '--json',
-        ]);
+    final result = await _runManaCommand(
+      wrapperCommand: 'concepts',
+      script: 'mana-concepts.sh',
+      arguments: ['labels', '--journey', id, '--node', node, '--json'],
+    );
     if (result.exitCode != 0) return [];
     try {
       final decoded = jsonDecode(result.stdout.toString());
@@ -257,17 +273,10 @@ class JourneyStore {
   }
 
   Future<String> requestExpansion(String journey, String node) async {
-    final result = await Process.run(
-      '${config.manaRoot}/scripts/mana-expand.sh',
-      [
-        '--project-root',
-        config.projectRoot,
-        'request',
-        '--journey',
-        journey,
-        '--node',
-        node,
-      ],
+    final result = await _runManaCommand(
+      wrapperCommand: 'expand',
+      script: 'mana-expand.sh',
+      arguments: ['request', '--journey', journey, '--node', node],
     );
     if (result.exitCode != 0) throw StateError(result.stderr.toString());
     return result.stdout.toString().trim();
