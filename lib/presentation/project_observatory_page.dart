@@ -1,9 +1,12 @@
 // ignore_for_file: curly_braces_in_flow_control_structures
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../application/mana_inspect.dart';
 import '../application/semantic_navigation.dart';
+import '../application/mana_workspace_watcher.dart';
 import 'artifact_detail_view.dart';
 import 'review_inbox_page.dart';
 
@@ -22,6 +25,8 @@ class ProjectObservatoryPage extends StatefulWidget {
     this.recentProjectRoots = const [],
     this.onOpenProject,
     this.artifactDetailLoader,
+    this.watcher,
+    this.onRefresh,
   });
   final ManaInspectClient client;
   final Widget knowledge;
@@ -34,6 +39,8 @@ class ProjectObservatoryPage extends StatefulWidget {
   final Future<void> Function(String projectRoot)? onOpenProject;
   final Future<ManaInspectArtifactDetail> Function(String artifactId)?
   artifactDetailLoader;
+  final ManaWorkspaceWatcher? watcher;
+  final Future<void> Function()? onRefresh;
   @override
   State<ProjectObservatoryPage> createState() => _ProjectObservatoryPageState();
 }
@@ -68,6 +75,12 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   String? _advancedFamilyFilter;
   String? _advancedKindFilter;
   String? _advancedStatusFilter;
+  late final ManaWorkspaceWatcher _watcher =
+      widget.watcher ??
+      ManaDirectoryWatcher(projectRoot: widget.client.projectRoot);
+  StreamSubscription<ManaWorkspaceWatchEvent>? _watchSubscription;
+  var _refreshPending = false;
+  var _watchUnavailable = false;
 
   @override
   void initState() {
@@ -75,6 +88,25 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     _model = widget.initialReadModel ?? _legacyModel();
     _loading = _model == null;
     if (_loading) _load();
+    _watchSubscription = _watcher.events.listen((event) {
+      if (!mounted) return;
+      setState(() {
+        switch (event) {
+          case ManaWorkspaceWatchEvent.changed:
+            _refreshPending = true;
+          case ManaWorkspaceWatchEvent.unavailable:
+            _watchUnavailable = true;
+        }
+      });
+    });
+    _watcher.start();
+  }
+
+  @override
+  void dispose() {
+    _watchSubscription?.cancel();
+    _watcher.dispose();
+    super.dispose();
   }
 
   ManaSemanticReadModel? _legacyModel() => widget.initialCatalog == null
@@ -113,6 +145,15 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
           _loading = false;
         });
     }
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _refreshPending = false);
+    if (widget.onRefresh != null) {
+      await widget.onRefresh!();
+      return;
+    }
+    await _load();
   }
 
   static ObservatoryRoute _normalizeDossierRoute(ObservatoryRoute route) {
@@ -303,9 +344,34 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
             tooltip: 'Forward',
           ),
           IconButton(
-            onPressed: _load,
+            key: const Key('refresh-button'),
+            onPressed: _refresh,
             icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
+            selectedIcon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.refresh),
+                Positioned(
+                  top: -2,
+                  right: -2,
+                  child: Container(
+                    key: const Key('refresh-pending-indicator'),
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.error,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.surface,
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            isSelected: _refreshPending,
+            tooltip: _refreshPending ? 'Refresh — changes detected' : 'Refresh',
           ),
         ],
       ),
@@ -349,6 +415,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
             child: Column(
               children: [
                 _breadcrumbs(model, route, artifact),
+                if (_watchUnavailable) _watchUnavailableWarning(),
                 if (model.refreshError != null) _refreshWarning(),
                 Expanded(
                   child: artifact == null
@@ -627,6 +694,13 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         ),
       ],
     ),
+  );
+
+  Widget _watchUnavailableWarning() => MaterialBanner(
+    content: const Text(
+      'Changes to .mana cannot be observed. Refresh remains available manually.',
+    ),
+    actions: const [SizedBox.shrink()],
   );
 
   Widget _routeBody(ManaSemanticReadModel model, ObservatoryRoute route) =>

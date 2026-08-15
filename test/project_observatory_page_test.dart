@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mana_familiar/mana_inspect.dart';
+import 'package:mana_familiar/application/mana_workspace_watcher.dart';
 import 'package:mana_familiar/presentation/project_observatory_page.dart';
 
 void main() {
@@ -103,6 +106,115 @@ void main() {
     await tester.pump();
     expect(find.text('Partial catalog'), findsOneWidget);
   });
+
+  testWidgets(
+    'marks Refresh when the Mana workspace changes and clears it manually',
+    (tester) async {
+      final watcher = _FakeWatcher();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProjectObservatoryPage(
+            client: ManaInspectClient(projectRoot: '/project'),
+            knowledge: const Text('Knowledge module'),
+            initialCatalog: ManaInspectCatalog.fromJson(_catalog),
+            watcher: watcher,
+            onRefresh: () async {},
+          ),
+        ),
+      );
+      await tester.pump();
+      watcher.add(ManaWorkspaceWatchEvent.changed);
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        tester
+            .widget<IconButton>(find.byKey(const Key('refresh-button')))
+            .isSelected,
+        isTrue,
+      );
+      expect(
+        find.byKey(const Key('refresh-pending-indicator')),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Refresh — changes detected'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('refresh-button')));
+      await tester.pump();
+
+      expect(
+        tester
+            .widget<IconButton>(find.byKey(const Key('refresh-button')))
+            .isSelected,
+        isFalse,
+      );
+      expect(find.byKey(const Key('refresh-pending-indicator')), findsNothing);
+    },
+  );
+
+  testWidgets('shows a non-blocking warning when .mana cannot be watched', (
+    tester,
+  ) async {
+    final watcher = _FakeWatcher();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProjectObservatoryPage(
+          client: ManaInspectClient(projectRoot: '/project'),
+          knowledge: const Text('Knowledge module'),
+          initialCatalog: ManaInspectCatalog.fromJson(_catalog),
+          watcher: watcher,
+        ),
+      ),
+    );
+    watcher.add(ManaWorkspaceWatchEvent.unavailable);
+    await tester.pump();
+
+    expect(
+      find.text(
+        'Changes to .mana cannot be observed. Refresh remains available manually.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('refresh-button')), findsOneWidget);
+  });
+
+  testWidgets('disposes the Mana workspace watcher', (tester) async {
+    final watcher = _FakeWatcher();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProjectObservatoryPage(
+          client: ManaInspectClient(projectRoot: '/project'),
+          knowledge: const Text('Knowledge module'),
+          initialCatalog: ManaInspectCatalog.fromJson(_catalog),
+          watcher: watcher,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(const SizedBox());
+
+    expect(watcher.disposed, isTrue);
+  });
+}
+
+class _FakeWatcher implements ManaWorkspaceWatcher {
+  final StreamController<ManaWorkspaceWatchEvent> _events =
+      StreamController.broadcast();
+  var disposed = false;
+
+  @override
+  Stream<ManaWorkspaceWatchEvent> get events => _events.stream;
+
+  void add(ManaWorkspaceWatchEvent event) => _events.add(event);
+
+  @override
+  Future<void> dispose() async {
+    disposed = true;
+    await _events.close();
+  }
+
+  @override
+  Future<void> start() async {}
 }
 
 const _catalog = {
