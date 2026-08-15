@@ -798,7 +798,7 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
       key: const Key('markdown-outline-compact'),
       initialValue: _activeAnchor,
       decoration: const InputDecoration(
-        labelText: 'On this page',
+        labelText: 'Document outline',
         border: OutlineInputBorder(),
         isDense: true,
       ),

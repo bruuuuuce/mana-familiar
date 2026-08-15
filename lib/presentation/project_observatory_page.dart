@@ -156,12 +156,27 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _refreshPending = false);
+    setState(() {
+      _refreshPending = false;
+      _detailCache.clear();
+      _detail = null;
+      _detailError = null;
+    });
     if (widget.onRefresh != null) {
       await widget.onRefresh!();
       return;
     }
-    await _load();
+    try {
+      // Unlike initial load, a user-requested refresh must fetch every
+      // semantic surface again. Reusing initialLoad would retain previously
+      // loaded project context and activity in the repository.
+      final model = await _repository.refresh();
+      if (!mounted) return;
+      setState(() => _model = model);
+      _loadDetailIfNeeded();
+    } catch (error) {
+      if (mounted) setState(() => _error = error);
+    }
   }
 
   static ObservatoryRoute _normalizeDossierRoute(ObservatoryRoute route) {
@@ -1703,24 +1718,23 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                 ),
               ),
             ),
-          const SizedBox(height: 22),
-          const Divider(),
-        ],
-        const SizedBox(height: 14),
-        ...categories
-            .where((category) => category.artifacts.isNotEmpty)
-            .map(_knowledgeCategoryRow),
-        if (categories.any((category) => category.artifacts.isEmpty)) ...[
-          const SizedBox(height: 18),
-          Text(
-            'Other categories',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
+        ] else ...[
+          const SizedBox(height: 14),
           ...categories
-              .where((category) => category.artifacts.isEmpty)
+              .where((category) => category.artifacts.isNotEmpty)
               .map(_knowledgeCategoryRow),
+          if (categories.any((category) => category.artifacts.isEmpty)) ...[
+            const SizedBox(height: 18),
+            Text(
+              'Other categories',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            ...categories
+                .where((category) => category.artifacts.isEmpty)
+                .map(_knowledgeCategoryRow),
+          ],
         ],
       ],
     );
@@ -1737,26 +1751,31 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     onTap: onTap,
   );
 
-  Widget _knowledgeCategoryRow(
-    ManaProjectContextCategory category,
-  ) => _quietRow(
-    leading: Icon(
-      category.artifacts.isEmpty
-          ? Icons.menu_book_outlined
-          : Icons.auto_stories_outlined,
-    ),
-    title: _humanize(category.category),
-    subtitle: category.artifacts.isEmpty
-        ? 'No material yet'
-        : '${category.artifacts.length} document${category.artifacts.length == 1 ? '' : 's'}',
-    trailing: const Icon(Icons.chevron_right),
-    onTap: () => _navigate(
-      ObservatoryRoute(
-        destination: ObservatoryDestination.knowledge,
-        category: category.category,
+  Widget _knowledgeCategoryRow(ManaProjectContextCategory category) {
+    final onlyDocument = category.artifacts.length == 1
+        ? category.artifacts.single
+        : null;
+    return _quietRow(
+      leading: Icon(
+        category.artifacts.isEmpty
+            ? Icons.menu_book_outlined
+            : Icons.auto_stories_outlined,
       ),
-    ),
-  );
+      title: _humanize(category.category),
+      subtitle: category.artifacts.isEmpty
+          ? 'No material yet'
+          : '${category.artifacts.length} document${category.artifacts.length == 1 ? '' : 's'}',
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => onlyDocument == null
+          ? _navigate(
+              ObservatoryRoute(
+                destination: ObservatoryDestination.knowledge,
+                category: category.category,
+              ),
+            )
+          : _openArtifact(_summary(onlyDocument), category: category.category),
+    );
+  }
 
   Widget _activity(ManaSemanticReadModel model) {
     if (model.mode == ManaSemanticMode.legacyCatalog)
