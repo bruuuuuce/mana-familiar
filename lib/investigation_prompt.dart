@@ -119,6 +119,7 @@ class InvestigationPromptBuilder {
       SourceState.snapshotUnavailable =>
         'snapshot unavailable; working tree is not authoritative',
       SourceState.missing => 'source unavailable',
+      SourceState.blocked => 'source blocked by path safety policy',
       null => 'source availability not checked in this view',
     };
     return '- ${_sourceIdentity(location)} · $availability';

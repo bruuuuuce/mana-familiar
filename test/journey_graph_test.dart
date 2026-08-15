@@ -165,12 +165,15 @@ void main() {
       expect(preferences.themeMode.value, ThemeMode.system);
       await preferences.saveThemeMode(ThemeMode.dark);
       await preferences.saveDisplay(fontSize: 18, tabSize: 4, wordWrap: true);
+      await preferences.rememberProjectRoot('/another-project');
+      await preferences.rememberProjectRoot(root.path);
 
       final reloaded = await ExplorerPreferences.load(config);
       expect(reloaded.themeMode.value, ThemeMode.dark);
       expect(reloaded.fontSize, 18);
       expect(reloaded.tabSize, 4);
       expect(reloaded.wordWrap, isTrue);
+      expect(reloaded.recentProjectRoots, [root.path, '/another-project']);
     },
   );
 }
