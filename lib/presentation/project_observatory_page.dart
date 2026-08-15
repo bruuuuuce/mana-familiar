@@ -156,12 +156,27 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _refreshPending = false);
+    setState(() {
+      _refreshPending = false;
+      _detailCache.clear();
+      _detail = null;
+      _detailError = null;
+    });
     if (widget.onRefresh != null) {
       await widget.onRefresh!();
       return;
     }
-    await _load();
+    try {
+      // Unlike initial load, a user-requested refresh must fetch every
+      // semantic surface again. Reusing initialLoad would retain previously
+      // loaded project context and activity in the repository.
+      final model = await _repository.refresh();
+      if (!mounted) return;
+      setState(() => _model = model);
+      _loadDetailIfNeeded();
+    } catch (error) {
+      if (mounted) setState(() => _error = error);
+    }
   }
 
   static ObservatoryRoute _normalizeDossierRoute(ObservatoryRoute route) {
