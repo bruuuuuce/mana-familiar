@@ -349,6 +349,47 @@ void main() {
     },
   );
 
+  testWidgets('Journey breadcrumbs return to the Learning Journey list', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      page(
+        _semanticModelWithContext({
+          ..._context,
+          'categories': [
+            ...(_context['categories'] as List).where(
+              (category) =>
+                  (category as Map<String, dynamic>)['category'] !=
+                  'learning_journeys',
+            ),
+            {
+              'category': 'learning_journeys',
+              'coverage': 'known',
+              'artifacts': [_journeyArtifact('journey:jrn_first', 'journey')],
+            },
+          ],
+        }),
+        route: const ObservatoryRoute(
+          destination: ObservatoryDestination.knowledge,
+          category: 'learning_journeys',
+          journeyId: 'jrn_first',
+        ),
+        knowledgeBuilder: (journeyId) => Text('Journey: $journeyId'),
+        learningJourneysBuilder: (_) => const Text('Journey list'),
+      ),
+    );
+
+    expect(find.text('Journey: jrn_first'), findsOneWidget);
+    expect(find.byKey(const ValueKey('breadcrumb-category')), findsOneWidget);
+    expect(find.byKey(const ValueKey('breadcrumb-journey')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('breadcrumb-category')));
+    await tester.pump();
+
+    expect(find.text('Journey list'), findsOneWidget);
+    expect(find.byKey(const ValueKey('breadcrumb-journey')), findsNothing);
+  });
+
   testWidgets('Advanced exposes raw catalog and producer diagnostics', (
     tester,
   ) async {
