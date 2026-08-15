@@ -15,8 +15,10 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    NativeProjectWindowBridge.install(on: flutterViewController, window: self)
 
     super.awakeFromNib()
+    (NSApp.delegate as? AppDelegate)?.installProjectMenu()
   }
 
   private func initialBackgroundColor() -> NSColor {
@@ -35,5 +37,40 @@ class MainFlutterWindow: NSWindow {
     }
     // Dynamic system color also updates when macOS appearance changes.
     return .windowBackgroundColor
+  }
+}
+
+private enum NativeProjectWindowBridge {
+  static let channelName = "mana_familiar/project_window"
+
+  static func install(on controller: FlutterViewController, window: NSWindow) {
+    let channel = FlutterMethodChannel(
+      name: channelName,
+      binaryMessenger: controller.engine.binaryMessenger
+    )
+    channel.setMethodCallHandler { call, result in
+      if call.method == "chooseProject" {
+        result(ProjectMenuController.chooseProject()?.path)
+        return
+      }
+      if call.method == "clearRecentProjects" {
+        ProjectMenuController.clearRecentProjectsStorage()
+        result(nil)
+        return
+      }
+
+      guard call.method == "presentProject",
+            let arguments = call.arguments as? [String: Any],
+            let projectRoot = arguments["projectRoot"] as? String,
+            !projectRoot.isEmpty else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+
+      let url = URL(fileURLWithPath: projectRoot).standardizedFileURL
+      window.title = "\(url.lastPathComponent) — Mana Familiar"
+      ProjectMenuController.remember(url)
+      result(nil)
+    }
   }
 }

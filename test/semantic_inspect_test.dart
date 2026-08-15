@@ -208,6 +208,111 @@ void main() {
     },
   );
 
+  test('defers the raw catalog until Advanced requests it', () async {
+    final root = await Directory.systemTemp.createTemp('semantic-catalog-');
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}/mana').writeAsString('');
+    final calls = <String>[];
+    final client = ManaInspectClient(
+      projectRoot: root.path,
+      run: (_, args, {workingDirectory}) async {
+        final operation = args[args.indexOf('inspect') + 1];
+        calls.add(operation);
+        final response = switch (operation) {
+          'project' => _projectWithSemantic,
+          'artifacts' => fixture('mixed-artifacts.json'),
+          'work-items' => fixture('work-items.json'),
+          'project-context' => fixture('project-context.json'),
+          'activity' => fixture('activity.json'),
+          _ => throw StateError('Unexpected operation: $operation'),
+        };
+        return ProcessResult(0, 0, jsonEncode(response), '');
+      },
+    );
+    final repository = ManaSemanticRepository(client);
+
+    final initial = await repository.initialLoad();
+    expect(initial.catalog, isNull);
+    expect(calls, isNot(contains('artifacts')));
+    expect(initial.workItems, isNotNull);
+    expect(initial.projectContext, isNull);
+    expect(initial.activity, isNull);
+
+    final withCatalog = await repository.loadCatalog();
+    expect(withCatalog.catalog, isNotNull);
+    expect(calls.where((operation) => operation == 'artifacts'), hasLength(1));
+
+    final completed = await repository.loadSupportingSurfaces();
+    expect(completed.projectContext, isNotNull);
+    expect(completed.activity, isNotNull);
+  });
+
+  test(
+    'refresh reloads project context after the initial supporting load',
+    () async {
+      final root = await Directory.systemTemp.createTemp('semantic-context-');
+      addTearDown(() => root.delete(recursive: true));
+      await File('${root.path}/mana').writeAsString('');
+      var contextReads = 0;
+      final client = ManaInspectClient(
+        projectRoot: root.path,
+        run: (_, args, {workingDirectory}) async {
+          final operation = args[args.indexOf('inspect') + 1];
+          final response = switch (operation) {
+            'project' => _projectWithSemantic,
+            'artifacts' => fixture('mixed-artifacts.json'),
+            'work-items' => fixture('work-items.json'),
+            'project-context' => {
+              ...fixture('project-context.json'),
+              'categories': [
+                {
+                  ...(fixture('project-context.json')['categories'] as List)
+                      .cast<Map<String, dynamic>>()
+                      .first,
+                  'artifacts': [
+                    {
+                      ...((fixture('project-context.json')['categories']
+                                      as List)
+                                  .cast<Map<String, dynamic>>()
+                                  .first['artifacts']
+                              as List)
+                          .cast<Map<String, dynamic>>()
+                          .first,
+                      'label': contextReads++ == 0
+                          ? 'Original architecture'
+                          : 'Updated architecture',
+                    },
+                  ],
+                },
+                ...((fixture('project-context.json')['categories'] as List)
+                    .cast<Map<String, dynamic>>()
+                    .skip(1)),
+              ],
+            },
+            'activity' => fixture('activity.json'),
+            _ => throw StateError('Unexpected operation: $operation'),
+          };
+          return ProcessResult(0, 0, jsonEncode(response), '');
+        },
+      );
+      final repository = ManaSemanticRepository(client);
+
+      await repository.initialLoad();
+      final initial = await repository.loadSupportingSurfaces();
+      final refreshed = await repository.refresh();
+
+      expect(
+        initial.projectContext!.categories.first.artifacts.first.label,
+        'Original architecture',
+      );
+      expect(
+        refreshed.projectContext!.categories.first.artifacts.first.label,
+        'Updated architecture',
+      );
+      expect(contextReads, 2);
+    },
+  );
+
   test(
     'later refresh failures retain prior data without leaking across modes',
     () async {
