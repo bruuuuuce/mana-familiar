@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../application/explorer_config.dart';
 import '../application/mana_inspect.dart';
+import '../native_project_window.dart';
 import '../presentation/explorer_page.dart';
 import '../presentation/project_observatory_page.dart';
+import '../presentation/project_welcome_page.dart';
 
 /// Top-level Material composition for the read-only Familiar desktop client.
 class ManaFamiliarApp extends StatefulWidget {
@@ -22,10 +24,31 @@ class ManaFamiliarApp extends StatefulWidget {
 
 class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
   late String _projectRoot = widget.config.projectRoot;
+  late bool _hasOpenProject = widget.config.hasExplicitProjectRoot;
 
   Future<void> _openProject(String projectRoot) async {
     await widget.preferences.rememberProjectRoot(projectRoot);
-    if (mounted) setState(() => _projectRoot = projectRoot);
+    await NativeProjectWindow.presentProject(projectRoot);
+    if (mounted) {
+      setState(() {
+        _projectRoot = projectRoot;
+        _hasOpenProject = true;
+      });
+    }
+  }
+
+  Future<void> _clearRecentProjects() async {
+    await widget.preferences.clearRecentProjectRoots();
+    await NativeProjectWindow.clearRecentProjects();
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.config.hasExplicitProjectRoot) {
+      NativeProjectWindow.presentProject(_projectRoot);
+    }
   }
 
   @override
@@ -45,6 +68,12 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
                 preferences: widget.preferences,
                 initialJourney: widget.config.journeyId,
               ),
+            )
+          : !_hasOpenProject
+          ? ProjectWelcomePage(
+              recentProjectRoots: widget.preferences.recentProjectRoots,
+              onOpenProject: _openProject,
+              onClearRecentProjects: _clearRecentProjects,
             )
           : ProjectObservatoryPage(
               key: ValueKey(_projectRoot),
