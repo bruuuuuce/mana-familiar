@@ -651,6 +651,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     final hasDestinationChild =
         route.workItemId != null ||
         route.category != null ||
+        route.journeyId != null ||
         route.advancedSection != null ||
         route.artifactId != null;
     entries.add(
@@ -698,10 +699,25 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         _SemanticBreadcrumb(
           role: 'category',
           label: labels[labelIndex++],
+          route: route.artifactId != null || route.journeyId != null
+              ? ObservatoryRoute(
+                  destination: ObservatoryDestination.knowledge,
+                  category: route.category,
+                )
+              : null,
+        ),
+      );
+    }
+    if (route.journeyId != null) {
+      entries.add(
+        _SemanticBreadcrumb(
+          role: 'journey',
+          label: labels[labelIndex++],
           route: route.artifactId != null
               ? ObservatoryRoute(
                   destination: ObservatoryDestination.knowledge,
                   category: route.category,
+                  journeyId: route.journeyId,
                 )
               : null,
         ),
