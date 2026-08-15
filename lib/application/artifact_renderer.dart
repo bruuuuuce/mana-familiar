@@ -1,0 +1,596 @@
+import 'dart:convert';
+
+import 'mana_inspect.dart';
+
+/// Conservative limits applied before a producer-owned payload reaches UI.
+class ArtifactRenderLimits {
+  const ArtifactRenderLimits({
+    this.maxPayloadCharacters = 128 * 1024,
+    this.maxJsonDepth = 16,
+    this.maxJsonNodes = 1000,
+    this.maxRelationPreviews = 20,
+    this.maxRelationDepth = 2,
+  });
+
+  final int maxPayloadCharacters;
+  final int maxJsonDepth;
+  final int maxJsonNodes;
+  final int maxRelationPreviews;
+  final int maxRelationDepth;
+}
+
+enum ArtifactPayloadView {
+  journey,
+  verification,
+  repair,
+  review,
+  evidence,
+  decision,
+  governance,
+  json,
+  markdown,
+  text,
+  metadata,
+}
+
+class ArtifactRenderContext {
+  const ArtifactRenderContext({
+    required this.artifact,
+    required this.payload,
+    required this.raw,
+    required this.relations,
+  });
+
+  factory ArtifactRenderContext.fromDetail(ManaInspectArtifactDetail detail) =>
+      ArtifactRenderContext(
+        artifact: detail.artifact,
+        payload: detail.payload,
+        raw: detail.raw,
+        relations: detail.relations,
+      );
+
+  final ManaInspectArtifactSummary artifact;
+  final Object? payload;
+  final Map<String, dynamic> raw;
+  final List<Map<String, dynamic>> relations;
+
+  /// The detail envelope itself is `mana.inspect.artifact/v1`; dispatch must
+  /// use the nested payload schema or explicit producer payload_schema instead.
+  String? get payloadSchema =>
+      _payloadString('schema') ?? _rawString('payload_schema');
+  String? get contentType =>
+      _metadataString('content_type') ??
+      _metadataString('contentType') ??
+      _metadataString('media_type') ??
+      _artifactString('content_type') ??
+      _artifactString('contentType') ??
+      _artifactString('media_type');
+
+  String? _metadataString(String key) {
+    final direct = raw[key];
+    if (direct is String && direct.isNotEmpty) return direct;
+    return _payloadString(key);
+  }
+
+  String? _rawString(String key) {
+    final direct = raw[key];
+    return direct is String && direct.isNotEmpty ? direct : null;
+  }
+
+  String? _artifactString(String key) {
+    final value = artifact.raw[key];
+    return value is String && value.isNotEmpty ? value : null;
+  }
+
+  String? _payloadString(String key) {
+    if (payload case final Map map) {
+      final value = map[key];
+      if (value is String && value.isNotEmpty) return value;
+    }
+    return null;
+  }
+}
+
+class ArtifactRenderPlan {
+  const ArtifactRenderPlan({
+    required this.rendererId,
+    required this.view,
+    required this.reason,
+    this.text,
+    this.sourceText,
+  });
+
+  final String rendererId;
+  final ArtifactPayloadView view;
+  final String reason;
+  final String? text;
+  final String? sourceText;
+}
+
+abstract class ArtifactRenderer {
+  const ArtifactRenderer(this.id);
+
+  final String id;
+  bool supportsExactSchema(ArtifactRenderContext context) => false;
+  bool supportsKind(ArtifactRenderContext context) => false;
+  bool supportsContentType(ArtifactRenderContext context) => false;
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  );
+}
+
+/// Explicit, ordered registry. It intentionally is not a plugin mechanism.
+class ArtifactRendererRegistry {
+  const ArtifactRendererRegistry(this.renderers);
+
+  final List<ArtifactRenderer> renderers;
+
+  factory ArtifactRendererRegistry.standard() => ArtifactRendererRegistry([
+    const JourneyArtifactRenderer(),
+    const VerificationArtifactRenderer(),
+    const BoundedRepairArtifactRenderer(),
+    const ReviewArtifactRenderer(),
+    const EvidenceArtifactRenderer(),
+    const DecisionArtifactRenderer(),
+    const GovernanceArtifactRenderer(),
+    const JsonArtifactRenderer(),
+    const MarkdownArtifactRenderer(),
+    const PlainTextArtifactRenderer(),
+    const MetadataArtifactRenderer(),
+  ]);
+
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context, {
+    ArtifactRenderLimits limits = const ArtifactRenderLimits(),
+  }) {
+    for (final renderer in renderers) {
+      if (renderer.supportsExactSchema(context)) {
+        return renderer.render(context, limits);
+      }
+    }
+    for (final renderer in renderers) {
+      if (renderer.supportsKind(context)) {
+        return renderer.render(context, limits);
+      }
+    }
+    for (final renderer in renderers) {
+      if (renderer.supportsContentType(context)) {
+        return renderer.render(context, limits);
+      }
+    }
+    return renderers.last.render(context, limits);
+  }
+}
+
+class JourneyArtifactRenderer extends ArtifactRenderer {
+  const JourneyArtifactRenderer() : super('journey');
+
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.learning.graph/v1';
+
+  @override
+  bool supportsKind(ArtifactRenderContext context) =>
+      context.artifact.family == 'knowledge' &&
+      context.artifact.kind == 'journey';
+
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) => const ArtifactRenderPlan(
+    rendererId: 'journey',
+    view: ArtifactPayloadView.journey,
+    reason: 'Known Journey artifact',
+  );
+}
+
+class VerificationArtifactRenderer extends ArtifactRenderer {
+  const VerificationArtifactRenderer() : super('verification');
+
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.verification.result/v2';
+
+  @override
+  bool supportsKind(ArtifactRenderContext context) =>
+      context.artifact.kind == 'verification-result';
+
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) => const ArtifactRenderPlan(
+    rendererId: 'verification',
+    view: ArtifactPayloadView.verification,
+    reason: 'Mana verification result',
+  );
+}
+
+class BoundedRepairArtifactRenderer extends ArtifactRenderer {
+  const BoundedRepairArtifactRenderer() : super('bounded-repair');
+
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.repair.bounded/v1';
+
+  @override
+  bool supportsKind(ArtifactRenderContext context) =>
+      context.artifact.kind == 'bounded-repair' ||
+      context.artifact.kind == 'repair-result';
+
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) => const ArtifactRenderPlan(
+    rendererId: 'bounded-repair',
+    view: ArtifactPayloadView.repair,
+    reason: 'Mana bounded repair outcome',
+  );
+}
+
+class ReviewArtifactRenderer extends ArtifactRenderer {
+  const ReviewArtifactRenderer() : super('review');
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.review.findings/v1';
+  @override
+  bool supportsKind(ArtifactRenderContext context) => const {
+    'review-findings',
+    'pr-readiness',
+    'branch-validation',
+    'architecture-review',
+  }.contains(context.artifact.kind);
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) => const ArtifactRenderPlan(
+    rendererId: 'review',
+    view: ArtifactPayloadView.review,
+    reason: 'Structured Mana review findings',
+  );
+}
+
+class EvidenceArtifactRenderer extends ArtifactRenderer {
+  const EvidenceArtifactRenderer() : super('evidence');
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.evidence.index/v1';
+  @override
+  bool supportsKind(ArtifactRenderContext context) =>
+      context.artifact.kind == 'evidence_index';
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) => const ArtifactRenderPlan(
+    rendererId: 'evidence',
+    view: ArtifactPayloadView.evidence,
+    reason: 'Mana evidence inventory',
+  );
+}
+
+class DecisionArtifactRenderer extends ArtifactRenderer {
+  const DecisionArtifactRenderer() : super('decision');
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.decision/v1' ||
+      context.payloadSchema == 'mana.story-trace/v1';
+  @override
+  bool supportsKind(ArtifactRenderContext context) => const {
+    'decision',
+    'story-trace',
+    'developer-choice',
+  }.contains(context.artifact.kind);
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) => const ArtifactRenderPlan(
+    rendererId: 'decision',
+    view: ArtifactPayloadView.decision,
+    reason: 'Structured Mana decision or story trace',
+  );
+}
+
+class GovernanceArtifactRenderer extends ArtifactRenderer {
+  const GovernanceArtifactRenderer() : super('governance');
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.governance.report/v2';
+  @override
+  bool supportsKind(ArtifactRenderContext context) => const {
+    'governance-report',
+    'evaluation-summary',
+  }.contains(context.artifact.kind);
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) => const ArtifactRenderPlan(
+    rendererId: 'governance',
+    view: ArtifactPayloadView.governance,
+    reason: 'Mana governance or evaluation summary',
+  );
+}
+
+class JsonArtifactRenderer extends ArtifactRenderer {
+  const JsonArtifactRenderer() : super('json');
+
+  @override
+  bool supportsExactSchema(ArtifactRenderContext context) =>
+      context.payloadSchema == 'mana.inspect.artifact/v1';
+
+  @override
+  bool supportsContentType(ArtifactRenderContext context) =>
+      context.contentType == 'application/json' ||
+      (context.contentType == null &&
+          (context.payload is Map || context.payload is List));
+
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) {
+    final inspection = _inspectJson(context.payload, limits);
+    if (!inspection.safe) {
+      return ArtifactRenderPlan(
+        rendererId: 'metadata',
+        view: ArtifactPayloadView.metadata,
+        reason: inspection.reason!,
+      );
+    }
+    return ArtifactRenderPlan(
+      rendererId: id,
+      view: ArtifactPayloadView.json,
+      reason: 'Validated JSON payload',
+      text: const JsonEncoder.withIndent('  ').convert(context.payload),
+    );
+  }
+}
+
+class MarkdownArtifactRenderer extends ArtifactRenderer {
+  const MarkdownArtifactRenderer() : super('markdown');
+
+  @override
+  bool supportsContentType(ArtifactRenderContext context) =>
+      context.contentType == 'text/markdown' ||
+      context.contentType == 'text/x-markdown';
+
+  @override
+  bool supportsKind(ArtifactRenderContext context) =>
+      context.artifact.kind == 'markdown';
+
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) {
+    final text = _payloadText(context.payload);
+    if (text == null) {
+      return const ArtifactRenderPlan(
+        rendererId: 'metadata',
+        view: ArtifactPayloadView.metadata,
+        reason: 'Markdown payload has no text body',
+      );
+    }
+    if (text.length > limits.maxPayloadCharacters) {
+      return const ArtifactRenderPlan(
+        rendererId: 'metadata',
+        view: ArtifactPayloadView.metadata,
+        reason: 'Payload exceeds the safe display limit',
+      );
+    }
+    return ArtifactRenderPlan(
+      rendererId: id,
+      view: ArtifactPayloadView.markdown,
+      reason: 'Safely rendered Markdown',
+      text: safeMarkdownText(text),
+      sourceText: text,
+    );
+  }
+}
+
+class PlainTextArtifactRenderer extends ArtifactRenderer {
+  const PlainTextArtifactRenderer() : super('text');
+
+  @override
+  bool supportsContentType(ArtifactRenderContext context) =>
+      context.contentType?.startsWith('text/') ?? context.payload is String;
+
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) {
+    final text = _payloadText(context.payload);
+    if (text == null) {
+      return const ArtifactRenderPlan(
+        rendererId: 'metadata',
+        view: ArtifactPayloadView.metadata,
+        reason: 'Text payload has no text body',
+      );
+    }
+    if (text.length > limits.maxPayloadCharacters) {
+      return const ArtifactRenderPlan(
+        rendererId: 'metadata',
+        view: ArtifactPayloadView.metadata,
+        reason: 'Payload exceeds the safe display limit',
+      );
+    }
+    return ArtifactRenderPlan(
+      rendererId: id,
+      view: ArtifactPayloadView.text,
+      reason: 'Plain text payload',
+      text: text,
+    );
+  }
+}
+
+class MetadataArtifactRenderer extends ArtifactRenderer {
+  const MetadataArtifactRenderer() : super('metadata');
+
+  @override
+  ArtifactRenderPlan render(
+    ArtifactRenderContext context,
+    ArtifactRenderLimits limits,
+  ) {
+    final contentType = context.contentType;
+    final reason =
+        contentType != null &&
+            !contentType.startsWith('text/') &&
+            contentType != 'application/json'
+        ? 'Unsupported or binary content: $contentType'
+        : context.payload == null
+        ? 'No payload was provided'
+        : 'Unknown payload schema or kind';
+    return ArtifactRenderPlan(
+      rendererId: id,
+      view: ArtifactPayloadView.metadata,
+      reason: reason,
+    );
+  }
+}
+
+class RelationPreview {
+  const RelationPreview({
+    required this.id,
+    required this.kind,
+    this.cycle = false,
+  });
+  final String id;
+  final String kind;
+  final bool cycle;
+}
+
+List<RelationPreview> boundedRelationPreviews(
+  List<Map<String, dynamic>> relations, {
+  required String rootArtifactId,
+  ArtifactRenderLimits limits = const ArtifactRenderLimits(),
+}) {
+  final visited = <String>{rootArtifactId};
+  final result = <RelationPreview>[];
+  for (final relation in relations.take(limits.maxRelationPreviews)) {
+    final target =
+        (relation['artifact_id'] ??
+                relation['target_artifact_id'] ??
+                relation['to'])
+            ?.toString();
+    if (target == null || target.isEmpty) continue;
+    final cycle = !visited.add(target);
+    result.add(
+      RelationPreview(
+        id: target,
+        kind: relation['kind']?.toString() ?? 'related',
+        cycle: cycle,
+      ),
+    );
+  }
+  return result;
+}
+
+String safeMarkdownText(String text) {
+  final fenced = RegExp(r'^```[^\n]*\n[\s\S]*?^```\s*$', multiLine: true);
+  final output = StringBuffer();
+  var cursor = 0;
+  for (final match in fenced.allMatches(text)) {
+    output.write(_safeMarkdownProse(text.substring(cursor, match.start)));
+    // Fenced source remains inert Flutter text. Keeping it byte-for-byte here
+    // lets bounded diagram renderers validate directives before rendering.
+    output.write(match.group(0));
+    cursor = match.end;
+  }
+  output.write(_safeMarkdownProse(text.substring(cursor)));
+  return output.toString();
+}
+
+String _safeMarkdownProse(String text) {
+  var safe = text
+      .replaceAll(
+        RegExp(r'<script\b[^>]*>[\s\S]*?</script\s*>', caseSensitive: false),
+        '',
+      )
+      .replaceAll(RegExp(r'<[^>]*>', multiLine: true), '');
+  safe = safe.replaceAllMapped(
+    RegExp(r'!\[([^\]]*)\]\([^)]*\)'),
+    (match) => match.group(1) ?? '',
+  );
+  safe = safe.replaceAllMapped(RegExp(r'\[([^\]]+)\]\(([^)]*)\)'), (match) {
+    final target = match.group(2)!.trim();
+    return target.startsWith('http://') ||
+            target.startsWith('https://') ||
+            target.startsWith('#')
+        ? match.group(0)!
+        : match.group(1)!;
+  });
+  return safe;
+}
+
+String? _payloadText(Object? payload) {
+  if (payload is String) return payload;
+  if (payload is Map) {
+    final content =
+        payload['content'] ??
+        payload['text'] ??
+        payload['body'] ??
+        payload['value'];
+    return content is String ? content : null;
+  }
+  return null;
+}
+
+_JsonInspection _inspectJson(Object? value, ArtifactRenderLimits limits) {
+  var nodes = 0;
+  var characters = 0;
+  String? inspect(Object? current, int depth) {
+    if (++nodes > limits.maxJsonNodes) {
+      return 'JSON exceeds the safe node limit';
+    }
+    if (current is String) {
+      characters += current.length;
+      if (characters > limits.maxPayloadCharacters) {
+        return 'JSON exceeds the safe display limit';
+      }
+    }
+    if (depth > limits.maxJsonDepth) {
+      return 'JSON exceeds the safe nesting depth';
+    }
+    if (current == null ||
+        current is String ||
+        current is num ||
+        current is bool) {
+      return null;
+    }
+    if (current is List) {
+      for (final item in current) {
+        final error = inspect(item, depth + 1);
+        if (error != null) return error;
+      }
+      return null;
+    }
+    if (current is Map) {
+      for (final entry in current.entries) {
+        if (entry.key is! String) return 'Malformed JSON object key';
+        characters += (entry.key as String).length;
+        if (characters > limits.maxPayloadCharacters) {
+          return 'JSON exceeds the safe display limit';
+        }
+        final error = inspect(entry.value, depth + 1);
+        if (error != null) return error;
+      }
+      return null;
+    }
+    return 'Malformed JSON payload';
+  }
+
+  return _JsonInspection(inspect(value, 0));
+}
+
+class _JsonInspection {
+  const _JsonInspection(this.reason);
+  final String? reason;
+  bool get safe => reason == null;
+}

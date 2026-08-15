@@ -38,6 +38,17 @@ Direct artifact mode uses `--artifact <file>`. It does not invoke Mana. Source
 anchors resolve below `--project-root`; diagram assets resolve relative to the
 artifact file. `--fixture` is a backwards-compatible alias.
 
+## Path and read safety
+
+Artifact-derived source anchors and diagram asset paths are untrusted. They
+must be non-empty relative paths using `/` separators; absolute paths, `.` and
+`..` segments, empty segments, and Windows drive paths are rejected. Roots and
+candidates are canonicalized before containment is checked. Symlinks are
+allowed only when their final target remains below the canonical allowed root.
+Only regular files are read, and reads are bounded to 4 MiB for source files
+and 8 MiB for artifacts and diagram assets. Missing files remain a valid,
+explicitly unavailable display state.
+
 Producer-backed mode uses `--project-root` and `--mana-root`. The Explorer asks
 that explicit Mana installation to materialize a Journey and validates the
 returned JSON against the same contract.
