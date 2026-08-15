@@ -82,15 +82,27 @@ void main() {
     addTearDown(() => root.delete(recursive: true));
     final project = Directory('${root.path}/project');
     await project.create();
-    final wrapper = File('${project.path}/mana');
-    await wrapper.writeAsString(r'''#!/bin/sh
+    final wrapper = File(
+      Platform.isWindows ? '${project.path}/mana.bat' : '${project.path}/mana',
+    );
+    await wrapper.writeAsString(
+      Platform.isWindows
+          ? r'''@echo off
+if "%1"=="journey" if "%2"=="materialize" (
+  <nul set /p ={"schema":"mana.learning.graph/v1","journey":{"id":"jrn_0123456789abcdef01234567","title":"Wrapper Journey"},"nodes":[{"id":"node"}]}
+  exit /b 0
+)
+exit /b 1
+'''
+          : r'''#!/bin/sh
 if [ "$1" = journey ] && [ "$2" = materialize ]; then
   printf '%s' '{"schema":"mana.learning.graph/v1","journey":{"id":"jrn_0123456789abcdef01234567","title":"Wrapper Journey"},"nodes":[{"id":"node"}]}'
   exit 0
 fi
 exit 1
-''');
-    await Process.run('chmod', ['+x', wrapper.path]);
+''',
+    );
+    if (!Platform.isWindows) await Process.run('chmod', ['+x', wrapper.path]);
     final store = JourneyStore(
       ExplorerConfig(
         projectRoot: project.path,
