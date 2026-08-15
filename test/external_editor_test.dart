@@ -50,6 +50,25 @@ void main() {
     ]);
   });
 
+  test('preserves an explicit Windows source path style', () {
+    const windowsLocation = SourceLocation(
+      projectRoot: r'C:\project with spaces',
+      path: 'lib/sample.dart',
+      startLine: 27,
+      endLine: 31,
+    );
+
+    final invocation = const ExternalEditorLauncher().buildInvocation(
+      vscode,
+      windowsLocation,
+    );
+
+    expect(invocation.arguments, [
+      '--goto',
+      r'C:\project with spaces\lib\sample.dart:27:1',
+    ]);
+  });
+
   test(
     'accepts explicit URI profiles without converting them to a shell command',
     () {

@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'safe_path.dart';
+
 /// Immutable, version-aware identity for a range used as Journey evidence.
 class SourceLocation {
   const SourceLocation({
@@ -35,10 +37,7 @@ class SourceLocation {
     );
   }
 
-  bool get isSafe =>
-      path.isNotEmpty &&
-      !path.startsWith('/') &&
-      !path.split('/').any((part) => part == '..' || part.isEmpty);
+  bool get isSafe => SafePathPolicy.isSafeRelativePath(path);
   String get reference => '$path:$startLine-$endLine';
 
   @override
@@ -56,7 +55,13 @@ class SourceLocation {
       Object.hash(projectRoot, path, startLine, endLine, revision, contentHash);
 }
 
-enum SourceState { snapshot, workingTree, snapshotUnavailable, missing }
+enum SourceState {
+  snapshot,
+  workingTree,
+  snapshotUnavailable,
+  missing,
+  blocked,
+}
 
 class ResolvedSource {
   const ResolvedSource({
@@ -64,12 +69,14 @@ class ResolvedSource {
     required this.state,
     this.contents,
     this.drifted = false,
+    this.reason,
   });
 
   final SourceLocation location;
   final SourceState state;
   final String? contents;
   final bool drifted;
+  final String? reason;
 
   bool get available => contents != null;
   String get status => switch (state) {
@@ -81,24 +88,47 @@ class ResolvedSource {
     SourceState.snapshotUnavailable =>
       'Analyzed snapshot unavailable — working tree is not authoritative',
     SourceState.missing => 'Source unavailable',
+    SourceState.blocked => 'Source blocked — ${reason ?? 'unsafe path'}',
   };
 }
 
 class SourceResolver {
   Future<ResolvedSource> resolve(SourceLocation location) async {
     if (!location.isSafe) {
-      return ResolvedSource(location: location, state: SourceState.missing);
+      return ResolvedSource(
+        location: location,
+        state: SourceState.blocked,
+        reason: 'source paths must be relative and traversal-free',
+      );
     }
-    final workingTree = File('${location.projectRoot}/${location.path}');
-    final current = await workingTree.exists()
-        ? await workingTree.readAsString()
-        : null;
+    String? current;
+    try {
+      final workingTree = await SafePathPolicy(
+        location.projectRoot,
+        maxBytes: SafePathPolicy.sourceMaxBytes,
+      ).resolveFile(location.path);
+      current = workingTree == null ? null : await workingTree.readAsString();
+    } on SafePathException catch (error) {
+      return ResolvedSource(
+        location: location,
+        state: SourceState.blocked,
+        reason: error.message,
+      );
+    }
     final revision = location.revision;
     if (revision == null || revision.isEmpty) {
       return ResolvedSource(
         location: location,
         state: current == null ? SourceState.missing : SourceState.workingTree,
         contents: current,
+      );
+    }
+
+    if (!RegExp(r'^[A-Za-z0-9][A-Za-z0-9._/~^-]*$').hasMatch(revision)) {
+      return ResolvedSource(
+        location: location,
+        state: SourceState.blocked,
+        reason: 'snapshot revision is not a safe Git revision token',
       );
     }
 
