@@ -64,7 +64,7 @@ void main() {
     expect(find.textContaining('unknown'), findsNothing);
   });
 
-  testWidgets('Knowledge makes populated and empty categories distinct', (
+  testWidgets('Knowledge opens a single-document category directly', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -95,12 +95,55 @@ void main() {
 
     await tester.tap(find.text('Architecture'));
     await tester.pump();
-    expect(find.text('Open document'), findsOneWidget);
-    await tester.tap(find.text('Open document'));
-    await tester.pump();
     expect(find.byKey(const ValueKey('breadcrumb-category')), findsOneWidget);
     expect(find.byKey(const ValueKey('breadcrumb-document')), findsOneWidget);
   });
+
+  testWidgets(
+    'Knowledge retains a focused file list for fake multi-document data',
+    (tester) async {
+      final originalCategories = (_context['categories'] as List)
+          .cast<Map<String, dynamic>>();
+      final fakeModel = _semanticModelWithContext({
+        ..._context,
+        'categories': [
+          {
+            'category': 'architecture',
+            'coverage': 'known',
+            'artifacts': [
+              (originalCategories.first['artifacts'] as List).first,
+              {
+                'artifact_id': 'file:.mana/global/deployment.md',
+                'path': '.mana/global/deployment.md',
+                'kind': 'markdown',
+                'status': 'available',
+                'work_item_id': null,
+                'section_id': null,
+                'label': 'Deployment architecture',
+              },
+            ],
+          },
+          ...originalCategories.skip(1),
+        ],
+      });
+      await tester.pumpWidget(
+        page(
+          fakeModel,
+          route: const ObservatoryRoute(
+            destination: ObservatoryDestination.knowledge,
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Architecture'));
+      await tester.pump();
+
+      expect(find.text('Open document'), findsNWidgets(2));
+      expect(find.text('Deployment architecture'), findsOneWidget);
+      expect(find.text('Integrations'), findsNothing);
+      expect(find.text('Other categories'), findsNothing);
+    },
+  );
 
   testWidgets(
     'Activity is readable, retains filesystem provenance, and enters typed context',
@@ -327,6 +370,16 @@ ManaSemanticReadModel _semanticModel({
       ? ManaActivityResponse.fromJson(_activity)
       : null,
 );
+
+ManaSemanticReadModel _semanticModelWithContext(Map<String, dynamic> context) =>
+    ManaSemanticReadModel(
+      project: _project(),
+      mode: ManaSemanticMode.fullSemantic,
+      catalog: ManaInspectCatalog.fromJson(_catalog),
+      workItems: ManaWorkItemsResponse.fromJson(_workItems),
+      projectContext: ManaProjectContextResponse.fromJson(context),
+      activity: ManaActivityResponse.fromJson(_activity),
+    );
 
 ManaSemanticReadModel _unknownReviewsModel() => ManaSemanticReadModel(
   project: _project(),
