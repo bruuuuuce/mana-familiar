@@ -163,18 +163,30 @@ class JourneyStore {
     required String script,
     required List<String> arguments,
   }) {
-    final wrapper = File('${config.projectRoot}${Platform.pathSeparator}mana');
+    final wrapper = _projectManaWrapper();
     if (wrapper.existsSync()) {
-      return Process.run(wrapper.path, [
-        wrapperCommand,
-        ...arguments,
-      ], workingDirectory: config.projectRoot);
+      final command = Platform.isWindows ? 'cmd.exe' : wrapper.path;
+      final commandArguments = Platform.isWindows
+          ? ['/c', wrapper.path, wrapperCommand, ...arguments]
+          : [wrapperCommand, ...arguments];
+      return Process.run(
+        command,
+        commandArguments,
+        workingDirectory: config.projectRoot,
+      );
     }
     return Process.run('${config.manaRoot}/scripts/$script', [
       '--project-root',
       config.projectRoot,
       ...arguments,
     ], workingDirectory: config.projectRoot);
+  }
+
+  File _projectManaWrapper() {
+    final base = '${config.projectRoot}${Platform.pathSeparator}mana';
+    final wrapper = File(base);
+    if (wrapper.existsSync() || !Platform.isWindows) return wrapper;
+    return File('$base.bat');
   }
 
   Future<SafeFile> _fixtureFile() async {
