@@ -6,6 +6,7 @@ class ExplorerConfig {
   const ExplorerConfig({
     required this.projectRoot,
     required this.manaRoot,
+    this.hasExplicitProjectRoot = true,
     this.preferencesRoot,
     this.journeyId,
     this.fixturePath,
@@ -14,6 +15,10 @@ class ExplorerConfig {
 
   final String projectRoot;
   final String manaRoot;
+
+  /// Whether the project was deliberately selected at launch rather than
+  /// inferred from the process working directory.
+  final bool hasExplicitProjectRoot;
   final String? preferencesRoot;
   final String? journeyId;
   final String? fixturePath;
@@ -24,6 +29,7 @@ class ExplorerConfig {
   ExplorerConfig withProjectRoot(String projectRoot) => ExplorerConfig(
     projectRoot: projectRoot,
     manaRoot: manaRoot,
+    hasExplicitProjectRoot: true,
     preferencesRoot: preferencesRoot,
     journeyId: journeyId,
     fixturePath: fixturePath,
@@ -65,9 +71,11 @@ class ExplorerConfig {
         : args.contains('--fixture')
         ? value('--fixture', '')
         : null;
+    final hasExplicitProjectRoot = args.contains('--project-root');
     return ExplorerConfig(
       projectRoot: value('--project-root', detect('.mana')),
       manaRoot: value('--mana-root', detect('scripts/mana-journey.sh')),
+      hasExplicitProjectRoot: hasExplicitProjectRoot,
       journeyId: args.contains('--journey') ? value('--journey', '') : null,
       fixturePath: artifactPath,
       inspectSnapshotPath: args.contains('--inspect-snapshot')

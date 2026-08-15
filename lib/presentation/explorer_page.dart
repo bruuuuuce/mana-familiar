@@ -343,6 +343,7 @@ class ExplorerPreferences {
             (raw['recentProjectRoots'] as List?)
                 ?.whereType<String>()
                 .where((path) => path.isNotEmpty)
+                .where(_isUsableProjectRoot)
                 .toList() ??
             const [],
       );
@@ -403,11 +404,22 @@ class ExplorerPreferences {
 
   /// Retain a small local project history without writing to Mana artifacts.
   Future<void> rememberProjectRoot(String projectRoot) async {
+    if (!_isUsableProjectRoot(projectRoot)) return;
     recentProjectRoots = [
       projectRoot,
       ...recentProjectRoots.where((entry) => entry != projectRoot),
-    ].take(8).toList(growable: false);
+    ].take(10).toList(growable: false);
     await _save();
+  }
+
+  Future<void> clearRecentProjectRoots() async {
+    recentProjectRoots = const [];
+    await _save();
+  }
+
+  static bool _isUsableProjectRoot(String path) {
+    final directory = Directory(path).absolute;
+    return directory.parent.path != directory.path;
   }
 
   Future<void> _save() async {
