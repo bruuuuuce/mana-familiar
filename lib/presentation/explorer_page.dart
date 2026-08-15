@@ -460,6 +460,89 @@ class ExplorerPage extends StatefulWidget {
   State<ExplorerPage> createState() => _ExplorerPageState();
 }
 
+class JourneyPickerPage extends StatefulWidget {
+  const JourneyPickerPage({
+    super.key,
+    required this.store,
+    required this.onOpenJourney,
+  });
+
+  final JourneyStore store;
+  final ValueChanged<String> onOpenJourney;
+
+  @override
+  State<JourneyPickerPage> createState() => _JourneyPickerPageState();
+}
+
+class _JourneyPickerPageState extends State<JourneyPickerPage> {
+  late final Future<List<_JourneyChoice>> _choices = _loadChoices();
+
+  Future<List<_JourneyChoice>> _loadChoices() async {
+    final ids = await widget.store.list();
+    return Future.wait(
+      ids.map((id) async {
+        try {
+          return _JourneyChoice(
+            id: id,
+            title: (await widget.store.load(id)).title,
+          );
+        } catch (_) {
+          return _JourneyChoice(id: id, title: id);
+        }
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<_JourneyChoice>>(
+    future: _choices,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (snapshot.hasError) {
+        return const Center(child: Text('Could not load Learning Journeys.'));
+      }
+      final choices = snapshot.data ?? const <_JourneyChoice>[];
+      if (choices.isEmpty) {
+        return const Center(child: Text('No Learning Journeys reported yet.'));
+      }
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
+        children: [
+          Text(
+            'Learning journeys',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${choices.length} journey${choices.length == 1 ? '' : 's'} available',
+          ),
+          const SizedBox(height: 18),
+          ...choices.map(
+            (choice) => Card(
+              child: ListTile(
+                leading: const Icon(Icons.route_outlined),
+                title: Text(choice.title),
+                subtitle: Text(choice.id),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => widget.onOpenJourney(choice.id),
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+class _JourneyChoice {
+  const _JourneyChoice({required this.id, required this.title});
+
+  final String id;
+  final String title;
+}
+
 enum ExplorerViewMode { journey, graph }
 
 class _BackIntent extends Intent {

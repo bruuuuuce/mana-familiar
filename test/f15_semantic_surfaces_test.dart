@@ -10,6 +10,8 @@ void main() {
     ObservatoryRoute? route,
     Future<ManaInspectArtifactDetail> Function(String id)? detailLoader,
     Widget Function(String? journeyId)? knowledgeBuilder,
+    Widget Function(ValueChanged<String> onOpenJourney)?
+    learningJourneysBuilder,
   }) => MaterialApp(
     home: ProjectObservatoryPage(
       key: ValueKey('${model.mode}-${route?.destination}'),
@@ -19,6 +21,7 @@ void main() {
       initialRoute: route,
       artifactDetailLoader: detailLoader,
       knowledgeBuilder: knowledgeBuilder,
+      learningJourneysBuilder: learningJourneysBuilder,
     ),
   );
 
@@ -180,6 +183,10 @@ void main() {
           requestedJourney = journeyId;
           return const Text('Existing Journey Explorer');
         },
+        learningJourneysBuilder: (onOpenJourney) => ListTile(
+          title: const Text('First journey'),
+          onTap: () => onOpenJourney('jrn_first'),
+        ),
       ),
     );
 
@@ -187,7 +194,12 @@ void main() {
     await tester.tap(find.text('Learning journeys'));
     await tester.pump();
 
-    expect(requestedJourney, isNull);
+    expect(find.text('First journey'), findsOneWidget);
+    expect(find.text('Existing Journey Explorer'), findsNothing);
+    await tester.tap(find.text('First journey'));
+    await tester.pump();
+
+    expect(requestedJourney, 'jrn_first');
     expect(find.text('Existing Journey Explorer'), findsOneWidget);
     expect(find.text('Untitled document'), findsNothing);
   });
