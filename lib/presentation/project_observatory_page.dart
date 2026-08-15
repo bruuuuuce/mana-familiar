@@ -1,9 +1,12 @@
 // ignore_for_file: curly_braces_in_flow_control_structures
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../application/mana_inspect.dart';
 import '../application/semantic_navigation.dart';
+import '../application/mana_workspace_watcher.dart';
 import 'artifact_detail_view.dart';
 import 'review_inbox_page.dart';
 
@@ -15,6 +18,7 @@ class ProjectObservatoryPage extends StatefulWidget {
     required this.client,
     required this.knowledge,
     this.knowledgeBuilder,
+    this.learningJourneysBuilder,
     this.initialProject,
     this.initialCatalog,
     this.initialReadModel,
@@ -22,10 +26,14 @@ class ProjectObservatoryPage extends StatefulWidget {
     this.recentProjectRoots = const [],
     this.onOpenProject,
     this.artifactDetailLoader,
+    this.watcher,
+    this.onRefresh,
   });
   final ManaInspectClient client;
   final Widget knowledge;
   final Widget Function(String? journeyId)? knowledgeBuilder;
+  final Widget Function(ValueChanged<String> onOpenJourney)?
+  learningJourneysBuilder;
   final ManaInspectProject? initialProject;
   final ManaInspectCatalog? initialCatalog;
   final ManaSemanticReadModel? initialReadModel;
@@ -34,6 +42,8 @@ class ProjectObservatoryPage extends StatefulWidget {
   final Future<void> Function(String projectRoot)? onOpenProject;
   final Future<ManaInspectArtifactDetail> Function(String artifactId)?
   artifactDetailLoader;
+  final ManaWorkspaceWatcher? watcher;
+  final Future<void> Function()? onRefresh;
   @override
   State<ProjectObservatoryPage> createState() => _ProjectObservatoryPageState();
 }
@@ -68,6 +78,14 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   String? _advancedFamilyFilter;
   String? _advancedKindFilter;
   String? _advancedStatusFilter;
+  late final ManaWorkspaceWatcher _watcher =
+      widget.watcher ??
+      ManaDirectoryWatcher(projectRoot: widget.client.projectRoot);
+  StreamSubscription<ManaWorkspaceWatchEvent>? _watchSubscription;
+  var _refreshPending = false;
+  var _watchUnavailable = false;
+  var _catalogLoading = false;
+  Object? _catalogError;
 
   @override
   void initState() {
@@ -75,6 +93,25 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     _model = widget.initialReadModel ?? _legacyModel();
     _loading = _model == null;
     if (_loading) _load();
+    _watchSubscription = _watcher.events.listen((event) {
+      if (!mounted) return;
+      setState(() {
+        switch (event) {
+          case ManaWorkspaceWatchEvent.changed:
+            _refreshPending = true;
+          case ManaWorkspaceWatchEvent.unavailable:
+            _watchUnavailable = true;
+        }
+      });
+    });
+    _watcher.start();
+  }
+
+  @override
+  void dispose() {
+    _watchSubscription?.cancel();
+    _watcher.dispose();
+    super.dispose();
   }
 
   ManaSemanticReadModel? _legacyModel() => widget.initialCatalog == null
@@ -100,18 +137,48 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       _error = null;
     });
     try {
-      final model = await _repository.refresh();
+      final model = await _repository.initialLoad();
       if (mounted)
         setState(() {
           _model = model;
           _loading = false;
         });
+      unawaited(_loadSupportingSurfaces());
     } catch (e) {
       if (mounted)
         setState(() {
           _error = e;
           _loading = false;
         });
+    }
+  }
+
+  Future<void> _loadSupportingSurfaces() async {
+    final model = await _repository.loadSupportingSurfaces();
+    if (mounted) setState(() => _model = model);
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _refreshPending = false;
+      _detailCache.clear();
+      _detail = null;
+      _detailError = null;
+    });
+    if (widget.onRefresh != null) {
+      await widget.onRefresh!();
+      return;
+    }
+    try {
+      // Unlike initial load, a user-requested refresh must fetch every
+      // semantic surface again. Reusing initialLoad would retain previously
+      // loaded project context and activity in the repository.
+      final model = await _repository.refresh();
+      if (!mounted) return;
+      setState(() => _model = model);
+      _loadDetailIfNeeded();
+    } catch (error) {
+      if (mounted) setState(() => _error = error);
     }
   }
 
@@ -140,6 +207,35 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       });
     _loadDetailIfNeeded();
     _loadWorkDetailIfNeeded();
+    _loadCatalogIfNeeded();
+  }
+
+  void _loadCatalogIfNeeded() {
+    final model = _model;
+    if (model == null ||
+        model.catalog != null ||
+        _catalogLoading ||
+        _navigation.current.destination != ObservatoryDestination.advanced ||
+        (_navigation.current.advancedSection ?? AdvancedSection.artifacts) !=
+            AdvancedSection.artifacts ||
+        !model.project.supports('artifacts', inspectArtifactsSchema)) {
+      return;
+    }
+    setState(() {
+      _catalogLoading = true;
+      _catalogError = null;
+    });
+    _repository
+        .loadCatalog()
+        .then((updated) {
+          if (mounted) setState(() => _model = updated);
+        })
+        .catchError((Object error) {
+          if (mounted) setState(() => _catalogError = error);
+        })
+        .whenComplete(() {
+          if (mounted) setState(() => _catalogLoading = false);
+        });
   }
 
   void _back() {
@@ -150,6 +246,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       });
     _loadDetailIfNeeded();
     _loadWorkDetailIfNeeded();
+    _loadCatalogIfNeeded();
   }
 
   void _forward() {
@@ -160,6 +257,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       });
     _loadDetailIfNeeded();
     _loadWorkDetailIfNeeded();
+    _loadCatalogIfNeeded();
   }
 
   void _loadWorkDetailIfNeeded() {
@@ -303,9 +401,34 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
             tooltip: 'Forward',
           ),
           IconButton(
-            onPressed: _load,
+            key: const Key('refresh-button'),
+            onPressed: _refresh,
             icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
+            selectedIcon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.refresh),
+                Positioned(
+                  top: -2,
+                  right: -2,
+                  child: Container(
+                    key: const Key('refresh-pending-indicator'),
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.error,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.surface,
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            isSelected: _refreshPending,
+            tooltip: _refreshPending ? 'Refresh — changes detected' : 'Refresh',
           ),
         ],
       ),
@@ -349,6 +472,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
             child: Column(
               children: [
                 _breadcrumbs(model, route, artifact),
+                if (_watchUnavailable) _watchUnavailableWarning(),
                 if (model.refreshError != null) _refreshWarning(),
                 Expanded(
                   child: artifact == null
@@ -527,6 +651,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     final hasDestinationChild =
         route.workItemId != null ||
         route.category != null ||
+        route.journeyId != null ||
         route.advancedSection != null ||
         route.artifactId != null;
     entries.add(
@@ -574,10 +699,25 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         _SemanticBreadcrumb(
           role: 'category',
           label: labels[labelIndex++],
+          route: route.artifactId != null || route.journeyId != null
+              ? ObservatoryRoute(
+                  destination: ObservatoryDestination.knowledge,
+                  category: route.category,
+                )
+              : null,
+        ),
+      );
+    }
+    if (route.journeyId != null) {
+      entries.add(
+        _SemanticBreadcrumb(
+          role: 'journey',
+          label: labels[labelIndex++],
           route: route.artifactId != null
               ? ObservatoryRoute(
                   destination: ObservatoryDestination.knowledge,
                   category: route.category,
+                  journeyId: route.journeyId,
                 )
               : null,
         ),
@@ -627,6 +767,13 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         ),
       ],
     ),
+  );
+
+  Widget _watchUnavailableWarning() => MaterialBanner(
+    content: const Text(
+      'Changes to .mana cannot be observed. Refresh remains available manually.',
+    ),
+    actions: const [SizedBox.shrink()],
   );
 
   Widget _routeBody(ManaSemanticReadModel model, ObservatoryRoute route) =>
@@ -1547,6 +1694,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                 (category) => category.category == _navigation.current.category,
               )
               .firstOrNull;
+    if (selected != null && _isLearningJourneys(selected)) {
+      return _learningJourneys(selected);
+    }
     return ListView(
       padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
       children: [
@@ -1590,24 +1740,23 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                 ),
               ),
             ),
-          const SizedBox(height: 22),
-          const Divider(),
-        ],
-        const SizedBox(height: 14),
-        ...categories
-            .where((category) => category.artifacts.isNotEmpty)
-            .map(_knowledgeCategoryRow),
-        if (categories.any((category) => category.artifacts.isEmpty)) ...[
-          const SizedBox(height: 18),
-          Text(
-            'Other categories',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
+        ] else ...[
+          const SizedBox(height: 14),
           ...categories
-              .where((category) => category.artifacts.isEmpty)
+              .where((category) => category.artifacts.isNotEmpty)
               .map(_knowledgeCategoryRow),
+          if (categories.any((category) => category.artifacts.isEmpty)) ...[
+            const SizedBox(height: 18),
+            Text(
+              'Other categories',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            ...categories
+                .where((category) => category.artifacts.isEmpty)
+                .map(_knowledgeCategoryRow),
+          ],
         ],
       ],
     );
@@ -1624,26 +1773,78 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     onTap: onTap,
   );
 
-  Widget _knowledgeCategoryRow(
+  bool _isLearningJourneys(ManaProjectContextCategory category) =>
+      category.category == 'learning_journeys';
+
+  List<ManaArtifactReference> _journeysFor(
     ManaProjectContextCategory category,
-  ) => _quietRow(
-    leading: Icon(
-      category.artifacts.isEmpty
-          ? Icons.menu_book_outlined
-          : Icons.auto_stories_outlined,
-    ),
-    title: _humanize(category.category),
-    subtitle: category.artifacts.isEmpty
-        ? 'No material yet'
-        : '${category.artifacts.length} document${category.artifacts.length == 1 ? '' : 's'}',
-    trailing: const Icon(Icons.chevron_right),
-    onTap: () => _navigate(
-      ObservatoryRoute(
-        destination: ObservatoryDestination.knowledge,
-        category: category.category,
-      ),
+  ) => category.artifacts
+      .where((artifact) => artifact.kind == 'journey')
+      .toList();
+
+  Widget _learningJourneys(ManaProjectContextCategory category) {
+    final journeyId = _navigation.current.journeyId;
+    if (journeyId != null) {
+      return widget.knowledgeBuilder?.call(journeyId) ?? widget.knowledge;
+    }
+    if (_journeysFor(category).isNotEmpty) {
+      return widget.learningJourneysBuilder?.call(_openJourney) ??
+          widget.knowledgeBuilder?.call(null) ??
+          widget.knowledge;
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
+      children: const [
+        Text('Knowledge'),
+        SizedBox(height: 28),
+        _ObservatoryEmptyState(
+          icon: Icons.route_outlined,
+          title: 'No Learning Journeys reported yet',
+          message: 'Mana has not reported a Journey manifest for this project.',
+        ),
+      ],
+    );
+  }
+
+  void _openJourney(String journeyId) => _navigate(
+    ObservatoryRoute(
+      destination: ObservatoryDestination.knowledge,
+      category: 'learning_journeys',
+      journeyId: journeyId,
     ),
   );
+
+  Widget _knowledgeCategoryRow(ManaProjectContextCategory category) {
+    final isLearningJourneys = _isLearningJourneys(category);
+    final journeyCount = _journeysFor(category).length;
+    final onlyDocument = category.artifacts.length == 1
+        ? category.artifacts.single
+        : null;
+    return _quietRow(
+      leading: Icon(
+        category.artifacts.isEmpty
+            ? Icons.menu_book_outlined
+            : Icons.auto_stories_outlined,
+      ),
+      title: _humanize(category.category),
+      subtitle: isLearningJourneys
+          ? journeyCount == 0
+                ? 'No journeys yet'
+                : '$journeyCount journey${journeyCount == 1 ? '' : 's'}'
+          : category.artifacts.isEmpty
+          ? 'No material yet'
+          : '${category.artifacts.length} document${category.artifacts.length == 1 ? '' : 's'}',
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => isLearningJourneys || onlyDocument == null
+          ? _navigate(
+              ObservatoryRoute(
+                destination: ObservatoryDestination.knowledge,
+                category: category.category,
+              ),
+            )
+          : _openArtifact(_summary(onlyDocument), category: category.category),
+    );
+  }
 
   Widget _activity(ManaSemanticReadModel model) {
     if (model.mode == ManaSemanticMode.legacyCatalog)
@@ -1951,6 +2152,20 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   );
 
   Widget _advancedArtifactCatalog(ManaSemanticReadModel model) {
+    if (_catalogLoading) {
+      return const _ObservatoryEmptyState(
+        icon: Icons.inventory_2_outlined,
+        title: 'Loading artifact catalog',
+        message: 'Loading the raw catalog only when it is opened.',
+      );
+    }
+    if (_catalogError != null) {
+      return const _ObservatoryEmptyState(
+        icon: Icons.error_outline,
+        title: 'Artifact catalog unavailable',
+        message: 'Mana could not load the artifact catalog for this project.',
+      );
+    }
     final artifacts =
         model.catalog?.artifacts ?? const <ManaInspectArtifactSummary>[];
     if (artifacts.isEmpty) {

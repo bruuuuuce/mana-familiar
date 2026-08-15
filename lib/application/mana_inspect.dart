@@ -1009,11 +1009,106 @@ class ManaSemanticRepository {
   ManaSemanticRepository(this.client);
   final ManaInspectClient client;
   Future<ManaSemanticReadModel>? _refreshing;
+  Future<ManaSemanticReadModel>? _catalogLoading;
   final Map<String, Future<ManaWorkItemResponse>> _details = {};
   ManaSemanticReadModel? _latest;
 
-  Future<ManaSemanticReadModel> refresh() =>
-      _refreshing ??= _refresh().whenComplete(() => _refreshing = null);
+  /// Refreshes the semantic surfaces needed for the cockpit. The raw artifact
+  /// catalog is deliberately optional because it is only rendered in Advanced
+  /// and can be substantially more expensive than the overview data.
+  Future<ManaSemanticReadModel> refresh({bool includeCatalog = true}) =>
+      _refreshing ??= _refresh(
+        includeCatalog: includeCatalog,
+        includeProjectContext: true,
+        includeActivity: true,
+      ).whenComplete(() => _refreshing = null);
+
+  /// Loads just enough data to render the initial cockpit. Context and activity
+  /// are filled in afterwards, so their producer work cannot delay opening a
+  /// project.
+  Future<ManaSemanticReadModel> initialLoad() => _refreshing ??= _refresh(
+    includeCatalog: false,
+    includeProjectContext: false,
+    includeActivity: false,
+  ).whenComplete(() => _refreshing = null);
+
+  /// Completes the non-critical semantic surfaces after the first frame.
+  Future<ManaSemanticReadModel> loadSupportingSurfaces() async {
+    final latest = _latest;
+    if (latest == null) return refresh(includeCatalog: false);
+    ManaProjectContextResponse? context = latest.projectContext;
+    ManaActivityResponse? activity = latest.activity;
+    Object? error = latest.refreshError;
+    final tasks = <Future<void>>[];
+    Future<void> optional(Future<void> task) async {
+      try {
+        await task;
+      } catch (caught) {
+        error ??= caught;
+      }
+    }
+
+    if (context == null && latest.project.supportsProjectContext) {
+      tasks.add(
+        optional(
+          client
+              .projectContext(capabilities: latest.project)
+              .then((value) => context = value),
+        ),
+      );
+    }
+    if (activity == null && latest.project.supportsActivity) {
+      tasks.add(
+        optional(
+          client
+              .activity(capabilities: latest.project)
+              .then((value) => activity = value),
+        ),
+      );
+    }
+    await Future.wait(tasks);
+    final current = _latest ?? latest;
+    final model = ManaSemanticReadModel(
+      project: current.project,
+      mode: current.mode,
+      catalog: current.catalog,
+      workItems: current.workItems,
+      projectContext: context ?? current.projectContext,
+      activity: activity ?? current.activity,
+      refreshError: error,
+    );
+    _latest = model;
+    return model;
+  }
+
+  /// Loads the raw catalog on demand, retaining the already-rendered semantic
+  /// model while the producer command runs.
+  Future<ManaSemanticReadModel> loadCatalog() {
+    final latest = _latest;
+    if (latest == null) return refresh();
+    if (latest.catalog != null) return Future.value(latest);
+    if (!latest.project.supports('artifacts', inspectArtifactsSchema)) {
+      return Future.value(latest);
+    }
+    return _catalogLoading ??= client
+        .catalog(capabilities: latest.project)
+        .then((catalog) {
+          final current = _latest ?? latest;
+          final model = ManaSemanticReadModel(
+            project: current.project,
+            mode: current.mode,
+            catalog: catalog,
+            workItems: current.workItems,
+            projectContext: current.projectContext,
+            activity: current.activity,
+            refreshError: current.refreshError,
+          );
+          _latest = model;
+          return model;
+        })
+        .whenComplete(() => _catalogLoading = null);
+  }
+
   Future<ManaWorkItemResponse> workItem(
     String id,
     ManaInspectProject project,
@@ -1022,7 +1117,11 @@ class ManaSemanticRepository {
     () => client.workItem(id, capabilities: project),
   );
 
-  Future<ManaSemanticReadModel> _refresh() async {
+  Future<ManaSemanticReadModel> _refresh({
+    required bool includeCatalog,
+    required bool includeProjectContext,
+    required bool includeActivity,
+  }) async {
     ManaInspectProject project;
     try {
       project = await client.project();
@@ -1058,7 +1157,10 @@ class ManaSemanticRepository {
       }
     }
 
-    if (project.supports('artifacts', inspectArtifactsSchema)) {
+    final needsCatalog =
+        includeCatalog ||
+        project.semanticMode == ManaSemanticMode.legacyCatalog;
+    if (needsCatalog && project.supports('artifacts', inspectArtifactsSchema)) {
       tasks.add(
         optional(
           client
@@ -1076,7 +1178,7 @@ class ManaSemanticRepository {
         ),
       );
     }
-    if (project.supportsProjectContext) {
+    if (includeProjectContext && project.supportsProjectContext) {
       tasks.add(
         optional(
           client
@@ -1085,7 +1187,7 @@ class ManaSemanticRepository {
         ),
       );
     }
-    if (project.supportsActivity) {
+    if (includeActivity && project.supportsActivity) {
       tasks.add(
         optional(
           client

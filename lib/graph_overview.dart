@@ -300,12 +300,6 @@ class _JourneyGraphOverviewState extends State<JourneyGraphOverview> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    Text(
-                      id,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
                   ],
                 ),
               ),
