@@ -30,3 +30,29 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - run: flutter build macos --debug
+
+  validate-windows:
+    runs-on: windows-2022
+    defaults:
+      run:
+        working-directory: mana-familiar
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mana-familiar
+      - uses: actions/checkout@v4
+        with:
+          repository: bruuuuuce/mana
+          ref: develop
+          path: mana
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed .
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build windows --release
