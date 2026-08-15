@@ -376,7 +376,8 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                                 projectRoot: widget.client.projectRoot,
                                 documentPresentation: true,
                                 contextualTitle:
-                                    '${_sectionLabel(route.section ?? ManaSectionId.overview)} document',
+                                    _reference(model, artifact.id)?.label ??
+                                    'Untitled document',
                               ),
                             ),
                           ],
@@ -394,7 +395,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                           sourceLoader: widget.client.source,
                           projectRoot: widget.client.projectRoot,
                           documentPresentation: true,
-                          contextualTitle: 'Project context document',
+                          contextualTitle:
+                              _reference(model, artifact.id)?.label ??
+                              'Untitled document',
                         )
                       : route.destination == ObservatoryDestination.advanced
                       ? Column(
@@ -465,19 +468,141 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       final index = labels.indexOf(route.workItemId!);
       if (index >= 0) labels[index] = _workPrimaryLabel(workItem);
     }
+    final entries = _breadcrumbEntries(route, labels);
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 14, 24, 6),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          labels.join(' > '),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
           key: const Key('semantic-breadcrumbs'),
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+          children: [
+            for (var index = 0; index < entries.length; index++) ...[
+              if (index > 0)
+                Icon(
+                  Icons.chevron_right,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+              if (entries[index].route case final target?)
+                TextButton(
+                  key: ValueKey('breadcrumb-${entries[index].role}'),
+                  onPressed: () => _navigate(target),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                  ),
+                  child: Text(entries[index].label),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  child: Text(
+                    entries[index].label,
+                    key: ValueKey('breadcrumb-${entries[index].role}'),
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ],
         ),
       ),
     );
+  }
+
+  List<_SemanticBreadcrumb> _breadcrumbEntries(
+    ObservatoryRoute route,
+    List<String> labels,
+  ) {
+    final entries = <_SemanticBreadcrumb>[
+      const _SemanticBreadcrumb(
+        role: 'project',
+        label: 'Project',
+        route: ObservatoryRoute(destination: ObservatoryDestination.overview),
+      ),
+    ];
+    var labelIndex = 1;
+    final hasDestinationChild =
+        route.workItemId != null ||
+        route.category != null ||
+        route.advancedSection != null ||
+        route.artifactId != null;
+    entries.add(
+      _SemanticBreadcrumb(
+        role: 'destination',
+        label: labels[labelIndex++],
+        route: hasDestinationChild
+            ? ObservatoryRoute(destination: route.destination)
+            : null,
+      ),
+    );
+    if (route.workItemId != null) {
+      final hasChild = route.section != null || route.artifactId != null;
+      entries.add(
+        _SemanticBreadcrumb(
+          role: 'work-item',
+          label: labels[labelIndex++],
+          route: hasChild
+              ? ObservatoryRoute(
+                  destination: ObservatoryDestination.work,
+                  workItemId: route.workItemId,
+                  section: ManaSectionId.overview,
+                )
+              : null,
+        ),
+      );
+    }
+    if (route.section != null) {
+      entries.add(
+        _SemanticBreadcrumb(
+          role: 'section',
+          label: labels[labelIndex++],
+          route: route.artifactId != null
+              ? ObservatoryRoute(
+                  destination: ObservatoryDestination.work,
+                  workItemId: route.workItemId,
+                  section: route.section,
+                )
+              : null,
+        ),
+      );
+    }
+    if (route.category != null) {
+      entries.add(
+        _SemanticBreadcrumb(
+          role: 'category',
+          label: labels[labelIndex++],
+          route: route.artifactId != null
+              ? ObservatoryRoute(
+                  destination: ObservatoryDestination.knowledge,
+                  category: route.category,
+                )
+              : null,
+        ),
+      );
+    }
+    if (route.advancedSection != null) {
+      entries.add(
+        _SemanticBreadcrumb(
+          role: 'advanced-section',
+          label: labels[labelIndex++],
+          route: route.artifactId != null
+              ? ObservatoryRoute(
+                  destination: ObservatoryDestination.advanced,
+                  advancedSection: route.advancedSection,
+                )
+              : null,
+        ),
+      );
+    }
+    if (route.artifactId != null) {
+      entries.add(
+        _SemanticBreadcrumb(role: 'document', label: labels[labelIndex]),
+      );
+    }
+    return entries;
   }
 
   Widget _refreshWarning() => Container(
@@ -990,7 +1115,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
             ),
           ),
         if (section == ManaSectionId.timeline && activity.isNotEmpty)
-          ..._timelineRows(activity),
+          ..._timelineRows(model, activity),
         if (refs.isEmpty &&
             !(section == ManaSectionId.timeline && activity.isNotEmpty))
           Padding(
@@ -1091,7 +1216,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                artifact.label ?? 'Document',
+                artifact.label ?? 'Untitled document',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
@@ -1105,17 +1230,28 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     ),
   );
 
-  List<Widget> _timelineRows(List<ManaActivityEvent> events) => [
-    for (final event in events)
-      _quietRow(
-        leading: const Icon(Icons.schedule_outlined),
-        title: _activityLabel(event),
-        subtitle: _readableTimestamp(
-          event.timestamp,
-          event.timestampProvenance,
-        ),
-      ),
-  ];
+  List<Widget> _timelineRows(
+    ManaSemanticReadModel model,
+    List<ManaActivityEvent> events,
+  ) => events
+      .map((event) {
+        final target = _activityTarget(model, event);
+        return _quietRow(
+          leading: const Icon(Icons.schedule_outlined),
+          title: _activityLabel(event),
+          subtitle: [
+            _readableTimestamp(event.timestamp, event.timestampProvenance),
+            if (event.target?.sectionId case final section?)
+              _sectionLabel(section),
+            if (event.timestampProvenance ==
+                ManaTimestampProvenance.filesystemMtimeEpoch)
+              'filesystem time',
+          ].join(' · '),
+          trailing: target == null ? null : const Icon(Icons.chevron_right),
+          onTap: target == null ? null : () => _navigate(target),
+        );
+      })
+      .toList(growable: false);
 
   static const _dossierSections = [
     ManaSectionId.overview,
@@ -1482,7 +1618,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     required VoidCallback onTap,
   }) => _quietRow(
     leading: Icon(_artifactIcon(artifact.kind)),
-    title: artifact.label ?? 'Project context document',
+    title: artifact.label ?? 'Untitled document',
     subtitle: 'Open document',
     trailing: const Icon(Icons.arrow_forward_ios, size: 15),
     onTap: onTap,
@@ -1676,6 +1812,12 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
             ManaTimestampProvenance.filesystemMtimeEpoch
         ? 'filesystem time'
         : null;
+    final section = event.target?.sectionId;
+    final detail = section == null
+        ? provenance
+        : provenance == null
+        ? _sectionLabel(section)
+        : '${_sectionLabel(section)} · $provenance';
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1714,9 +1856,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                       _activityLabel(event),
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
-                    if (provenance != null)
+                    if (detail != null)
                       Text(
-                        provenance,
+                        detail,
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -1736,33 +1878,30 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     ManaSemanticReadModel model,
     ManaActivityEvent event,
   ) {
-    final reference = event.relatedArtifactIds
-        .map((id) => _reference(model, id))
-        .whereType<ManaArtifactReference>()
-        .firstOrNull;
-    if (event.workItemId case final workItemId?) {
+    final target = event.target;
+    if (target == null || _artifact(model, target.artifactId) == null) {
+      return null;
+    }
+    if (target.workItemId case final workItemId?) {
       return ObservatoryRoute(
         destination: ObservatoryDestination.work,
         workItemId: workItemId,
-        section: reference?.sectionId ?? ManaSectionId.overview,
-        artifactId: reference?.id,
+        section: target.sectionId ?? ManaSectionId.overview,
+        artifactId: target.artifactId,
       );
     }
-    if (reference != null) {
-      final category = (model.projectContext?.categories ?? const [])
-          .where(
-            (value) => value.artifacts.any((item) => item.id == reference.id),
-          )
-          .firstOrNull;
-      if (category != null) {
-        return ObservatoryRoute(
-          destination: ObservatoryDestination.knowledge,
-          category: category.category,
-          artifactId: reference.id,
-        );
-      }
+    if (target.projectContextCategory case final category?) {
+      return ObservatoryRoute(
+        destination: ObservatoryDestination.knowledge,
+        category: category,
+        artifactId: target.artifactId,
+      );
     }
-    return null;
+    return ObservatoryRoute(
+      destination: ObservatoryDestination.advanced,
+      advancedSection: AdvancedSection.artifacts,
+      artifactId: target.artifactId,
+    );
   }
 
   Widget _advanced(ManaSemanticReadModel model) {
@@ -2062,18 +2201,30 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   String _artifactLabel(ManaInspectArtifactSummary artifact) =>
       artifact.raw['label'] is String
       ? artifact.raw['label'] as String
-      : 'Document';
+      : 'Untitled document';
 
-  String _activityLabel(ManaActivityEvent event) =>
-      event.summary ??
-      switch (event.kind) {
-        ManaActivityKind.workspaceCreated => 'Workspace created',
-        ManaActivityKind.verificationCompleted => 'Verification completed',
-        ManaActivityKind.reviewRecorded => 'Review recorded',
-        ManaActivityKind.decisionRecorded => 'Decision recorded',
-        ManaActivityKind.artifactUpdated => 'Document updated',
-        ManaActivityKind.unknown => 'Project activity recorded',
+  String _activityLabel(ManaActivityEvent event) {
+    if (event.summary case final summary?) return summary;
+    if (event.target?.label case final label?) {
+      return switch (event.kind) {
+        ManaActivityKind.artifactUpdated => '$label updated',
+        ManaActivityKind.verificationCompleted =>
+          '$label verification completed',
+        ManaActivityKind.reviewRecorded => '$label review recorded',
+        ManaActivityKind.decisionRecorded => '$label decision recorded',
+        ManaActivityKind.workspaceCreated => '$label created',
+        ManaActivityKind.unknown => label,
       };
+    }
+    return switch (event.kind) {
+      ManaActivityKind.workspaceCreated => 'Workspace created',
+      ManaActivityKind.verificationCompleted => 'Verification completed',
+      ManaActivityKind.reviewRecorded => 'Review recorded',
+      ManaActivityKind.decisionRecorded => 'Decision recorded',
+      ManaActivityKind.artifactUpdated => 'Document updated',
+      ManaActivityKind.unknown => 'Project activity recorded',
+    };
+  }
 
   IconData _activityIcon(ManaActivityKind kind) => switch (kind) {
     ManaActivityKind.workspaceCreated => Icons.add_circle_outline,
@@ -2225,4 +2376,16 @@ class _ObservatoryEmptyState extends StatelessWidget {
 
 extension<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+class _SemanticBreadcrumb {
+  const _SemanticBreadcrumb({
+    required this.role,
+    required this.label,
+    this.route,
+  });
+
+  final String role;
+  final String label;
+  final ObservatoryRoute? route;
 }

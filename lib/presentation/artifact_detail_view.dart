@@ -5,6 +5,7 @@ import '../application/mana_inspect.dart';
 import '../application/operational_model.dart';
 import '../application/governance_model.dart';
 import '../source_workspace.dart';
+import 'markdown_diagram.dart';
 import 'source_reference_view.dart';
 
 /// Composes stable artifact chrome around a renderer-selected payload view.
@@ -62,6 +63,11 @@ class ArtifactDetailView extends StatelessWidget {
             renderContext.relations,
             rootArtifactId: artifact.id,
           );
+    if (documentPresentation &&
+        plan?.view == ArtifactPayloadView.markdown &&
+        loadedDetail != null) {
+      return _documentWorkspace(context, plan!, loadedDetail);
+    }
     return ListView(
       padding: const EdgeInsets.fromLTRB(32, 18, 32, 40),
       children: [
@@ -107,6 +113,49 @@ class ArtifactDetailView extends StatelessWidget {
       ],
     );
   }
+
+  Widget _documentWorkspace(
+    BuildContext context,
+    ArtifactRenderPlan plan,
+    ManaInspectArtifactDetail detail,
+  ) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(24, 14, 24, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              contextualTitle ?? 'Untitled document',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _documentAvailability(),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+      const Divider(height: 1),
+      Expanded(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 10, 24, 18),
+          child: MarkdownNoteView(
+            markdown: plan.text ?? '',
+            source: plan.sourceText,
+            artifact: artifact,
+            detail: detail,
+            onOpenRelatedArtifact: onOpenRelatedArtifact,
+            documentPresentation: true,
+          ),
+        ),
+      ),
+    ],
+  );
 
   Widget _summary(BuildContext context) => documentPresentation
       ? Padding(
@@ -482,34 +531,124 @@ class MarkdownNoteView extends StatefulWidget {
 
 class _MarkdownNoteViewState extends State<MarkdownNoteView> {
   var _mode = MarkdownReaderMode.reader;
+  late _MarkdownBlocks _document;
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _scrollViewportKey = GlobalKey();
+  final Map<String, GlobalKey> _headingKeys = {};
+  String? _activeAnchor;
+  var _trackingScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _prepareDocument();
+    _scrollController.addListener(_scheduleActiveHeadingUpdate);
+  }
+
+  @override
+  void didUpdateWidget(covariant MarkdownNoteView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.markdown != widget.markdown) _prepareDocument();
+  }
+
+  void _prepareDocument() {
+    _document = _MarkdownBlocks.parse(widget.markdown);
+    _headingKeys
+      ..clear()
+      ..addEntries(
+        _document.headings.map(
+          (heading) => MapEntry(heading.anchor, GlobalKey()),
+        ),
+      );
+    _activeAnchor = _document.headings.isEmpty
+        ? null
+        : _document.headings.first.anchor;
+  }
+
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_scheduleActiveHeadingUpdate)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _scheduleActiveHeadingUpdate() {
+    if (_trackingScheduled || _mode != MarkdownReaderMode.reader) return;
+    _trackingScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _trackingScheduled = false;
+      if (!mounted) return;
+      final viewportBox =
+          _scrollViewportKey.currentContext?.findRenderObject() as RenderBox?;
+      final activationLine = viewportBox == null
+          ? 230.0
+          : viewportBox.localToGlobal(Offset.zero).dy + 64;
+      String? active;
+      for (final heading in _document.headings) {
+        final context = _headingKeys[heading.anchor]?.currentContext;
+        final box = context?.findRenderObject() as RenderBox?;
+        if (box != null &&
+            box.localToGlobal(Offset.zero).dy <= activationLine) {
+          active = heading.anchor;
+        }
+      }
+      active ??= _document.headings.isEmpty
+          ? null
+          : _document.headings.first.anchor;
+      if (active != _activeAnchor) setState(() => _activeAnchor = active);
+    });
+  }
+
+  Future<void> _showHeading(String anchor) async {
+    if (_activeAnchor != anchor) setState(() => _activeAnchor = anchor);
+    final target = _headingKeys[anchor]?.currentContext;
+    if (target == null) return;
+    await Scrollable.ensureVisible(
+      target,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      alignment: .02,
+    );
+    _scheduleActiveHeadingUpdate();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final blocks = _MarkdownBlocks.parse(widget.markdown).blocks;
-    final headings = blocks.whereType<_MarkdownHeading>().toList();
+    final controls = Align(
+      alignment: Alignment.centerLeft,
+      child: SegmentedButton<MarkdownReaderMode>(
+        segments: MarkdownReaderMode.values
+            .map(
+              (mode) => ButtonSegment(
+                value: mode,
+                label: Text(switch (mode) {
+                  MarkdownReaderMode.reader => 'Reader',
+                  MarkdownReaderMode.source => 'Source',
+                  MarkdownReaderMode.metadata => 'Metadata',
+                }),
+              ),
+            )
+            .toList(),
+        selected: {_mode},
+        showSelectedIcon: false,
+        onSelectionChanged: (modes) => setState(() => _mode = modes.first),
+      ),
+    );
+    if (widget.documentPresentation) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          controls,
+          const SizedBox(height: 10),
+          Expanded(child: _workspaceBody()),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SegmentedButton<MarkdownReaderMode>(
-            segments: MarkdownReaderMode.values
-                .map(
-                  (mode) => ButtonSegment(
-                    value: mode,
-                    label: Text(switch (mode) {
-                      MarkdownReaderMode.reader => 'Reader',
-                      MarkdownReaderMode.source => 'Source',
-                      MarkdownReaderMode.metadata => 'Metadata',
-                    }),
-                  ),
-                )
-                .toList(),
-            selected: {_mode},
-            showSelectedIcon: false,
-            onSelectionChanged: (modes) => setState(() => _mode = modes.first),
-          ),
-        ),
+        controls,
         const SizedBox(height: 20),
         if (_mode == MarkdownReaderMode.source)
           SelectableText(
@@ -520,76 +659,162 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
         else if (_mode == MarkdownReaderMode.metadata)
           _metadata()
         else
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final showOutline =
-                  headings.isNotEmpty && constraints.maxWidth >= 760;
-              final document = Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 800),
-                  child: SelectionArea(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: blocks
-                          .map((block) => block.build(context))
-                          .toList(),
-                    ),
-                  ),
-                ),
-              );
-              if (!showOutline) return document;
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: document),
-                  const SizedBox(width: 26),
-                  SizedBox(
-                    width: 176,
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.zero,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'On this page',
-                              style: Theme.of(context).textTheme.labelLarge,
-                            ),
-                            const SizedBox(height: 8),
-                            ...headings
-                                .take(12)
-                                .map(
-                                  (h) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 6),
-                                    child: Text(
-                                      h.value,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall,
-                                    ),
-                                  ),
-                                ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
+          _documentColumn(),
       ],
     );
   }
+
+  Widget _workspaceBody() {
+    if (_mode == MarkdownReaderMode.source) {
+      return SingleChildScrollView(
+        child: SelectableText(
+          widget.source ?? widget.markdown,
+          key: const Key('markdown-source'),
+          style: const TextStyle(fontFamily: 'monospace'),
+        ),
+      );
+    }
+    if (_mode == MarkdownReaderMode.metadata) {
+      return SingleChildScrollView(child: _metadata());
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide =
+            _document.headings.isNotEmpty && constraints.maxWidth >= 820;
+        final document = KeyedSubtree(
+          key: const Key('markdown-document-scroll'),
+          child: Scrollbar(
+            controller: _scrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              key: _scrollViewportKey,
+              controller: _scrollController,
+              padding: EdgeInsets.only(right: wide ? 22 : 0, bottom: 28),
+              child: SelectionArea(child: _documentColumn()),
+            ),
+          ),
+        );
+        if (wide) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: document),
+              SizedBox(
+                key: const Key('markdown-outline-sticky'),
+                width: 220,
+                child: _outline(),
+              ),
+            ],
+          );
+        }
+        return Column(
+          children: [
+            if (_document.headings.isNotEmpty) _compactOutline(),
+            if (_document.headings.isNotEmpty) const SizedBox(height: 8),
+            Expanded(child: document),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _documentColumn() => SizedBox(
+    key: const Key('markdown-full-width-document'),
+    width: double.infinity,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final block in _document.blocks)
+          if (block case final _MarkdownHeading heading)
+            KeyedSubtree(
+              key: _headingKeys[heading.anchor],
+              child: KeyedSubtree(
+                key: ValueKey('heading-${heading.anchor}'),
+                child: block.build(context),
+              ),
+            )
+          else
+            block.build(context),
+      ],
+    ),
+  );
+
+  Widget _outline() => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('On this page', style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: 8),
+          for (final heading in _document.headings) _outlineEntry(heading),
+        ],
+      ),
+    ),
+  );
+
+  Widget _outlineEntry(_MarkdownHeading heading) {
+    final selected = heading.anchor == _activeAnchor;
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: InkWell(
+        key: ValueKey('outline-${heading.anchor}'),
+        onTap: () => _showHeading(heading.anchor),
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+          decoration: BoxDecoration(
+            color: selected
+                ? Theme.of(context).colorScheme.secondaryContainer
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            heading.value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _compactOutline() => Material(
+    color: Colors.transparent,
+    child: DropdownButtonFormField<String>(
+      key: const Key('markdown-outline-compact'),
+      initialValue: _activeAnchor,
+      decoration: const InputDecoration(
+        labelText: 'On this page',
+        border: OutlineInputBorder(),
+        isDense: true,
+      ),
+      items: _document.headings
+          .map(
+            (heading) => DropdownMenuItem(
+              value: heading.anchor,
+              child: Text(heading.value, overflow: TextOverflow.ellipsis),
+            ),
+          )
+          .toList(growable: false),
+      onChanged: (anchor) {
+        if (anchor != null) _showHeading(anchor);
+      },
+    ),
+  );
 
   Widget _metadata() {
     final artifact = widget.artifact;
@@ -628,6 +853,21 @@ class _MarkdownBlocks {
     final lines = markdown.split('\n');
     final blocks = <_MarkdownBlock>[];
     final paragraph = <String>[];
+    final anchors = <String, int>{};
+    String anchorFor(String heading) {
+      var base = heading
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+          .replaceAll(RegExp(r'^-+|-+$'), '');
+      if (base.isEmpty) base = 'section';
+      final occurrence = anchors.update(
+        base,
+        (value) => value + 1,
+        ifAbsent: () => 1,
+      );
+      return occurrence == 1 ? base : '$base-$occurrence';
+    }
+
     void flushParagraph() {
       if (paragraph.isEmpty) return;
       blocks.add(_MarkdownParagraph(paragraph.join(' ')));
@@ -649,14 +889,19 @@ class _MarkdownBlocks {
       } else if (RegExp(r'^#{1,6}\s+').hasMatch(line)) {
         flushParagraph();
         final match = RegExp(r'^(#{1,6})\s+(.*)$').firstMatch(line)!;
-        blocks.add(_MarkdownHeading(match.group(1)!.length, match.group(2)!));
+        final value = match.group(2)!;
+        blocks.add(
+          _MarkdownHeading(match.group(1)!.length, value, anchorFor(value)),
+        );
       } else if (RegExp(r'^\s*([-*+])\s+').hasMatch(line) ||
           RegExp(r'^\s*\d+\.\s+').hasMatch(line)) {
         flushParagraph();
         final items = <String>[];
         final ordered = RegExp(r'^\s*\d+\.\s+').hasMatch(line);
         do {
-          items.add(line.replaceFirst(RegExp(r'^\s*(?:[-*+]|\d+\.)\s+'), ''));
+          items.add(
+            lines[index].replaceFirst(RegExp(r'^\s*(?:[-*+]|\d+\.)\s+'), ''),
+          );
           if (index + 1 >= lines.length ||
               !(ordered
                   ? RegExp(r'^\s*\d+\.\s+').hasMatch(lines[index + 1])
@@ -692,6 +937,9 @@ class _MarkdownBlocks {
     flushParagraph();
     return _MarkdownBlocks(blocks);
   }
+
+  List<_MarkdownHeading> get headings =>
+      blocks.whereType<_MarkdownHeading>().toList(growable: false);
 
   static List<String> _tableCells(String line) {
     var text = line.trim();
@@ -765,9 +1013,9 @@ abstract class _MarkdownBlock {
 }
 
 class _MarkdownHeading extends _MarkdownBlock {
-  const _MarkdownHeading(this.level, this.value);
+  const _MarkdownHeading(this.level, this.value, this.anchor);
   final int level;
-  final String value;
+  final String value, anchor;
   @override
   Widget build(BuildContext context) {
     final style = switch (level) {
@@ -844,21 +1092,48 @@ class _MarkdownCode extends _MarkdownBlock {
   final String language;
   final String value;
   @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    margin: const EdgeInsets.only(bottom: 16),
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: SelectableText(
-      value,
-      style: Theme.of(
-        context,
-      ).textTheme.bodyMedium!.copyWith(fontFamily: 'monospace', height: 1.4),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final normalized = language.toLowerCase();
+    if (normalized == 'mermaid') {
+      return MarkdownDiagramView(
+        language: MarkdownDiagramLanguage.mermaid,
+        source: value,
+      );
+    }
+    if (normalized == 'plantuml' ||
+        normalized == 'puml' ||
+        value.trimLeft().startsWith('@startuml')) {
+      return MarkdownDiagramView(
+        language: MarkdownDiagramLanguage.plantUml,
+        source: value,
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) => Container(
+        key: const Key('markdown-code-block'),
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth - 28),
+            child: SelectableText(
+              value,
+              style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                fontFamily: 'monospace',
+                height: 1.4,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _MarkdownQuote extends _MarkdownBlock {
@@ -913,17 +1188,23 @@ class _MarkdownTable extends _MarkdownBlock {
           ),
       ],
     );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Table(
-          defaultColumnWidth: const IntrinsicColumnWidth(),
-          border: TableBorder.all(color: Theme.of(context).dividerColor),
-          children: [
-            row(headers, header: true),
-            ...rows.map((cells) => row(cells, header: false)),
-          ],
+    return LayoutBuilder(
+      builder: (context, constraints) => Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: SingleChildScrollView(
+          key: const Key('markdown-table-scroll'),
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: Table(
+              defaultColumnWidth: const IntrinsicColumnWidth(),
+              border: TableBorder.all(color: Theme.of(context).dividerColor),
+              children: [
+                row(headers, header: true),
+                ...rows.map((cells) => row(cells, header: false)),
+              ],
+            ),
+          ),
         ),
       ),
     );

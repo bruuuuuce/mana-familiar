@@ -66,6 +66,59 @@ void main() {
     );
   });
 
+  test('preserves M13 Activity target metadata without reconstruction', () {
+    final json = fixture('activity.json');
+    final event = (json['events'] as List).first as Map<String, dynamic>;
+    event['target'] = const {
+      'artifact_id': 'file:.mana/features/PROJ-24342/plan.md',
+      'work_item_id': 'feature:PROJ-24342',
+      'section_id': 'plan',
+      'project_context_category': null,
+      'label': 'Technical Task Breakdown',
+    };
+
+    final target = ManaActivityResponse.fromJson(json).events.first.target!;
+    expect(target.artifactId, 'file:.mana/features/PROJ-24342/plan.md');
+    expect(target.workItemId, 'feature:PROJ-24342');
+    expect(target.sectionId, ManaSectionId.plan);
+    expect(target.projectContextCategory, isNull);
+    expect(target.label, 'Technical Task Breakdown');
+  });
+
+  test('rejects malformed M13 Activity target ownership and categories', () {
+    Map<String, dynamic> activityWithTarget(Map<String, dynamic> target) {
+      final json = fixture('activity.json');
+      (json['events'] as List).first['target'] = target;
+      return json;
+    }
+
+    const base = <String, dynamic>{
+      'artifact_id': 'file:.mana/global/architecture.md',
+      'work_item_id': null,
+      'section_id': null,
+      'project_context_category': 'architecture',
+      'label': 'Architecture',
+    };
+    expect(
+      () => ManaActivityResponse.fromJson(
+        activityWithTarget({...base, 'work_item_id': 'PROJ-24342'}),
+      ),
+      throwsA(isA<ManaInspectException>()),
+    );
+    expect(
+      () => ManaActivityResponse.fromJson(
+        activityWithTarget({...base, 'project_context_category': 'roadmap'}),
+      ),
+      throwsA(isA<ManaInspectException>()),
+    );
+    expect(
+      () => ManaActivityResponse.fromJson(
+        activityWithTarget({...base, 'section_id': 'made-up'}),
+      ),
+      throwsA(isA<ManaInspectException>()),
+    );
+  });
+
   test('negotiates full, work-only, and legacy modes', () {
     ManaInspectProject project(List<Map<String, String>> operations) =>
         ManaInspectProject.fromJson({
