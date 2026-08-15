@@ -208,6 +208,45 @@ void main() {
     },
   );
 
+  test('defers the raw catalog until Advanced requests it', () async {
+    final root = await Directory.systemTemp.createTemp('semantic-catalog-');
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}/mana').writeAsString('');
+    final calls = <String>[];
+    final client = ManaInspectClient(
+      projectRoot: root.path,
+      run: (_, args, {workingDirectory}) async {
+        final operation = args[args.indexOf('inspect') + 1];
+        calls.add(operation);
+        final response = switch (operation) {
+          'project' => _projectWithSemantic,
+          'artifacts' => fixture('mixed-artifacts.json'),
+          'work-items' => fixture('work-items.json'),
+          'project-context' => fixture('project-context.json'),
+          'activity' => fixture('activity.json'),
+          _ => throw StateError('Unexpected operation: $operation'),
+        };
+        return ProcessResult(0, 0, jsonEncode(response), '');
+      },
+    );
+    final repository = ManaSemanticRepository(client);
+
+    final initial = await repository.initialLoad();
+    expect(initial.catalog, isNull);
+    expect(calls, isNot(contains('artifacts')));
+    expect(initial.workItems, isNotNull);
+    expect(initial.projectContext, isNull);
+    expect(initial.activity, isNull);
+
+    final withCatalog = await repository.loadCatalog();
+    expect(withCatalog.catalog, isNotNull);
+    expect(calls.where((operation) => operation == 'artifacts'), hasLength(1));
+
+    final completed = await repository.loadSupportingSurfaces();
+    expect(completed.projectContext, isNotNull);
+    expect(completed.activity, isNotNull);
+  });
+
   test(
     'later refresh failures retain prior data without leaking across modes',
     () async {
