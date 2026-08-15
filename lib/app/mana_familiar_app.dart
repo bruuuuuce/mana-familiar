@@ -97,6 +97,12 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
                 preferences: widget.preferences,
                 initialJourney: journeyId ?? widget.config.journeyId,
               ),
+              learningJourneysBuilder: (onOpenJourney) => JourneyPickerPage(
+                store: JourneyStore(
+                  widget.config.withProjectRoot(_projectRoot),
+                ),
+                onOpenJourney: onOpenJourney,
+              ),
               recentProjectRoots: widget.preferences.recentProjectRoots,
               onOpenProject: _openProject,
             ),

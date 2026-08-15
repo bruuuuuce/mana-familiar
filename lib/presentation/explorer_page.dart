@@ -156,6 +156,39 @@ class JourneyStore {
 
   bool _isSafeJourneyId(String id) => SafePathPolicy.isSafeRelativePath(id);
 
+  /// Prefer the project's Mana wrapper: it carries the project's linked
+  /// `MANA_HOME`, while `manaRoot` is only a fallback for producer-root use.
+  Future<ProcessResult> _runManaCommand({
+    required String wrapperCommand,
+    required String script,
+    required List<String> arguments,
+  }) {
+    final wrapper = _projectManaWrapper();
+    if (wrapper.existsSync()) {
+      final command = Platform.isWindows ? 'cmd.exe' : wrapper.path;
+      final commandArguments = Platform.isWindows
+          ? ['/c', wrapper.path, wrapperCommand, ...arguments]
+          : [wrapperCommand, ...arguments];
+      return Process.run(
+        command,
+        commandArguments,
+        workingDirectory: config.projectRoot,
+      );
+    }
+    return Process.run('${config.manaRoot}/scripts/$script', [
+      '--project-root',
+      config.projectRoot,
+      ...arguments,
+    ], workingDirectory: config.projectRoot);
+  }
+
+  File _projectManaWrapper() {
+    final base = '${config.projectRoot}${Platform.pathSeparator}mana';
+    final wrapper = File(base);
+    if (wrapper.existsSync() || !Platform.isWindows) return wrapper;
+    return File('$base.bat');
+  }
+
   Future<SafeFile> _fixtureFile() async {
     final fixture = config.fixturePath;
     if (fixture == null || fixture.isEmpty) {
@@ -205,9 +238,10 @@ class JourneyStore {
       }
       return graph;
     }
-    final result = await Process.run(
-      '${config.manaRoot}/scripts/mana-journey.sh',
-      ['--project-root', config.projectRoot, 'materialize', id],
+    final result = await _runManaCommand(
+      wrapperCommand: 'journey',
+      script: 'mana-journey.sh',
+      arguments: ['materialize', id],
     );
     if (result.exitCode != 0) throw StateError(result.stderr.toString());
     return JourneyGraph.decode(result.stdout.toString());
@@ -235,17 +269,11 @@ class JourneyStore {
 
   Future<List<Map<String, dynamic>>> labels(String id, String node) async {
     if (config.fixturePath != null && config.fixturePath!.isNotEmpty) return [];
-    final result =
-        await Process.run('${config.manaRoot}/scripts/mana-concepts.sh', [
-          '--project-root',
-          config.projectRoot,
-          'labels',
-          '--journey',
-          id,
-          '--node',
-          node,
-          '--json',
-        ]);
+    final result = await _runManaCommand(
+      wrapperCommand: 'concepts',
+      script: 'mana-concepts.sh',
+      arguments: ['labels', '--journey', id, '--node', node, '--json'],
+    );
     if (result.exitCode != 0) return [];
     try {
       final decoded = jsonDecode(result.stdout.toString());
@@ -257,17 +285,10 @@ class JourneyStore {
   }
 
   Future<String> requestExpansion(String journey, String node) async {
-    final result = await Process.run(
-      '${config.manaRoot}/scripts/mana-expand.sh',
-      [
-        '--project-root',
-        config.projectRoot,
-        'request',
-        '--journey',
-        journey,
-        '--node',
-        node,
-      ],
+    final result = await _runManaCommand(
+      wrapperCommand: 'expand',
+      script: 'mana-expand.sh',
+      arguments: ['request', '--journey', journey, '--node', node],
     );
     if (result.exitCode != 0) throw StateError(result.stderr.toString());
     return result.stdout.toString().trim();
@@ -451,6 +472,116 @@ class ExplorerPage extends StatefulWidget {
   State<ExplorerPage> createState() => _ExplorerPageState();
 }
 
+class JourneyPickerPage extends StatefulWidget {
+  const JourneyPickerPage({
+    super.key,
+    required this.store,
+    required this.onOpenJourney,
+  });
+
+  final JourneyStore store;
+  final ValueChanged<String> onOpenJourney;
+
+  @override
+  State<JourneyPickerPage> createState() => _JourneyPickerPageState();
+}
+
+class _JourneyPickerPageState extends State<JourneyPickerPage> {
+  late final Future<List<_JourneyChoice>> _choices = _loadChoices();
+
+  Future<List<_JourneyChoice>> _loadChoices() async {
+    final ids = await widget.store.list();
+    return Future.wait(
+      ids.map((id) async {
+        try {
+          final graph = await widget.store.load(id);
+          return _JourneyChoice(
+            id: id,
+            title: graph.title,
+            description: journeyScopeDescription(graph),
+          );
+        } catch (_) {
+          return _JourneyChoice(
+            id: id,
+            title: 'Learning Journey',
+            description: 'Journey details are currently unavailable.',
+          );
+        }
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<_JourneyChoice>>(
+    future: _choices,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (snapshot.hasError) {
+        return const Center(child: Text('Could not load Learning Journeys.'));
+      }
+      final choices = snapshot.data ?? const <_JourneyChoice>[];
+      if (choices.isEmpty) {
+        return const Center(child: Text('No Learning Journeys reported yet.'));
+      }
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
+        children: [
+          Text(
+            'Learning journeys',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${choices.length} journey${choices.length == 1 ? '' : 's'} available',
+          ),
+          const SizedBox(height: 18),
+          ...choices.map(
+            (choice) => Card(
+              child: ListTile(
+                leading: const Icon(Icons.route_outlined),
+                title: Text(choice.title),
+                subtitle: Text(
+                  choice.description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => widget.onOpenJourney(choice.id),
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+class _JourneyChoice {
+  const _JourneyChoice({
+    required this.id,
+    required this.title,
+    required this.description,
+  });
+
+  final String id;
+  final String title;
+  final String description;
+}
+
+String journeyScopeDescription(JourneyGraph graph) {
+  final scope = graph.raw['journey']?['scope'] as Map<String, dynamic>?;
+  final start = scope?['start'] as Map<String, dynamic>?;
+  final termination = scope?['termination'] as Map<String, dynamic>?;
+  final startValue = start?['value'] as String?;
+  final terminationValue = termination?['condition'] as String?;
+  if (startValue != null && terminationValue != null) {
+    return '$startValue → $terminationValue';
+  }
+  return startValue ?? terminationValue ?? 'No journey scope was reported.';
+}
+
 enum ExplorerViewMode { journey, graph }
 
 class _BackIntent extends Intent {
@@ -482,6 +613,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
   String? journeyId, error;
   ResolvedSource? source;
   List<String> journeys = [];
+  final Map<String, String> _journeyTitles = {};
   List<Map<String, dynamic>> labels = [];
   StreamSubscription<void>? watcher;
   bool navigatorVisible = true;
@@ -530,6 +662,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
           : loaded.initialNodeId;
       setState(() {
         journeyId = id;
+        _journeyTitles[id] = loaded.title;
         graph = loaded;
         error = null;
         // A source is route-owned UI state. Never let a prior Journey's
@@ -742,8 +875,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   Text(
-                    journeyId ?? '',
+                    journeyScopeDescription(graph!),
                     style: Theme.of(context).textTheme.labelSmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -767,7 +902,12 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 DropdownButton<String>(
                   value: journeyId,
                   items: journeys
-                      .map((id) => DropdownMenuItem(value: id, child: Text(id)))
+                      .map(
+                        (id) => DropdownMenuItem(
+                          value: id,
+                          child: Text(_journeyTitles[id] ?? 'Learning Journey'),
+                        ),
+                      )
                       .toList(),
                   onChanged: (id) {
                     if (id != null) _open(id);
@@ -901,7 +1041,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
     builder: (dialogContext) => AlertDialog(
       title: const Text('Graph relation'),
       content: Text(
-        '${relation.kind} · ${relation.style.name}\n${relation.from} → ${relation.to}',
+        '${relation.kind} · ${relation.style.name}\n'
+        '${graph!.node(relation.from)?['label'] ?? 'Unknown step'} → '
+        '${graph!.node(relation.to)?['label'] ?? 'Unknown step'}',
       ),
       actions: [
         TextButton(
@@ -929,6 +1071,21 @@ class _ExplorerPageState extends State<ExplorerPage> {
         .map((id) => graph!.node(id)?['label'] as String? ?? id)
         .toList();
     return labels.isEmpty ? route.nodeId : labels.join('  ›  ');
+  }
+
+  String? _nodeNarrative(String nodeId) {
+    final anchorIds = graph!
+        .anchorsFor(nodeId)
+        .map((anchor) => anchor['id'])
+        .whereType<String>()
+        .toSet();
+    for (final evidence in graph!.evidence) {
+      if (anchorIds.contains(evidence['anchor_id']) &&
+          evidence['summary'] is String) {
+        return evidence['summary'] as String;
+      }
+    }
+    return null;
   }
 
   Widget _panelHeading(String title, VoidCallback onCollapse) => Padding(
@@ -1108,7 +1265,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
                             '${diagram['kind']} diagram',
                       ),
                       subtitle: Text(
-                        '${diagram['kind']} • ${diagram['id']} • selected node ${node['id']}',
+                        '${diagram['kind']} diagram • includes this journey step',
                       ),
                       trailing: const Icon(Icons.open_in_new),
                       onTap: () => _openDiagram(diagram),
@@ -1135,6 +1292,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
         node['label'] as String? ?? node['id'] as String,
         style: Theme.of(context).textTheme.headlineSmall,
       ),
+      if (_nodeNarrative(node['id'] as String) case final narrative?) ...[
+        const SizedBox(height: 4),
+        Text(narrative),
+      ],
       Text(
         'State: ${node['state'] ?? 'discovered'} • ${node['disposition'] ?? 'primary'}',
       ),
@@ -1208,7 +1369,6 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 evidence.kind,
                 if (evidence.relationship != null) evidence.relationship!,
                 if (evidence.location != null) evidence.location!.reference,
-                evidence.id,
               ].join(' • '),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
@@ -1408,7 +1568,6 @@ class _ExplorerPageState extends State<ExplorerPage> {
                           if (relation.edge['rationale'] is String &&
                               (relation.edge['rationale'] as String).isNotEmpty)
                             relation.edge['rationale'] as String,
-                          relation.targetId,
                         ].join(' • '),
                       ),
                       onTap: () => _navigate(
@@ -1427,7 +1586,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
                           : Icons.arrow_forward,
                     ),
                     title: Text(relation.label),
-                    subtitle: Text('${relation.kind} • ${relation.targetId}'),
+                    subtitle: Text(relation.kind),
                     onTap: () => _navigate(
                       ExplorerRoute(
                         journeyId: journeyId!,

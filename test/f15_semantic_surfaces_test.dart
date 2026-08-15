@@ -9,6 +9,9 @@ void main() {
     ManaSemanticReadModel model, {
     ObservatoryRoute? route,
     Future<ManaInspectArtifactDetail> Function(String id)? detailLoader,
+    Widget Function(String? journeyId)? knowledgeBuilder,
+    Widget Function(ValueChanged<String> onOpenJourney)?
+    learningJourneysBuilder,
   }) => MaterialApp(
     home: ProjectObservatoryPage(
       key: ValueKey('${model.mode}-${route?.destination}'),
@@ -17,6 +20,8 @@ void main() {
       initialReadModel: model,
       initialRoute: route,
       artifactDetailLoader: detailLoader,
+      knowledgeBuilder: knowledgeBuilder,
+      learningJourneysBuilder: learningJourneysBuilder,
     ),
   );
 
@@ -144,6 +149,60 @@ void main() {
       expect(find.text('Other categories'), findsNothing);
     },
   );
+
+  testWidgets('Knowledge opens Learning journeys in the Journey explorer', (
+    tester,
+  ) async {
+    final model = _semanticModelWithContext({
+      ..._context,
+      'categories': [
+        ...(_context['categories'] as List).where(
+          (category) =>
+              (category as Map<String, dynamic>)['category'] !=
+              'learning_journeys',
+        ),
+        {
+          'category': 'learning_journeys',
+          'coverage': 'known',
+          'artifacts': [
+            _journeyArtifact('journey:jrn_first', 'journey'),
+            _journeyArtifact('journey-record:node', 'journey_record'),
+            _journeyArtifact('journey:jrn_second', 'journey'),
+          ],
+        },
+      ],
+    });
+    String? requestedJourney;
+    await tester.pumpWidget(
+      page(
+        model,
+        route: const ObservatoryRoute(
+          destination: ObservatoryDestination.knowledge,
+        ),
+        knowledgeBuilder: (journeyId) {
+          requestedJourney = journeyId;
+          return const Text('Existing Journey Explorer');
+        },
+        learningJourneysBuilder: (onOpenJourney) => ListTile(
+          title: const Text('First journey'),
+          onTap: () => onOpenJourney('jrn_first'),
+        ),
+      ),
+    );
+
+    expect(find.text('2 journeys'), findsOneWidget);
+    await tester.tap(find.text('Learning journeys'));
+    await tester.pump();
+
+    expect(find.text('First journey'), findsOneWidget);
+    expect(find.text('Existing Journey Explorer'), findsNothing);
+    await tester.tap(find.text('First journey'));
+    await tester.pump();
+
+    expect(requestedJourney, 'jrn_first');
+    expect(find.text('Existing Journey Explorer'), findsOneWidget);
+    expect(find.text('Untitled document'), findsNothing);
+  });
 
   testWidgets(
     'Activity is readable, retains filesystem provenance, and enters typed context',
@@ -289,6 +348,47 @@ void main() {
       expect(find.text('Project observatory'), findsOneWidget);
     },
   );
+
+  testWidgets('Journey breadcrumbs return to the Learning Journey list', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      page(
+        _semanticModelWithContext({
+          ..._context,
+          'categories': [
+            ...(_context['categories'] as List).where(
+              (category) =>
+                  (category as Map<String, dynamic>)['category'] !=
+                  'learning_journeys',
+            ),
+            {
+              'category': 'learning_journeys',
+              'coverage': 'known',
+              'artifacts': [_journeyArtifact('journey:jrn_first', 'journey')],
+            },
+          ],
+        }),
+        route: const ObservatoryRoute(
+          destination: ObservatoryDestination.knowledge,
+          category: 'learning_journeys',
+          journeyId: 'jrn_first',
+        ),
+        knowledgeBuilder: (journeyId) => Text('Journey: $journeyId'),
+        learningJourneysBuilder: (_) => const Text('Journey list'),
+      ),
+    );
+
+    expect(find.text('Journey: jrn_first'), findsOneWidget);
+    expect(find.byKey(const ValueKey('breadcrumb-category')), findsOneWidget);
+    expect(find.byKey(const ValueKey('breadcrumb-journey')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('breadcrumb-category')));
+    await tester.pump();
+
+    expect(find.text('Journey list'), findsOneWidget);
+    expect(find.byKey(const ValueKey('breadcrumb-journey')), findsNothing);
+  });
 
   testWidgets('Advanced exposes raw catalog and producer diagnostics', (
     tester,
@@ -534,6 +634,16 @@ const _context = {
   ],
   'coverage': 'complete',
   'diagnostics': [],
+};
+
+Map<String, dynamic> _journeyArtifact(String id, String kind) => {
+  'artifact_id': id,
+  'path': '.mana/learning/journeys/${id.split(':').last}/journey.yaml',
+  'kind': kind,
+  'status': 'available',
+  'work_item_id': null,
+  'section_id': null,
+  'label': null,
 };
 
 const _activity = {

@@ -22,11 +22,12 @@ class ObservatoryRoute {
     this.workItemId,
     this.section,
     this.category,
+    this.journeyId,
     this.artifactId,
     this.advancedSection,
   });
   final ObservatoryDestination destination;
-  final String? workItemId, category, artifactId;
+  final String? workItemId, category, journeyId, artifactId;
   final ManaSectionId? section;
   final AdvancedSection? advancedSection;
 
@@ -34,6 +35,7 @@ class ObservatoryRoute {
     String? workItemId,
     ManaSectionId? section,
     String? category,
+    String? journeyId,
     String? artifactId,
     AdvancedSection? advancedSection,
     bool clearWorkItem = false,
@@ -46,6 +48,7 @@ class ObservatoryRoute {
     workItemId: clearWorkItem ? null : workItemId ?? this.workItemId,
     section: clearSection ? null : section ?? this.section,
     category: clearCategory ? null : category ?? this.category,
+    journeyId: journeyId ?? this.journeyId,
     artifactId: clearArtifact ? null : artifactId ?? this.artifactId,
     advancedSection: clearAdvancedSection
         ? null
@@ -59,6 +62,7 @@ class ObservatoryRoute {
       workItemId == other.workItemId &&
       section == other.section &&
       category == other.category &&
+      journeyId == other.journeyId &&
       artifactId == other.artifactId &&
       advancedSection == other.advancedSection;
   @override
@@ -67,6 +71,7 @@ class ObservatoryRoute {
     workItemId,
     section,
     category,
+    journeyId,
     artifactId,
     advancedSection,
   );
@@ -131,6 +136,7 @@ List<String> observatoryBreadcrumbs(
   if (route.workItemId != null) values.add(route.workItemId!);
   if (route.section != null) values.add(_sectionLabel(route.section!));
   if (route.category != null) values.add(route.category!);
+  if (route.journeyId != null) values.add(route.journeyId!);
   if (route.advancedSection != null) {
     values.add(switch (route.advancedSection!) {
       AdvancedSection.artifacts => 'Artifacts',
