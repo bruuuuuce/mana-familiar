@@ -1675,6 +1675,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                 (category) => category.category == _navigation.current.category,
               )
               .firstOrNull;
+    if (selected != null && _isLearningJourneys(selected)) {
+      return _learningJourneys(selected);
+    }
     return ListView(
       padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
       children: [
@@ -1751,7 +1754,36 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     onTap: onTap,
   );
 
+  bool _isLearningJourneys(ManaProjectContextCategory category) =>
+      category.category == 'learning_journeys';
+
+  List<ManaArtifactReference> _journeysFor(
+    ManaProjectContextCategory category,
+  ) => category.artifacts
+      .where((artifact) => artifact.kind == 'journey')
+      .toList();
+
+  Widget _learningJourneys(ManaProjectContextCategory category) {
+    if (_journeysFor(category).isNotEmpty) {
+      return widget.knowledgeBuilder?.call(null) ?? widget.knowledge;
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
+      children: const [
+        Text('Knowledge'),
+        SizedBox(height: 28),
+        _ObservatoryEmptyState(
+          icon: Icons.route_outlined,
+          title: 'No Learning Journeys reported yet',
+          message: 'Mana has not reported a Journey manifest for this project.',
+        ),
+      ],
+    );
+  }
+
   Widget _knowledgeCategoryRow(ManaProjectContextCategory category) {
+    final isLearningJourneys = _isLearningJourneys(category);
+    final journeyCount = _journeysFor(category).length;
     final onlyDocument = category.artifacts.length == 1
         ? category.artifacts.single
         : null;
@@ -1762,11 +1794,15 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
             : Icons.auto_stories_outlined,
       ),
       title: _humanize(category.category),
-      subtitle: category.artifacts.isEmpty
+      subtitle: isLearningJourneys
+          ? journeyCount == 0
+                ? 'No journeys yet'
+                : '$journeyCount journey${journeyCount == 1 ? '' : 's'}'
+          : category.artifacts.isEmpty
           ? 'No material yet'
           : '${category.artifacts.length} document${category.artifacts.length == 1 ? '' : 's'}',
       trailing: const Icon(Icons.chevron_right),
-      onTap: () => onlyDocument == null
+      onTap: () => isLearningJourneys || onlyDocument == null
           ? _navigate(
               ObservatoryRoute(
                 destination: ObservatoryDestination.knowledge,

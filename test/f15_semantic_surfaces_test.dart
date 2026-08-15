@@ -9,6 +9,7 @@ void main() {
     ManaSemanticReadModel model, {
     ObservatoryRoute? route,
     Future<ManaInspectArtifactDetail> Function(String id)? detailLoader,
+    Widget Function(String? journeyId)? knowledgeBuilder,
   }) => MaterialApp(
     home: ProjectObservatoryPage(
       key: ValueKey('${model.mode}-${route?.destination}'),
@@ -17,6 +18,7 @@ void main() {
       initialReadModel: model,
       initialRoute: route,
       artifactDetailLoader: detailLoader,
+      knowledgeBuilder: knowledgeBuilder,
     ),
   );
 
@@ -144,6 +146,51 @@ void main() {
       expect(find.text('Other categories'), findsNothing);
     },
   );
+
+  testWidgets('Knowledge opens Learning journeys in the Journey explorer', (
+    tester,
+  ) async {
+    final model = _semanticModelWithContext({
+      ..._context,
+      'categories': [
+        ...(_context['categories'] as List).where(
+          (category) =>
+              (category as Map<String, dynamic>)['category'] !=
+              'learning_journeys',
+        ),
+        {
+          'category': 'learning_journeys',
+          'coverage': 'known',
+          'artifacts': [
+            _journeyArtifact('journey:jrn_first', 'journey'),
+            _journeyArtifact('journey-record:node', 'journey_record'),
+            _journeyArtifact('journey:jrn_second', 'journey'),
+          ],
+        },
+      ],
+    });
+    String? requestedJourney;
+    await tester.pumpWidget(
+      page(
+        model,
+        route: const ObservatoryRoute(
+          destination: ObservatoryDestination.knowledge,
+        ),
+        knowledgeBuilder: (journeyId) {
+          requestedJourney = journeyId;
+          return const Text('Existing Journey Explorer');
+        },
+      ),
+    );
+
+    expect(find.text('2 journeys'), findsOneWidget);
+    await tester.tap(find.text('Learning journeys'));
+    await tester.pump();
+
+    expect(requestedJourney, isNull);
+    expect(find.text('Existing Journey Explorer'), findsOneWidget);
+    expect(find.text('Untitled document'), findsNothing);
+  });
 
   testWidgets(
     'Activity is readable, retains filesystem provenance, and enters typed context',
@@ -534,6 +581,16 @@ const _context = {
   ],
   'coverage': 'complete',
   'diagnostics': [],
+};
+
+Map<String, dynamic> _journeyArtifact(String id, String kind) => {
+  'artifact_id': id,
+  'path': '.mana/learning/journeys/${id.split(':').last}/journey.yaml',
+  'kind': kind,
+  'status': 'available',
+  'work_item_id': null,
+  'section_id': null,
+  'label': null,
 };
 
 const _activity = {
