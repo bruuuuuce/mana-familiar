@@ -81,6 +81,8 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   StreamSubscription<ManaWorkspaceWatchEvent>? _watchSubscription;
   var _refreshPending = false;
   var _watchUnavailable = false;
+  var _catalogLoading = false;
+  Object? _catalogError;
 
   @override
   void initState() {
@@ -132,12 +134,13 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       _error = null;
     });
     try {
-      final model = await _repository.refresh();
+      final model = await _repository.initialLoad();
       if (mounted)
         setState(() {
           _model = model;
           _loading = false;
         });
+      unawaited(_loadSupportingSurfaces());
     } catch (e) {
       if (mounted)
         setState(() {
@@ -145,6 +148,11 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
           _loading = false;
         });
     }
+  }
+
+  Future<void> _loadSupportingSurfaces() async {
+    final model = await _repository.loadSupportingSurfaces();
+    if (mounted) setState(() => _model = model);
   }
 
   Future<void> _refresh() async {
@@ -181,6 +189,35 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       });
     _loadDetailIfNeeded();
     _loadWorkDetailIfNeeded();
+    _loadCatalogIfNeeded();
+  }
+
+  void _loadCatalogIfNeeded() {
+    final model = _model;
+    if (model == null ||
+        model.catalog != null ||
+        _catalogLoading ||
+        _navigation.current.destination != ObservatoryDestination.advanced ||
+        (_navigation.current.advancedSection ?? AdvancedSection.artifacts) !=
+            AdvancedSection.artifacts ||
+        !model.project.supports('artifacts', inspectArtifactsSchema)) {
+      return;
+    }
+    setState(() {
+      _catalogLoading = true;
+      _catalogError = null;
+    });
+    _repository
+        .loadCatalog()
+        .then((updated) {
+          if (mounted) setState(() => _model = updated);
+        })
+        .catchError((Object error) {
+          if (mounted) setState(() => _catalogError = error);
+        })
+        .whenComplete(() {
+          if (mounted) setState(() => _catalogLoading = false);
+        });
   }
 
   void _back() {
@@ -191,6 +228,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       });
     _loadDetailIfNeeded();
     _loadWorkDetailIfNeeded();
+    _loadCatalogIfNeeded();
   }
 
   void _forward() {
@@ -201,6 +239,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       });
     _loadDetailIfNeeded();
     _loadWorkDetailIfNeeded();
+    _loadCatalogIfNeeded();
   }
 
   void _loadWorkDetailIfNeeded() {
@@ -2025,6 +2064,20 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   );
 
   Widget _advancedArtifactCatalog(ManaSemanticReadModel model) {
+    if (_catalogLoading) {
+      return const _ObservatoryEmptyState(
+        icon: Icons.inventory_2_outlined,
+        title: 'Loading artifact catalog',
+        message: 'Loading the raw catalog only when it is opened.',
+      );
+    }
+    if (_catalogError != null) {
+      return const _ObservatoryEmptyState(
+        icon: Icons.error_outline,
+        title: 'Artifact catalog unavailable',
+        message: 'Mana could not load the artifact catalog for this project.',
+      );
+    }
     final artifacts =
         model.catalog?.artifacts ?? const <ManaInspectArtifactSummary>[];
     if (artifacts.isEmpty) {
