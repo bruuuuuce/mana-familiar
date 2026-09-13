@@ -59,6 +59,15 @@ identifies a compatible Mana producer; it need not be a sibling checkout.
 Supplying both flags is the portable invocation. Familiar negotiates the exact
 inspect schemas before loading optional surfaces.
 
+### Human Feedback su artefatti pubblicati
+
+Quando Mana dichiara la capability `human-feedback`, Familiar può inviare
+commenti, risposte e decisioni Story Start con richieste JSON strutturate. Il
+client conserva soltanto bozze locali: non scrive Markdown generato né file
+`.mana` direttamente. Mana convalida identità, revisione e alternative prima
+di pubblicare il contributo canonico. Una decisione registrata richiede una
+successiva ripianificazione; non approva né avvia un provider.
+
 ### Open a saved Mana inspect response
 
 For standalone demos or testing of the project read model, open a saved
@@ -98,6 +107,14 @@ flutter test
 flutter build macos --debug
 ```
 
+For synthetic task screenshots and optional agentic visual evaluation of
+readability, information hierarchy, and misleading states, see
+[UX evaluation](docs/agentic-ux-testing.md).
+
+The optional UX evaluator is informational only. Its local synthetic captures do
+not open projects, call a model unless explicitly requested, or turn an agent
+judgment into a CI gate.
+
 ### Cross-repository zero-token harness
 
 With a compatible local Mana checkout, C01 creates a temporary project,
@@ -126,6 +143,39 @@ Run the producer/consumer contract gate from the Mana checkout with:
 scripts/verify-inspect-consumer-compatibility.sh \
   --familiar-root /path/to/mana-familiar
 ```
+
+### C03 Human Feedback
+
+C03 esercita il producer reale su progetti temporanei, con replay idempotente,
+reply concorrenti sulla stessa revisione, conflitti e letture canoniche. Non
+usa provider o rete. Il report, la trace e le revisioni dei due checkout sono
+salvati in `build/feedback-audit/run-*`.
+
+```sh
+python3 tests/run-c03-human-feedback-harness.py \
+  --mana-root /path/to/mana --profile smoke
+```
+
+Il profilo `stress` è intenzionalmente separato (5 seed × 2.000 azioni) e ha
+un workflow schedulato/manuale. I profili `desktop-long` (300 mutazioni
+distribuite su 20 minuti) e `soak` (1.000 su 60 minuti) hanno gate producer
+dedicati e reportano esplicitamente il proprio scope. Nessuno dei tre
+sostituisce l'E2E nativo desktop: finestre, riavvii, rigenerazioni e metriche
+UI richiedono prove native dedicate.
+
+Su macOS il gate nativo delle finestre e del lifecycle è:
+
+```sh
+flutter build macos --debug
+tests/run-macos-native-window-e2e.sh
+```
+
+Avvia due processi Runner reali, verifica il focus in entrambe le direzioni,
+poi esercita `Cmd-W` e `Cmd-Q`. Richiede il permesso Accessibility per il
+terminale che esegue il comando; conserva l'evidenza in `build/native-e2e/`.
+Le rigenerazioni Story Start non sono ancora pilotabili dalla UI: il relativo
+contratto è verificato nei gate Mana/C03, ma non viene promosso a copertura
+desktop nativa da questo comando.
 
 ## Contract
 

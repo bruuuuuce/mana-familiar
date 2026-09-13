@@ -591,18 +591,23 @@ class ManaInspectProject {
     required this.projectId,
     required this.frameworkCompatibility,
     required this.manaPresent,
+    required this.capabilities,
     required this.operations,
     required this.raw,
   });
   final String projectId;
   final String? frameworkCompatibility;
   final bool manaPresent;
+  final Set<String> capabilities;
   final List<ManaInspectOperation> operations;
   final Map<String, dynamic> raw;
 
   bool supports(String operation, String schema) => operations.any(
     (candidate) => candidate.name == operation && candidate.schema == schema,
   );
+
+  bool supportsCapability(String capability) =>
+      capabilities.contains(capability);
 
   ManaSemanticMode get semanticMode {
     final work =
@@ -630,6 +635,12 @@ class ManaInspectProject {
       frameworkCompatibility:
           _map(json['framework'])['compatibility'] as String?,
       manaPresent: mana['present'] as bool? ?? false,
+      capabilities:
+          (json['capabilities'] is List
+                  ? json['capabilities'] as List
+                  : const <Object?>[])
+              .whereType<String>()
+              .toSet(),
       operations: (_list(json['operations']))
           .whereType<Map>()
           .map((value) {
@@ -1012,6 +1023,11 @@ class ManaSemanticRepository {
   Future<ManaSemanticReadModel>? _catalogLoading;
   final Map<String, Future<ManaWorkItemResponse>> _details = {};
   ManaSemanticReadModel? _latest;
+
+  /// Detail responses are scoped to the semantic revision that produced them.
+  /// A UI refresh therefore must not reuse an in-flight or cached dossier from
+  /// a prior revision.
+  void invalidateWorkItemDetails() => _details.clear();
 
   /// Refreshes the semantic surfaces needed for the cockpit. The raw artifact
   /// catalog is deliberately optional because it is only rendered in Advanced

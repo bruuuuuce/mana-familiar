@@ -339,6 +339,10 @@ class ExplorerPreferences {
   }) : themeMode = ValueNotifier(initialMode);
 
   final File _file;
+
+  /// Shared application-owned directory. Feature state stored here never
+  /// belongs to the currently observed Mana project.
+  Directory get storageRoot => _file.parent;
   final ValueNotifier<ThemeMode> themeMode;
   double fontSize;
   int tabSize;

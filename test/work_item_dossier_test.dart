@@ -96,7 +96,9 @@ void main() {
     await tester.pumpWidget(page(section: ManaSectionId.review));
     expect(find.text('PROJ-24342'), findsAtLeastNWidgets(1));
     expect(
-      find.text('Mana has not reported a review state for this work item.'),
+      find.text(
+        'Mana could not provide review information for this work item.',
+      ),
       findsOneWidget,
     );
   });
