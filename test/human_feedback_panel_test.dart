@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mana_familiar/application/human_feedback.dart';
 import 'package:mana_familiar/presentation/human_feedback_panel.dart';
@@ -85,6 +86,58 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('New draft'), findsOneWidget);
+  });
+
+  testWidgets('publishes the focused composer with Command-Enter', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: HumanFeedbackPanel(repository: repository, target: target),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('feedback-author')), 'Ada');
+    await tester.enterText(
+      find.byKey(const Key('feedback-body')),
+      'Published from the keyboard.',
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+    await tester.pumpAndSettle();
+
+    expect(repository.created.single.body, 'Published from the keyboard.');
+  });
+
+  testWidgets('refreshes an open panel after an external publication', (
+    tester,
+  ) async {
+    final repository = _ReloadCountingRepository();
+    final signal = ValueNotifier(0);
+    addTearDown(signal.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: HumanFeedbackPanel(
+            repository: repository,
+            target: target,
+            refreshSignal: signal,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.loadCalls, 1);
+
+    signal.value++;
+    await tester.pumpAndSettle();
+
+    expect(repository.loadCalls, 2);
   });
 
   testWidgets('defaults to open threads and can reveal resolved history', (
@@ -226,6 +279,16 @@ class _FlakyRepository extends _Repository {
   Future<List<HumanFeedbackThread>> threads(HumanFeedbackTarget target) async {
     loadCalls++;
     if (loadCalls == 1) throw StateError('temporary unavailable');
+    return super.threads(target);
+  }
+}
+
+class _ReloadCountingRepository extends _Repository {
+  var loadCalls = 0;
+
+  @override
+  Future<List<HumanFeedbackThread>> threads(HumanFeedbackTarget target) async {
+    loadCalls++;
     return super.threads(target);
   }
 }

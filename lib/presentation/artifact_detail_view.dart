@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../application/artifact_renderer.dart';
 import '../application/mana_inspect.dart';
@@ -29,6 +31,7 @@ class ArtifactDetailView extends StatelessWidget {
     this.feedback,
     this.feedbackDrafts,
     this.feedbackProjectId,
+    this.feedbackRefresh,
   });
 
   final ManaInspectArtifactSummary artifact;
@@ -48,6 +51,7 @@ class ArtifactDetailView extends StatelessWidget {
   final HumanFeedbackRepository? feedback;
   final HumanFeedbackDraftStore? feedbackDrafts;
   final String? feedbackProjectId;
+  final ValueListenable<int>? feedbackRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -200,6 +204,7 @@ class ArtifactDetailView extends StatelessWidget {
             feedback: feedback,
             feedbackDrafts: feedbackDrafts,
             feedbackProjectId: feedbackProjectId,
+            feedbackRefresh: feedbackRefresh,
           ),
         ),
       ),
@@ -559,6 +564,10 @@ class _JourneyArtifactModule extends StatelessWidget {
 /// notes. Links, images, and HTML have already been removed by the renderer.
 enum MarkdownReaderMode { reader, source, metadata }
 
+class _OpenDocumentCommentsIntent extends Intent {
+  const _OpenDocumentCommentsIntent();
+}
+
 class MarkdownNoteView extends StatefulWidget {
   const MarkdownNoteView({
     super.key,
@@ -571,6 +580,7 @@ class MarkdownNoteView extends StatefulWidget {
     this.feedback,
     this.feedbackDrafts,
     this.feedbackProjectId,
+    this.feedbackRefresh,
   });
 
   final String markdown;
@@ -582,6 +592,7 @@ class MarkdownNoteView extends StatefulWidget {
   final HumanFeedbackRepository? feedback;
   final HumanFeedbackDraftStore? feedbackDrafts;
   final String? feedbackProjectId;
+  final ValueListenable<int>? feedbackRefresh;
 
   @override
   State<MarkdownNoteView> createState() => _MarkdownNoteViewState();
@@ -593,20 +604,29 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _scrollViewportKey = GlobalKey();
   final Map<String, GlobalKey> _headingKeys = {};
+  Map<String, String> _stableFeedbackSections = const {};
   String? _activeAnchor;
   var _trackingScheduled = false;
+  var _feedbackTargetRequest = 0;
 
   @override
   void initState() {
     super.initState();
     _prepareDocument();
     _scrollController.addListener(_scheduleActiveHeadingUpdate);
+    _loadStableFeedbackTargets();
   }
 
   @override
   void didUpdateWidget(covariant MarkdownNoteView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.markdown != widget.markdown) _prepareDocument();
+    if (oldWidget.markdown != widget.markdown ||
+        oldWidget.artifact?.raw['revision_id'] !=
+            widget.artifact?.raw['revision_id'] ||
+        oldWidget.feedback != widget.feedback) {
+      _loadStableFeedbackTargets();
+    }
   }
 
   void _prepareDocument() {
@@ -621,6 +641,51 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
     _activeAnchor = _document.headings.isEmpty
         ? null
         : _document.headings.first.anchor;
+  }
+
+  HumanFeedbackTarget? get _feedbackDocumentTarget {
+    final artifact = widget.artifact;
+    final projectId = widget.feedbackProjectId;
+    final revision = artifact?.raw['revision_id'];
+    if (artifact == null ||
+        projectId == null ||
+        revision is! String ||
+        revision.isEmpty) {
+      return null;
+    }
+    return HumanFeedbackTarget(
+      projectId: projectId,
+      artifactId: artifact.id,
+      artifactRevision: revision,
+    );
+  }
+
+  Future<void> _loadStableFeedbackTargets() async {
+    final target = _feedbackDocumentTarget;
+    final repository = widget.feedback;
+    final request = ++_feedbackTargetRequest;
+    if (target == null || repository is! ManaHumanFeedbackRepository) {
+      if (mounted) setState(() => _stableFeedbackSections = const {});
+      return;
+    }
+    final producerTargets = await repository.targets(target);
+    if (!mounted || request != _feedbackTargetRequest) return;
+    final ids = <String, int>{};
+    for (final section in producerTargets.sections) {
+      ids.update(section.id, (count) => count + 1, ifAbsent: () => 1);
+    }
+    final mapped = <String, String>{};
+    if (producerTargets.stableSections) {
+      for (final section in producerTargets.sections) {
+        if (ids[section.id] != 1 ||
+            section.headingIndex > _document.headings.length) {
+          continue;
+        }
+        mapped[_document.headings[section.headingIndex - 1].anchor] =
+            section.id;
+      }
+    }
+    setState(() => _stableFeedbackSections = mapped);
   }
 
   @override
@@ -672,20 +737,13 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
   }
 
   HumanFeedbackTarget? get _feedbackTarget {
-    final artifact = widget.artifact;
-    final projectId = widget.feedbackProjectId;
-    final revision = artifact?.raw['revision_id'];
-    if (artifact == null ||
-        projectId == null ||
-        revision is! String ||
-        revision.isEmpty) {
-      return null;
-    }
+    final document = _feedbackDocumentTarget;
+    if (document == null) return null;
     return HumanFeedbackTarget(
-      projectId: projectId,
-      artifactId: artifact.id,
-      artifactRevision: revision,
-      sectionId: _activeAnchor,
+      projectId: document.projectId,
+      artifactId: document.artifactId,
+      artifactRevision: document.artifactRevision,
+      sectionId: _stableFeedbackSections[_activeAnchor],
     );
   }
 
@@ -700,6 +758,7 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
         repository: repository,
         target: target,
         drafts: widget.feedbackDrafts,
+        refreshSignal: widget.feedbackRefresh,
       ),
     );
   }
@@ -740,32 +799,52 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
         ],
       ),
     );
-    if (widget.documentPresentation) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          controls,
-          const SizedBox(height: 10),
-          Expanded(child: _workspaceBody()),
-        ],
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        controls,
-        const SizedBox(height: 20),
-        if (_mode == MarkdownReaderMode.source)
-          SelectableText(
-            widget.source ?? widget.markdown,
-            key: const Key('markdown-source'),
-            style: const TextStyle(fontFamily: 'monospace'),
+    final content = widget.documentPresentation
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              controls,
+              const SizedBox(height: 10),
+              Expanded(child: _workspaceBody()),
+            ],
           )
-        else if (_mode == MarkdownReaderMode.metadata)
-          _metadata()
-        else
-          _documentColumn(),
-      ],
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              controls,
+              const SizedBox(height: 20),
+              if (_mode == MarkdownReaderMode.source)
+                SelectableText(
+                  widget.source ?? widget.markdown,
+                  key: const Key('markdown-source'),
+                  style: const TextStyle(fontFamily: 'monospace'),
+                )
+              else if (_mode == MarkdownReaderMode.metadata)
+                _metadata()
+              else
+                _documentColumn(),
+            ],
+          );
+    return Focus(
+      autofocus: true,
+      child: Shortcuts(
+        shortcuts: const {
+          SingleActivator(LogicalKeyboardKey.keyC, meta: true, shift: true):
+              _OpenDocumentCommentsIntent(),
+        },
+        child: Actions(
+          actions: {
+            _OpenDocumentCommentsIntent:
+                CallbackAction<_OpenDocumentCommentsIntent>(
+                  onInvoke: (_) {
+                    _openComments();
+                    return null;
+                  },
+                ),
+          },
+          child: content,
+        ),
+      ),
     );
   }
 

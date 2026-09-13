@@ -90,6 +90,8 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       ManaDirectoryWatcher(projectRoot: widget.client.projectRoot);
   StreamSubscription<ManaWorkspaceWatchEvent>? _watchSubscription;
   var _refreshPending = false;
+  var _refreshInFlight = false;
+  final ValueNotifier<int> _feedbackRefresh = ValueNotifier(0);
   var _watchUnavailable = false;
   var _catalogLoading = false;
   Object? _catalogError;
@@ -110,6 +112,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
             _watchUnavailable = true;
         }
       });
+      if (event == ManaWorkspaceWatchEvent.changed) {
+        _scheduleWorkspaceRefresh();
+      }
     });
     _watcher.start();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -123,6 +128,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   void dispose() {
     _watchSubscription?.cancel();
     _watcher.dispose();
+    _feedbackRefresh.dispose();
     super.dispose();
   }
 
@@ -155,6 +161,11 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
           _model = model;
           _loading = false;
         });
+      // The post-frame request may have run before the initial inspect model
+      // arrived. Re-evaluate an explicit startup artifact route now that its
+      // producer-backed summary is available.
+      _loadDetailIfNeeded();
+      _loadWorkDetailIfNeeded();
       unawaited(_loadSupportingSurfaces());
     } catch (e) {
       if (mounted)
@@ -170,7 +181,14 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     if (mounted) setState(() => _model = model);
   }
 
-  Future<void> _refresh() async {
+  void _scheduleWorkspaceRefresh() {
+    if (_refreshInFlight || !mounted) return;
+    unawaited(_refresh(fromWorkspaceWatch: true));
+  }
+
+  Future<void> _refresh({bool fromWorkspaceWatch = false}) async {
+    if (_refreshInFlight) return;
+    _refreshInFlight = true;
     setState(() {
       _refreshPending = false;
       _detailCache.clear();
@@ -187,6 +205,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     try {
       if (widget.onRefresh != null) {
         await widget.onRefresh!();
+        _feedbackRefresh.value++;
         return;
       }
       // Unlike initial load, a user-requested refresh must fetch every
@@ -195,11 +214,18 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       final model = await _repository.refresh();
       if (!mounted) return;
       setState(() => _model = model);
+      _feedbackRefresh.value++;
       _loadDetailIfNeeded();
     } catch (error) {
       // Do not replace useful, potentially stale evidence with a dead-end
       // error page. Initial load still has no model and is handled by _load.
       if (mounted && _model == null) setState(() => _error = error);
+    } finally {
+      _refreshInFlight = false;
+      // An atomic Story Start publication may emit more than one filesystem
+      // event. One extra pass consumes a change observed during the current
+      // read without starting a recursive refresh loop.
+      if (mounted && _refreshPending) _scheduleWorkspaceRefresh();
     }
   }
 
@@ -546,6 +572,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                                 feedback: feedback,
                                 feedbackDrafts: widget.feedbackDrafts,
                                 feedbackProjectId: model.project.projectId,
+                                feedbackRefresh: _feedbackRefresh,
                                 contextualTitle:
                                     _reference(model, artifact.id)?.label ??
                                     'Untitled document',
@@ -569,6 +596,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                           feedback: feedback,
                           feedbackDrafts: widget.feedbackDrafts,
                           feedbackProjectId: model.project.projectId,
+                          feedbackRefresh: _feedbackRefresh,
                           contextualTitle:
                               _reference(model, artifact.id)?.label ??
                               'Untitled document',
@@ -599,6 +627,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                                 feedback: feedback,
                                 feedbackDrafts: widget.feedbackDrafts,
                                 feedbackProjectId: model.project.projectId,
+                                feedbackRefresh: _feedbackRefresh,
                               ),
                             ),
                           ],
@@ -617,6 +646,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                           feedback: feedback,
                           feedbackDrafts: widget.feedbackDrafts,
                           feedbackProjectId: model.project.projectId,
+                          feedbackRefresh: _feedbackRefresh,
                         ),
                 ),
               ],

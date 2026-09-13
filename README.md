@@ -173,9 +173,17 @@ tests/run-macos-native-window-e2e.sh
 Avvia due processi Runner reali, verifica il focus in entrambe le direzioni,
 poi esercita `Cmd-W` e `Cmd-Q`. Richiede il permesso Accessibility per il
 terminale che esegue il comando; conserva l'evidenza in `build/native-e2e/`.
-Le rigenerazioni Story Start non sono ancora pilotabili dalla UI: il relativo
-contratto è verificato nei gate Mana/C03, ma non viene promosso a copertura
-desktop nativa da questo comando.
+Familiar non avvia un provider dalla UI. Le rigenerazioni restano esterne e
+il gate nativo verifica che finestre, focus e lifecycle rimangano corretti
+mentre Mana pubblica nuove versioni; l'asserzione semantica sui collegamenti
+dei target resta nel contratto Mana/Familiar.
+
+Con il checkout Mana compatibile, lo smoke nativo pubblica V0/R1–R5 con la
+pipeline Story Start v2 e conserva un manifest completo:
+
+```sh
+python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana
+```
 
 ## Contract
 

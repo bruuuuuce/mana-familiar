@@ -1,3 +1,4 @@
+import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 
 import 'app/mana_familiar_app.dart';
@@ -18,6 +19,11 @@ export 'presentation/explorer_page.dart'
 /// The composition root intentionally contains only process startup.
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Familiar is a desktop reader with meaningful document navigation and
+  // authoring controls. Keep the semantic tree available to macOS assistive
+  // technology (and to the native acceptance driver) instead of relying on a
+  // screen-reader process to happen to enable it after launch.
+  SemanticsBinding.instance.ensureSemantics();
   final config = ExplorerConfig.parse(args);
   final preferences = await ExplorerPreferences.load(config);
   if (config.fixturePath == null && config.hasExplicitProjectRoot) {

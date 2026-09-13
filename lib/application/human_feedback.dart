@@ -23,6 +23,15 @@ class HumanFeedbackTarget {
     artifactRevision,
     sectionId ?? '',
   ].map(Uri.encodeComponent).join('/');
+
+  /// A draft belongs to the logical document/section. Its source revision is
+  /// retained inside the draft payload, but must not strand a user's text
+  /// when Story Start publishes a newer revision of the same target.
+  String get documentKey => [
+    projectId,
+    artifactId,
+    sectionId ?? '',
+  ].map(Uri.encodeComponent).join('/');
 }
 
 enum HumanFeedbackThreadState { open, resolved }
@@ -136,6 +145,34 @@ class HumanFeedbackThreadPage {
   final List<HumanFeedbackThread> threads;
   final String? nextCursor;
   final String? viewRevision;
+}
+
+/// A producer-declared stable target and its location in one rendered
+/// Markdown revision. `headingIndex` is only a presentation locator; the
+/// immutable section ID is what is persisted with a contribution.
+class HumanFeedbackSectionTarget {
+  const HumanFeedbackSectionTarget({
+    required this.id,
+    required this.headingIndex,
+  });
+
+  final String id;
+  final int headingIndex;
+}
+
+class HumanFeedbackTargets {
+  const HumanFeedbackTargets({
+    required this.stableSections,
+    required this.sections,
+  });
+
+  final bool stableSections;
+  final List<HumanFeedbackSectionTarget> sections;
+
+  static const unavailable = HumanFeedbackTargets(
+    stableSections: false,
+    sections: <HumanFeedbackSectionTarget>[],
+  );
 }
 
 class HumanDecisionOption {
@@ -376,13 +413,81 @@ class ManaHumanFeedbackRepository implements HumanFeedbackRepository {
 
   @override
   Future<List<HumanFeedbackThread>> threads(HumanFeedbackTarget target) async {
+    return _readAll((cursor) => threadPage(target, cursor: cursor));
+  }
+
+  /// Prefer Mana's history operation when it is negotiated. Older producers
+  /// retain their exact-revision read and therefore keep their existing
+  /// read-only behavior instead of receiving an invented link state.
+  Future<List<HumanFeedbackThread>> threadsForDisplay(
+    HumanFeedbackTarget target,
+  ) async {
+    try {
+      final supported = await capabilities();
+      if (supported.supports('list-history')) {
+        return _readAll((cursor) => historyThreadPage(target, cursor: cursor));
+      }
+    } catch (_) {
+      // A capability probe is additive. Keep the established list path when
+      // a compatible older producer cannot negotiate it.
+    }
+    return threads(target);
+  }
+
+  /// Negotiates producer-owned Markdown section IDs. Older producers remain
+  /// document-only: Familiar must not synthesize a target from a heading slug.
+  Future<HumanFeedbackTargets> targets(HumanFeedbackTarget target) async {
+    try {
+      final capabilities = await this.capabilities();
+      if (!capabilities.supports('targets')) {
+        return HumanFeedbackTargets.unavailable;
+      }
+      final response = await _command('targets', _targetRequest(target));
+      if (response['schemaVersion'] != 'mana.human-feedback.targets/v1' ||
+          response['stableSections'] is! bool ||
+          response['sections'] is! List) {
+        throw const FormatException(
+          'Mana returned incompatible feedback targets.',
+        );
+      }
+      final sections = <HumanFeedbackSectionTarget>[];
+      for (final entry in response['sections'] as List) {
+        if (entry is! Map ||
+            entry['sectionId'] is! String ||
+            entry['headingIndex'] is! int ||
+            (entry['headingIndex'] as int) < 1) {
+          throw const FormatException(
+            'Mana returned an invalid feedback target.',
+          );
+        }
+        sections.add(
+          HumanFeedbackSectionTarget(
+            id: entry['sectionId'] as String,
+            headingIndex: entry['headingIndex'] as int,
+          ),
+        );
+      }
+      return HumanFeedbackTargets(
+        stableSections: response['stableSections'] as bool,
+        sections: sections,
+      );
+    } catch (_) {
+      // Target negotiation is additive. A transient or older producer keeps
+      // the safe document-level comment path available.
+      return HumanFeedbackTargets.unavailable;
+    }
+  }
+
+  Future<List<HumanFeedbackThread>> _readAll(
+    Future<HumanFeedbackThreadPage> Function(String? cursor) pageFor,
+  ) async {
     for (var attempt = 0; attempt < 2; attempt++) {
       final all = <HumanFeedbackThread>[];
       String? cursor;
       String? viewRevision;
       var changed = false;
       do {
-        final page = await threadPage(target, cursor: cursor);
+        final page = await pageFor(cursor);
         if (viewRevision != null &&
             page.viewRevision != null &&
             page.viewRevision != viewRevision) {
@@ -417,6 +522,40 @@ class ManaHumanFeedbackRepository implements HumanFeedbackRepository {
         response['threads'] is! List) {
       throw const FormatException(
         'Mana returned an incompatible thread response.',
+      );
+    }
+    final next = response['nextCursor'];
+    final view = response['viewRevision'];
+    if ((next != null && next is! String) ||
+        (view != null && view is! String)) {
+      throw const FormatException('Mana returned invalid pagination metadata.');
+    }
+    return HumanFeedbackThreadPage(
+      threads: (response['threads'] as List)
+          .map((value) => _threadFromJson(value, target))
+          .toList(growable: false),
+      nextCursor: next as String?,
+      viewRevision: view as String?,
+    );
+  }
+
+  Future<HumanFeedbackThreadPage> historyThreadPage(
+    HumanFeedbackTarget target, {
+    String? cursor,
+    int? limit,
+  }) async {
+    if (limit != null && (limit < 1 || limit > 200)) {
+      throw ArgumentError.value(limit, 'limit', 'must be in 1..200');
+    }
+    final response = await _command('list-history', {
+      ..._targetRequest(target),
+      'cursor': ?cursor,
+      'limit': ?limit?.toString(),
+    });
+    if (response['schemaVersion'] != 'mana.human-feedback.thread-history/v1' ||
+        response['threads'] is! List) {
+      throw const FormatException(
+        'Mana returned an incompatible thread-history response.',
       );
     }
     final next = response['nextCursor'];
@@ -541,13 +680,37 @@ HumanFeedbackThread _threadFromJson(Object? input, HumanFeedbackTarget target) {
       entries is! List) {
     throw const FormatException('Thread is incomplete.');
   }
+  final rawTarget = json['target'];
+  HumanFeedbackTarget sourceTarget = target;
+  if (rawTarget is Map) {
+    final source = rawTarget.cast<String, dynamic>();
+    final artifactId = source['artifactId'];
+    final artifactRevision = source['artifactRevision'];
+    final sectionId = source['sectionId'];
+    if (artifactId is String &&
+        artifactRevision is String &&
+        (sectionId == null || sectionId is String)) {
+      sourceTarget = HumanFeedbackTarget(
+        projectId: target.projectId,
+        artifactId: artifactId,
+        artifactRevision: artifactRevision,
+        sectionId: sectionId as String?,
+      );
+    }
+  }
+  final linkState = switch (json['linkState']) {
+    'changed' => HumanFeedbackLinkState.changed,
+    'missing' => HumanFeedbackLinkState.missing,
+    'ambiguous' => HumanFeedbackLinkState.ambiguous,
+    _ => HumanFeedbackLinkState.valid,
+  };
   return HumanFeedbackThread(
     id: threadId,
-    target: target,
+    target: sourceTarget,
     state: state == 'resolved'
         ? HumanFeedbackThreadState.resolved
         : HumanFeedbackThreadState.open,
-    linkState: HumanFeedbackLinkState.valid,
+    linkState: linkState,
     revision: revision,
     entries: entries
         .map((entry) {
@@ -716,27 +879,44 @@ class HumanFeedbackDraftStore {
   HumanFeedbackDraftStore(
     this.root, {
     this.debounce = const Duration(milliseconds: 350),
-  });
+    String sessionId = 'default',
+  }) : sessionId = _validateSessionId(sessionId);
   final Directory root;
   final Duration debounce;
+  final String sessionId;
   final Map<String, Timer> _timers = {};
   final Map<String, HumanFeedbackDraft> _pending = {};
   final Map<String, Future<void>> _writes = {};
 
+  static String _validateSessionId(String value) {
+    final normalized = value.trim();
+    if (normalized.isEmpty) throw ArgumentError.value(value, 'sessionId');
+    return normalized;
+  }
+
+  String _key(HumanFeedbackTarget target, String composerId) =>
+      '$sessionId:$composerId:${target.documentKey}';
+
   File _file(
+    HumanFeedbackTarget target, [
+    String composerId = 'comment',
+  ]) => File(
+    '${root.path}${Platform.pathSeparator}${Uri.encodeComponent(sessionId)}${Platform.pathSeparator}${target.documentKey}${Platform.pathSeparator}${Uri.encodeComponent(composerId)}.json',
+  );
+
+  /// The first release keyed drafts by revision. Read that location only to
+  /// migrate existing local text; all new writes use the stable document key.
+  File _legacyFile(
     HumanFeedbackTarget target, [
     String composerId = 'comment',
   ]) => File(
     '${root.path}${Platform.pathSeparator}${target.key}${Platform.pathSeparator}${Uri.encodeComponent(composerId)}.json',
   );
 
-  Future<HumanFeedbackDraft?> load(
-    HumanFeedbackTarget target, [
-    String composerId = 'comment',
-  ]) async {
+  Future<HumanFeedbackDraft?> _read(File file, String composerId) async {
     try {
       final draft = HumanFeedbackDraft.fromJson(
-        jsonDecode(await _file(target, composerId).readAsString()),
+        jsonDecode(await file.readAsString()),
       );
       return draft?.composerId == composerId ? draft : null;
     } catch (_) {
@@ -744,8 +924,37 @@ class HumanFeedbackDraftStore {
     }
   }
 
+  Future<void> _write(File file, HumanFeedbackDraft draft) async {
+    await file.parent.create(recursive: true);
+    final temporary = File(
+      '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp',
+    );
+    await temporary.writeAsString(jsonEncode(draft.toJson()));
+    await temporary.rename(file.path);
+  }
+
+  Future<HumanFeedbackDraft?> load(
+    HumanFeedbackTarget target, [
+    String composerId = 'comment',
+  ]) async {
+    final file = _file(target, composerId);
+    final current = await _read(file, composerId);
+    if (current != null) return current;
+
+    final legacy = _legacyFile(target, composerId);
+    final migrated = await _read(legacy, composerId);
+    if (migrated != null) {
+      await _enqueue(_key(target, composerId), () async {
+        if (await file.exists()) return;
+        await _write(file, migrated);
+        if (await legacy.exists()) await legacy.delete();
+      });
+    }
+    return migrated;
+  }
+
   void schedule(HumanFeedbackDraft draft) {
-    final key = '${draft.composerId}:${draft.target.key}';
+    final key = _key(draft.target, draft.composerId);
     _pending[key] = draft;
     _timers.remove(key)?.cancel();
     _timers[key] = Timer(debounce, () {
@@ -757,18 +966,12 @@ class HumanFeedbackDraftStore {
     HumanFeedbackTarget target, [
     String composerId = 'comment',
   ]) async {
-    final key = '$composerId:${target.key}';
+    final key = _key(target, composerId);
     _timers.remove(key)?.cancel();
     await _enqueue(key, () async {
       final draft = _pending.remove(key);
       if (draft == null) return;
-      final file = _file(target, draft.composerId);
-      await file.parent.create(recursive: true);
-      final temporary = File(
-        '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp',
-      );
-      await temporary.writeAsString(jsonEncode(draft.toJson()));
-      await temporary.rename(file.path);
+      await _write(_file(target, draft.composerId), draft);
     });
   }
 
@@ -776,20 +979,26 @@ class HumanFeedbackDraftStore {
     HumanFeedbackTarget target, [
     String composerId = 'comment',
   ]) async {
-    final key = '$composerId:${target.key}';
+    final key = _key(target, composerId);
     _timers.remove(key)?.cancel();
     _pending.remove(key);
     await _enqueue(key, () async {
       final file = _file(target, composerId);
       if (await file.exists()) await file.delete();
+      final legacy = _legacyFile(target, composerId);
+      if (await legacy.exists()) await legacy.delete();
     });
   }
 
-  Future<void> dispose() async {
-    final drafts = _pending.values.toList();
+  Future<void> flushAll() async {
+    final drafts = _pending.values.toList(growable: false);
     for (final draft in drafts) {
       await flush(draft.target, draft.composerId);
     }
+  }
+
+  Future<void> dispose() async {
+    await flushAll();
   }
 
   Future<void> _enqueue(String key, Future<void> Function() operation) {

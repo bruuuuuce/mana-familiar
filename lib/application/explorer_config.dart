@@ -8,6 +8,8 @@ class ExplorerConfig {
     required this.manaRoot,
     this.hasExplicitProjectRoot = true,
     this.preferencesRoot,
+    this.windowSessionId,
+    this.initialArtifactId,
     this.journeyId,
     this.fixturePath,
     this.inspectSnapshotPath,
@@ -20,6 +22,15 @@ class ExplorerConfig {
   /// inferred from the process working directory.
   final bool hasExplicitProjectRoot;
   final String? preferencesRoot;
+
+  /// A caller-owned identifier that keeps recoverable UI state from two
+  /// desktop windows independent while they observe the same project.
+  final String? windowSessionId;
+
+  /// Opens an explicitly named inspect artifact at startup. This is useful for
+  /// links from a desktop launcher and keeps the target producer-owned rather
+  /// than reconstructing it from a local path.
+  final String? initialArtifactId;
   final String? journeyId;
   final String? fixturePath;
 
@@ -31,6 +42,8 @@ class ExplorerConfig {
     manaRoot: manaRoot,
     hasExplicitProjectRoot: true,
     preferencesRoot: preferencesRoot,
+    windowSessionId: windowSessionId,
+    initialArtifactId: initialArtifactId,
     journeyId: journeyId,
     fixturePath: fixturePath,
     inspectSnapshotPath: inspectSnapshotPath,
@@ -76,6 +89,15 @@ class ExplorerConfig {
       projectRoot: value('--project-root', detect('.mana')),
       manaRoot: value('--mana-root', detect('scripts/mana-journey.sh')),
       hasExplicitProjectRoot: hasExplicitProjectRoot,
+      preferencesRoot: args.contains('--preferences-root')
+          ? value('--preferences-root', '')
+          : null,
+      windowSessionId: args.contains('--window-session')
+          ? value('--window-session', '')
+          : null,
+      initialArtifactId: args.contains('--initial-artifact')
+          ? value('--initial-artifact', '')
+          : null,
       journeyId: args.contains('--journey') ? value('--journey', '') : null,
       fixturePath: artifactPath,
       inspectSnapshotPath: args.contains('--inspect-snapshot')
