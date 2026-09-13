@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import '../application/mana_inspect.dart';
 import '../application/human_feedback.dart';
 import '../application/semantic_navigation.dart';
 import '../native_project_window.dart';
+import '../native_e2e_bridge.dart';
 import '../presentation/explorer_page.dart';
 import '../presentation/project_observatory_page.dart';
 import '../presentation/project_welcome_page.dart';
@@ -35,6 +37,12 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
     ),
     sessionId: widget.config.windowSessionId ?? 'default',
   );
+  late final NativeE2EBridge? _nativeE2E = widget.config.hasNativeE2EBridge
+      ? NativeE2EBridge(
+          port: widget.config.nativeE2EPort!,
+          token: widget.config.nativeE2EToken!,
+        )
+      : null;
 
   Future<void> _openProject(String projectRoot) async {
     await widget.preferences.rememberProjectRoot(projectRoot);
@@ -67,6 +75,8 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
   void initState() {
     super.initState();
     NativeProjectWindow.installClosePreparation(_feedbackDrafts.flushAll);
+    final bridge = _nativeE2E;
+    if (bridge != null) unawaited(bridge.start());
     if (widget.config.hasExplicitProjectRoot) {
       NativeProjectWindow.presentProject(_projectRoot);
     }
@@ -76,6 +86,8 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
   void dispose() {
     // Persist pending local drafts before the app tree releases its panels.
     _feedbackDrafts.dispose();
+    final bridge = _nativeE2E;
+    if (bridge != null) unawaited(bridge.dispose());
     super.dispose();
   }
 
@@ -120,6 +132,7 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
               feedbackDrafts: widget.config.inspectSnapshotPath == null
                   ? _feedbackDrafts
                   : null,
+              nativeE2E: _nativeE2E,
               knowledge: ExplorerPage(
                 store: JourneyStore(
                   widget.config.withProjectRoot(_projectRoot),

@@ -14,10 +14,13 @@ evidence_dir=""
 preferences_root=""
 mana_root=""
 story_start_fixture=""
+ui_driver=""
+first_ui_port=""
+first_ui_token=""
 
 usage() {
   cat <<'EOF'
-Usage: tests/run-macos-native-window-e2e.sh [--app APP] [--project-root DIR] [--mana-root DIR] [--preferences-root DIR] [--story-start-fixture FILE] [--evidence-dir DIR]
+Usage: tests/run-macos-native-window-e2e.sh [--app APP] [--project-root DIR] [--mana-root DIR] [--preferences-root DIR] [--story-start-fixture FILE] [--ui-driver FILE --first-ui-port PORT --first-ui-token TOKEN] [--evidence-dir DIR]
 
 The caller must grant this shell Accessibility permission (System Settings >
 Privacy & Security > Accessibility). The permission is required to exercise
@@ -33,6 +36,9 @@ while [ "$#" -gt 0 ]; do
     --mana-root) mana_root="$2"; shift 2 ;;
     --preferences-root) preferences_root="$2"; shift 2 ;;
     --story-start-fixture) story_start_fixture="$2"; shift 2 ;;
+    --ui-driver) ui_driver="$2"; shift 2 ;;
+    --first-ui-port) first_ui_port="$2"; shift 2 ;;
+    --first-ui-token) first_ui_token="$2"; shift 2 ;;
     --evidence-dir) evidence_dir="$2"; shift 2 ;;
     --help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 64 ;;
@@ -44,6 +50,11 @@ fail() { echo "macOS native E2E failed: $*" >&2; exit 1; }
 [ -d "$app" ] || fail "app bundle not found: $app (run: flutter build macos --debug)"
 [ -d "$project_root" ] || fail "project root not found: $project_root"
 [ -z "$story_start_fixture" ] || [ -x "$story_start_fixture" ] || fail "Story Start fixture is not executable: $story_start_fixture"
+[ -z "$ui_driver" ] || [ -f "$ui_driver" ] || fail "UI driver is not a file: $ui_driver"
+if [ -n "$ui_driver" ]; then
+  [ -n "$first_ui_port" ] && [ -n "$first_ui_token" ] || fail 'UI driver needs --first-ui-port and --first-ui-token'
+  [ -n "$mana_root" ] && [ -n "$story_start_fixture" ] || fail 'UI driver needs Mana and a Story Start fixture'
+fi
 
 if [ -z "$evidence_dir" ]; then
   evidence_dir="$root/build/native-e2e/macos-$(date +%s)"
@@ -118,6 +129,24 @@ send_native_action() {
       count="$(osascript -e "tell application \"System Events\" to tell (first application process whose unix id is $pid) to count windows" \
         2>>"$evidence_dir/accessibility-$pid.err" || printf 1)"
     fi
+    # Cmd-W is the primary exercise. On some macOS Accessibility hosts, the
+    # focused process is confirmed but a synthetic key event is consumed by
+    # the desktop before AppKit receives it. Retry the same real File-menu
+    # command as a native fallback; it still passes through MainFlutterWindow
+    # and the draft-flush coordinator rather than terminating the process.
+    if [ "$count" -ne 0 ] && [ "$action" = close ]; then
+      printf '%s\n' 'fallback: File > Close Window' >>"$evidence_dir/native-actions.log"
+      osascript \
+        -e "tell application \"System Events\" to tell (first application process whose unix id is $pid) to click menu item \"Close Window\" of menu \"File\" of menu bar item \"File\" of menu bar 1" \
+        >>"$evidence_dir/native-actions.log" 2>>"$evidence_dir/accessibility-$pid.err" || true
+      sleep 1
+      if ! kill -0 "$pid" 2>/dev/null; then
+        count=0
+      else
+        count="$(osascript -e "tell application \"System Events\" to tell (first application process whose unix id is $pid) to count windows" \
+          2>>"$evidence_dir/accessibility-$pid.err" || printf 1)"
+      fi
+    fi
     printf '%s\n' "$count" >"$evidence_dir/windows-after-$label-$pid-attempt-$attempt.txt"
     [ "$count" -eq 0 ] && break
   done
@@ -177,9 +206,28 @@ run_regenerations() {
     sleep 1
     focus_and_assert "$first_pid"
     focus_and_assert "$second_pid"
+    run_ui_driver observe-generation "$current" "$evidence_dir/ui/generation-$generation.json"
   done
   jq -cn --argjson generations "$records" '{schemaVersion:"mana.familiar.native-regenerations/v1",generations:$generations}' \
     >"$evidence_dir/regenerations.json"
+}
+
+run_ui_driver() {
+  local mode="$1" expected_revision="${2:-}" evidence="$3"
+  [ -n "$ui_driver" ] || return 0
+  local arguments=(
+    "$ui_driver"
+    --port "$first_ui_port"
+    --token "$first_ui_token"
+    --project-root "$project_root"
+    --mana-root "$mana_root"
+    --mode "$mode"
+    --evidence "$evidence"
+  )
+  if [ -n "$expected_revision" ]; then
+    arguments+=(--expected-revision "$expected_revision")
+  fi
+  python3 "${arguments[@]}" || fail "native UI driver $mode failed"
 }
 
 initial_report_revision=""
@@ -197,6 +245,13 @@ second_arguments=(--project-root "$project_root" --preferences-root "$preference
 if [ -n "$mana_root" ]; then
   first_arguments+=(--mana-root "$mana_root")
   second_arguments+=(--mana-root "$mana_root")
+fi
+if [ -n "$ui_driver" ]; then
+  first_arguments+=(
+    --initial-artifact file:.mana/features/FEEDBACK-E2E/planning/story-start-scope-v2.md
+    --native-e2e-port "$first_ui_port"
+    --native-e2e-token "$first_ui_token"
+  )
 fi
 
 prepare_initial_generation
@@ -218,6 +273,11 @@ launch_second
 # behind the first one as well as a broken Window-menu/Exposé registration.
 focus_and_assert "$first_pid"
 focus_and_assert "$second_pid"
+# The debug bridge invokes mounted widget actions. Keep its Runner foreground
+# while the driver selects and publishes so AppKit is not allowed to throttle
+# its short scroll animation as a background window.
+focus_and_assert "$first_pid"
+run_ui_driver publish-comment "" "$evidence_dir/ui/comment.json"
 run_regenerations
 
 # Restart B three times under the same session namespace. This exercises the

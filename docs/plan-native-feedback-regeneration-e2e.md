@@ -1,7 +1,7 @@
 # Piano di implementazione: rigenerazioni e Human Feedback nel desktop nativo
 
-Data: 13 settembre 2026. Stato: implementazione parziale; questo documento
-separa le prove già raccolte dai requisiti ancora aperti.
+Data: 13 settembre 2026. Stato: implementazione incrementale; questo
+documento separa le prove già raccolte dai requisiti ancora aperti.
 
 ## Stato di questa iterazione
 
@@ -10,15 +10,21 @@ stesso progetto, cinque pubblicazioni Story Start governate (V0/R1–R5), tre
 restart nativi, focus, Close/Quit con flush atteso, fixture producer,
 storia tra revisioni e manifesto di target stabili con stati `changed`,
 `missing` e `ambiguous`. Le bozze hanno namespace per finestra e migrazione
-dal formato precedente; il watcher ricarica il pannello aperto.
+dal formato precedente; il watcher ricarica il pannello aperto. Lo smoke
+macOS ora apre il report con deep-link, seleziona un target stabile, compila
+e pubblica un commento Unicode multilinea nel pannello montato e ne confronta
+la presenza sia nella UI sia nella lettura canonica Mana. Dopo R1–R5 il driver
+aspetta la revisione esatta esposta dal documento montato.
 
 L'automazione macOS non può ancora individuare i singoli widget Flutter con
 Accessibility: su questo embedder la finestra è esposta come un unico gruppo
-AX anche con la semantica richiesta. Sono disponibili deep-link esplicito e
-scorciatoie (`Cmd-Shift-C`, `Cmd-Enter`) coperti da test Flutter, ma non si
-deve promuoverli a prova E2E di digitazione/accessibilità finché non esiste un
-driver che invii e osservi quei controlli nativamente. Restano aperti anche il
-profilo `desktop-long`, gli episodi di fault richiesti e il gate Windows.
+AX anche con la semantica richiesta. Perciò lo smoke usa un bridge HTTP
+loopback, attivo esclusivamente in build debug e limitato a callback dei
+widget montati; non accede a repository o filesystem e non sostituisce Mana.
+L'input del commento è quindi marcato `flutter-widget-bridge`, mentre focus,
+Close/Quit e il fallback `File → Close Window` restano azioni macOS reali.
+Restano aperti il percorso completo con reply/decisioni/bozze, il profilo
+`desktop-long`, gli episodi di fault richiesti e il gate Windows.
 
 ## Obiettivo e perimetro
 
@@ -30,12 +36,25 @@ Windows resta un gate distinto da eseguire su Windows reale. Non è richiesto pe
 
 ## Baseline verificata e lacune
 
-- `tests/run-macos-native-window-e2e.sh` avvia due Runner direttamente su progetti diversi; verifica focus e terminazione. Non esercita il menu Open Project, digitazione, ripristino bozze o contenuti dopo rigenerazione.
-- Il gate usa per default il checkout corrente e non isola le preferenze. Le azioni Cmd-W/Cmd-Q sono globali; il PID focalizzato deve essere ricontrollato immediatamente prima di ciascuna azione.
-- `HumanFeedbackDraftStore` usa target/revisione/composer come chiave. Non contiene un namespace finestra; cambiando revisione può rendere una bozza precedente non raggiungibile dal nuovo target.
-- `ManaFamiliarApp.dispose()` invoca un flush asincrono senza attenderlo. La terminazione del processo non dimostra che Flutter esegua dispose o completi il flush.
-- `_threadFromJson` assegna sempre `HumanFeedbackLinkState.valid` e il target richiesto. La lettura Mana attuale filtra anche per revisione esatta: serve una lettura della storia tra revisioni prima di prometterne la visibilità.
-- `ExplorerConfig` ha `preferencesRoot`, ma il parser CLI non lo valorizza. Lo storage nativo dei recenti usa separatamente `UserDefaults.standard`.
+- `tests/run-macos-native-window-e2e.sh` avvia due Runner sullo stesso
+  progetto con preferenze e sessioni isolate; verifica focus e terminazione.
+  Il menu Open Project, l'intero ripristino bozze e il secondo progetto non
+  sono ancora esercitati nell'E2E.
+- Il gate usa root temporanee e ricontrolla il PID focalizzato immediatamente
+  prima di ciascuna azione. Prova prima Cmd-W/Cmd-Q; Close può registrare il
+  fallback nativo `File → Close Window` quando macOS non consegna un tasto
+  sintetico alla finestra già dichiarata frontmost.
+- `HumanFeedbackDraftStore` ha namespace per sessione, progetto, artefatto e
+  composer; conserva revisioni precedenti e migra il formato vecchio. Rimane
+  da provare dalla UI il recupero incrociato A/B.
+- Close e Quit usano un handshake AppKit/Flutter che attende il flush. Il
+  fallback non classifica la sola scomparsa di un PID come successo.
+- La lettura della storia conserva target e revisione originali e Mana espone
+  `valid`, `changed`, `missing` e `ambiguous`; i test producer coprono gli
+  indici derivati.
+- `ExplorerConfig` interpreta `preferencesRoot`, sessione, deep-link e i due
+  argomenti del bridge. I recenti nativi usano una suite `UserDefaults`
+  derivata dalla root temporanea.
 
 Questi punti richiedono sviluppo e test, non soltanto l'orchestrazione di cinque chiamate. Correggere anche i commenti/documenti che attribuiscono al gate attuale prove di persistenza o rigenerazione non eseguite.
 
@@ -136,7 +155,7 @@ Ordine suggerito dei commit: (1) isolamento e prova verticale nativa; (2) fixtur
 
 Eseguire formattazione, analisi, test Flutter/Python pertinenti e build macOS; poi C01/C02, C03 smoke e regressioni Mana human-feedback/inspect/Story Start e zero-token se modificati i relativi componenti. Rileggere gli argomenti dei runner prima dell'esecuzione. Eseguire infine smoke nativo e desktop-long sullo stesso stato finale; non rilanciare stress già verdi senza una modifica che lo giustifichi.
 
-- [ ] Cinque pubblicazioni reali governate, ciascuna osservata dalla UI.
+- [x] Cinque pubblicazioni reali governate, ciascuna osservata dalla UI.
 - [ ] Due finestre sul medesimo progetto con bozze indipendenti e focus verificato.
 - [ ] Tre restart con nuovi PID e ripristino verificato; Close/Quit senza perdita del testo previsto.
 - [ ] Storia raggiungibile dopo revisioni nuove, target rimosso e alternative mutate.

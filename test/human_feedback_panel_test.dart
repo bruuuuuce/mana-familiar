@@ -39,6 +39,10 @@ void main() {
     expect(repository.created, hasLength(1));
     expect(repository.created.single.body, 'Choose option B.');
     expect(repository.created.single.author, 'Ada');
+    expect(
+      repository.idempotencyKeys.single,
+      matches(r'^[A-Za-z0-9._:-]{1,128}$'),
+    );
     expect(find.textContaining('Ada: Choose option B.'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('feedback-reply-open-thread-1')));
@@ -343,6 +347,7 @@ class _DelayedRepository implements HumanFeedbackRepository {
 
 class _Repository implements HumanFeedbackRepository {
   final created = <HumanFeedbackEntry>[];
+  final idempotencyKeys = <String>[];
   HumanFeedbackTarget? _target;
   var _resolved = false;
   @override
@@ -371,6 +376,7 @@ class _Repository implements HumanFeedbackRepository {
     required String idempotencyKey,
   }) async {
     _target = target;
+    idempotencyKeys.add(idempotencyKey);
     final entry = HumanFeedbackEntry(
       id: 'entry-${created.length}',
       threadId: 'thread-1',
