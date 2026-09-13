@@ -12,19 +12,26 @@ storia tra revisioni e manifesto di target stabili con stati `changed`,
 `missing` e `ambiguous`. Le bozze hanno namespace per finestra e migrazione
 dal formato precedente; il watcher ricarica il pannello aperto. Lo smoke
 macOS ora apre il report con deep-link, seleziona un target stabile, compila
-e pubblica un commento Unicode multilinea nel pannello montato e ne confronta
-la presenza sia nella UI sia nella lettura canonica Mana. Dopo R1–R5 il driver
-aspetta la revisione esatta esposta dal documento montato.
+e pubblica un commento Unicode multilinea e una risposta nel pannello montato,
+confrontandone la presenza sia nella UI sia nella lettura canonica Mana. Dopo
+R1–R5 il driver aspetta la revisione esatta esposta dal documento montato. Uno
+smoke distinto apre la form dell'implementation plan, registra una decisione
+con alternativa valida e motivazione e confronta la scelta con lo stato
+canonico Mana.
 
 L'automazione macOS non può ancora individuare i singoli widget Flutter con
 Accessibility: su questo embedder la finestra è esposta come un unico gruppo
 AX anche con la semantica richiesta. Perciò lo smoke usa un bridge HTTP
 loopback, attivo esclusivamente in build debug e limitato a callback dei
 widget montati; non accede a repository o filesystem e non sostituisce Mana.
-L'input del commento è quindi marcato `flutter-widget-bridge`, mentre focus,
-Close/Quit e il fallback `File → Close Window` restano azioni macOS reali.
-Restano aperti il percorso completo con reply/decisioni/bozze, il profilo
-`desktop-long`, gli episodi di fault richiesti e il gate Windows.
+L'input di commento, risposta e decisione è quindi marcato
+`flutter-widget-bridge`, mentre focus, Close/Quit e il fallback
+`File → Close Window` restano azioni macOS reali. La decisione è separata da
+R1–R5: una scelta richiede una ripianificazione governata e la fixture
+deterministica delle cinque rigenerazioni non proietta ancora la scelta nel
+decision register successivo. Rimangono aperti quel percorso integrato,
+le bozze, il profilo `desktop-long`, gli episodi di fault richiesti e il gate
+Windows.
 
 ## Obiettivo e perimetro
 
@@ -132,15 +139,16 @@ Distribuire nel profilo lungo almeno dieci episodi recuperabili, anche nell'ulti
 
 ## P6 — Profili, evidenze e CI
 
-Interfacce proposte, da implementare prima di documentarle come disponibili:
+Interfacce disponibili:
 
 ```sh
 python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile smoke
-python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile desktop-long
+python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile decision-smoke
 ```
 
-- Smoke: percorso completo R1–R5 e tre restart; timeout complessivo iniziale 15 minuti. Il timeout è un limite operativo, non un tempo minimo da consumare.
-- Desktop-long: almeno 20 minuti e 300 azioni UI distribuite, due finestre, cinque rigenerazioni, tre restart, dieci episodi recuperabili. Contare separatamente azioni UI, mutazioni accettate, rigenerazioni, restart e guasti; i sondaggi del runner non sono azioni utente.
+- Smoke (disponibile): commento e risposta canonici, R1–R5 osservate dal documento UI e tre restart; timeout complessivo iniziale 15 minuti. Il timeout è un limite operativo, non un tempo minimo da consumare.
+- Decision-smoke (disponibile): commento e risposta in A, una decisione nell'implementation plan B, stato canonico della scelta e lifecycle; deliberatamente senza rigenerazioni successive alla scelta.
+- Desktop-long (da implementare, comando previsto `--profile desktop-long`): almeno 20 minuti e 300 azioni UI distribuite, due finestre, cinque rigenerazioni, tre restart, dieci episodi recuperabili. Contare separatamente azioni UI, mutazioni accettate, rigenerazioni, restart e guasti; i sondaggi del runner non sono azioni utente.
 - Soak da 60 minuti/1.000 azioni: estensione successiva alla stabilizzazione del profilo desktop-long. Il C03 producer già esistente resta un controllo distinto.
 
 Per run: manifest con revisioni Mana/Familiar, digest delle modifiche locali e del bundle, modalità build, sistema, seed, comandi ed exit code; trace timestampata, PID/sessioni, hash delle pubblicazioni, asserzioni, screenshot e risultato `passed/failed/blocked`. Persistenza incrementale anche su errore e cancellazione. Usare solo payload sintetici. Conservare i fallimenti e i rerun in directory diverse.
@@ -155,13 +163,14 @@ Ordine suggerito dei commit: (1) isolamento e prova verticale nativa; (2) fixtur
 
 Eseguire formattazione, analisi, test Flutter/Python pertinenti e build macOS; poi C01/C02, C03 smoke e regressioni Mana human-feedback/inspect/Story Start e zero-token se modificati i relativi componenti. Rileggere gli argomenti dei runner prima dell'esecuzione. Eseguire infine smoke nativo e desktop-long sullo stesso stato finale; non rilanciare stress già verdi senza una modifica che lo giustifichi.
 
-- [x] Cinque pubblicazioni reali governate, ciascuna osservata dalla UI.
+- [x] Commento e risposta UI verificati nel thread canonico; decisione UI verificata nello stato canonico, in smoke separati.
+- [x] Cinque pubblicazioni reali governate, ciascuna osservata dalla UI nello smoke commenti/risposte.
 - [ ] Due finestre sul medesimo progetto con bozze indipendenti e focus verificato.
 - [ ] Tre restart con nuovi PID e ripristino verificato; Close/Quit senza perdita del testo previsto.
 - [ ] Storia raggiungibile dopo revisioni nuove, target rimosso e alternative mutate.
 - [ ] Conflitti/ACK persi recuperati senza perdita o duplicazione di contributi.
 - [ ] Preferenze reali intatte, cleanup limitato alla run, nessun processo residuo.
 - [ ] Smoke e desktop-long passati con prove complete; metriche riportate con modalità build corretta.
-- [ ] README e piano generale aggiornati distinguendo quanto verificato da Windows/soak o altri requisiti ancora aperti.
+- [x] README e piano generale aggiornati distinguendo quanto verificato da Windows/soak o altri requisiti ancora aperti.
 
 La durata d'implementazione va rivalutata dopo P1/P2: la stima precedente di una giornata non includeva tutte le lacune sopra rilevate. Le esecuzioni richieste restano brevi o da 20 minuti; non richiedono due giorni di run continua.

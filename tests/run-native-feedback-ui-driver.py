@@ -22,6 +22,8 @@ from typing import Any, Callable
 SECTION_ID = "base-implementation-plan"
 AUTHOR = "Native E2E"
 BODY = "Decisione osservata dalla UI\n\n- verifica Unicode: è"
+REPLY_BODY = "Risposta osservata dalla UI\n\n- conferma: sì"
+DECISION_RATIONALE = "Decisione registrata dalla UI\n\n- opzione verificata"
 
 
 def write_json(path: Path, value: object) -> None:
@@ -93,7 +95,7 @@ def stable_document(status: dict[str, Any], revision: str | None = None) -> bool
     )
 
 
-def visible_entry(status: dict[str, Any]) -> bool:
+def visible_entry(status: dict[str, Any], *, body: str) -> bool:
     value = panel(status)
     if value is None or value.get("loading") is True:
         return False
@@ -106,7 +108,7 @@ def visible_entry(status: dict[str, Any]) -> bool:
         and any(
             isinstance(entry, dict)
             and entry.get("author") == AUTHOR
-            and entry.get("body") == BODY
+            and entry.get("body") == body
             for entry in thread.get("entries", [])
         )
         for thread in threads
@@ -141,12 +143,26 @@ def canonical_entry(mana_root: Path, project_root: Path, target: dict[str, Any])
     for thread in threads:
         if not isinstance(thread, dict) or thread.get("linkState") != "valid":
             continue
-        for entry in thread.get("entries", []):
-            if isinstance(entry, dict) and entry.get("author") == AUTHOR and entry.get("body") == BODY:
-                thread_id = thread.get("threadId")
-                if isinstance(thread_id, str):
-                    return thread_id
-    raise AssertionError("published UI comment is absent from canonical feedback history")
+        entries = thread.get("entries", [])
+        has_comment = any(
+            isinstance(entry, dict)
+            and entry.get("author") == AUTHOR
+            and entry.get("body") == BODY
+            and entry.get("kind") == "comment"
+            for entry in entries
+        )
+        has_reply = any(
+            isinstance(entry, dict)
+            and entry.get("author") == AUTHOR
+            and entry.get("body") == REPLY_BODY
+            and entry.get("kind") == "reply"
+            for entry in entries
+        )
+        if has_comment and has_reply:
+            thread_id = thread.get("threadId")
+            if isinstance(thread_id, str):
+                return thread_id
+    raise AssertionError("published UI comment/reply is absent from canonical feedback history")
 
 
 def payload_free_document_status(status: dict[str, Any]) -> dict[str, Any]:
@@ -158,6 +174,11 @@ def payload_free_document_status(status: dict[str, Any]) -> dict[str, Any]:
         "activeSectionId": value.get("activeSectionId"),
         "stableSectionCount": len(anchors) if isinstance(anchors, dict) else 0,
     }
+
+
+def decision_panel(status: dict[str, Any]) -> dict[str, Any] | None:
+    value = status.get("decision")
+    return value if isinstance(value, dict) else None
 
 
 def publish_comment(args: argparse.Namespace, bridge: Bridge) -> dict[str, object]:
@@ -188,15 +209,44 @@ def publish_comment(args: argparse.Namespace, bridge: Bridge) -> dict[str, objec
     if not isinstance(target, dict):
         raise AssertionError("mounted panel lacks its target")
     bridge.call("publish")
-    status = wait_for(bridge, visible_entry, "the published thread in the visible UI")
+    status = wait_for(
+        bridge,
+        lambda current: visible_entry(current, body=BODY),
+        "the published thread in the visible UI",
+    )
+    threads = panel(status).get("threads")
+    thread_id = next(
+        (
+            thread.get("id")
+            for thread in threads
+            if isinstance(thread, dict)
+            and any(
+                isinstance(entry, dict)
+                and entry.get("author") == AUTHOR
+                and entry.get("body") == BODY
+                for entry in thread.get("entries", [])
+            )
+        ),
+        None,
+    )
+    if not isinstance(thread_id, str):
+        raise AssertionError("visible UI did not expose the created thread identity")
+    bridge.call("setReply", threadId=thread_id, body=REPLY_BODY)
+    bridge.call("publishReply", threadId=thread_id)
+    status = wait_for(
+        bridge,
+        lambda current: visible_entry(current, body=REPLY_BODY),
+        "the published reply in the visible UI",
+    )
     thread_id = canonical_entry(args.mana_root, args.project_root, target)
     return {
         "schemaVersion": "mana.familiar.native-e2e-ui/v1",
         "status": "passed",
         "mode": "publish-comment",
         "inputMode": "flutter-widget-bridge",
-        "uiActionCount": 4,
+        "uiActionCount": 6,
         "bodySha256": hashlib.sha256(BODY.encode("utf-8")).hexdigest(),
+        "replyBodySha256": hashlib.sha256(REPLY_BODY.encode("utf-8")).hexdigest(),
         "canonicalThreadId": thread_id,
         "document": payload_free_document_status(status),
     }
@@ -218,13 +268,98 @@ def observe_generation(args: argparse.Namespace, bridge: Bridge) -> dict[str, ob
     }
 
 
+def publish_decision(args: argparse.Namespace, bridge: Bridge) -> dict[str, object]:
+    status = wait_for(
+        bridge,
+        lambda current: isinstance(current.get("artifact"), dict)
+        and current["artifact"].get("canRecordDecision") is True,
+        "the mounted Story Start implementation plan decision action",
+    )
+    artifact_id = status["artifact"].get("artifactId")
+    bridge.call("openDecision")
+    status = wait_for(
+        bridge,
+        lambda current: decision_panel(current) is not None
+        and isinstance(decision_panel(current).get("decisions"), list)
+        and len(decision_panel(current)["decisions"]) > 0,
+        "the mounted decision form",
+    )
+    decisions = decision_panel(status)["decisions"]
+    decision = next(
+        (
+            item
+            for item in decisions
+            if isinstance(item, dict)
+            and item.get("status") == "open"
+            and isinstance(item.get("options"), list)
+            and len(item["options"]) > 0
+        ),
+        None,
+    )
+    if not isinstance(decision, dict):
+        raise AssertionError("decision form has no open decision with options")
+    decision_id = decision.get("id")
+    option_id = decision["options"][0].get("id")
+    if not isinstance(decision_id, str) or not isinstance(option_id, str):
+        raise AssertionError("decision form exposes an invalid decision identity")
+    bridge.call(
+        "setDecision",
+        decisionId=decision_id,
+        optionId=option_id,
+        author=AUTHOR,
+        rationale=DECISION_RATIONALE,
+    )
+    bridge.call("publishDecision")
+    wait_for(
+        bridge,
+        lambda current: decision_panel(current) is not None
+        and any(
+            isinstance(item, dict)
+            and item.get("id") == decision_id
+            and item.get("state", {}).get("selectedOptionId") == option_id
+            for item in decision_panel(current).get("decisions", [])
+        ),
+        "the recorded selection in the visible decision form",
+    )
+    command = [
+        str(args.mana_root / "scripts" / "mana-human-feedback.sh"),
+        "--project-root",
+        str(args.project_root),
+        "decision-state",
+        "--decision-id",
+        decision_id,
+        "--json",
+    ]
+    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    if completed.returncode:
+        raise AssertionError(f"canonical decision read failed: {completed.stderr.strip()}")
+    canonical = json.loads(completed.stdout)
+    if canonical.get("selectedOptionId") != option_id:
+        raise AssertionError("recorded UI decision is absent from canonical decision state")
+    return {
+        "schemaVersion": "mana.familiar.native-e2e-ui/v1",
+        "status": "passed",
+        "mode": "publish-decision",
+        "inputMode": "flutter-widget-bridge",
+        "uiActionCount": 3,
+        "artifactId": artifact_id,
+        "decisionId": decision_id,
+        "optionId": option_id,
+        "rationaleSha256": hashlib.sha256(DECISION_RATIONALE.encode("utf-8")).hexdigest(),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--token", required=True)
     parser.add_argument("--project-root", type=Path, required=True)
     parser.add_argument("--mana-root", type=Path, required=True)
-    parser.add_argument("--mode", choices=("publish-comment", "observe-generation"), required=True)
+    parser.add_argument(
+        "--mode",
+        choices=("publish-comment", "publish-decision", "observe-generation"),
+        required=True,
+    )
     parser.add_argument("--expected-revision")
     parser.add_argument("--evidence", type=Path, required=True)
     args = parser.parse_args()
@@ -235,6 +370,8 @@ def main() -> int:
         result = (
             publish_comment(args, bridge)
             if args.mode == "publish-comment"
+            else publish_decision(args, bridge)
+            if args.mode == "publish-decision"
             else observe_generation(args, bridge)
         )
         write_json(args.evidence, result)

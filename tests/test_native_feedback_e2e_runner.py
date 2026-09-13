@@ -64,8 +64,21 @@ class NativeFeedbackRunnerTest(unittest.TestCase):
                     "status": "passed",
                     "mode": "publish-comment",
                     "inputMode": "flutter-widget-bridge",
-                    "uiActionCount": 4,
+                    "uiActionCount": 6,
                     "canonicalThreadId": "thread_1",
+                }
+            ),
+            encoding="utf-8",
+        )
+        (ui / "decision.json").write_text(
+            json.dumps(
+                {
+                    "status": "passed",
+                    "mode": "publish-decision",
+                    "inputMode": "flutter-widget-bridge",
+                    "uiActionCount": 3,
+                    "decisionId": "decision-1",
+                    "optionId": "option-a",
                 }
             ),
             encoding="utf-8",
@@ -126,6 +139,18 @@ class NativeFeedbackRunnerTest(unittest.TestCase):
             (directory / "ui" / "generation-5.json").unlink()
             with self.assertRaises(FileNotFoundError):
                 runner.validate_native_evidence(directory, require_ui=True)
+
+    def test_accepts_the_separate_decision_smoke_without_regenerations(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            self._write_complete_native_evidence(directory)
+            (directory / "regenerations.json").unlink()
+            runner.validate_native_evidence(
+                directory,
+                require_ui=True,
+                require_regenerations=False,
+                require_decision=True,
+            )
 
 
 if __name__ == "__main__":

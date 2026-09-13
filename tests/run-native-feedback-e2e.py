@@ -48,18 +48,25 @@ def reserve_loopback_port() -> int:
 
 
 def validate_native_evidence(
-    native_output: Path, *, require_ui: bool = False
+    native_output: Path,
+    *,
+    require_ui: bool = False,
+    require_regenerations: bool = True,
+    require_decision: bool = False,
 ) -> list[dict[str, object]]:
-    regenerations = json.loads(
-        (native_output / "regenerations.json").read_text(encoding="utf-8")
-    )
-    generations = regenerations.get("generations")
-    if not isinstance(generations, list) or len(generations) != 6:
-        raise AssertionError("native gate did not record V0 plus five regenerations")
-    if generations[0]["reportRevision"] != generations[1]["reportRevision"]:
-        raise AssertionError("R1 was not deterministic")
-    if len({entry["reportRevision"] for entry in generations[2:]}) != 4:
-        raise AssertionError("R2-R5 do not have distinct report revisions")
+    generations: list[dict[str, object]] = []
+    if require_regenerations:
+        regenerations = json.loads(
+            (native_output / "regenerations.json").read_text(encoding="utf-8")
+        )
+        values = regenerations.get("generations")
+        if not isinstance(values, list) or len(values) != 6:
+            raise AssertionError("native gate did not record V0 plus five regenerations")
+        if values[0]["reportRevision"] != values[1]["reportRevision"]:
+            raise AssertionError("R1 was not deterministic")
+        if len({entry["reportRevision"] for entry in values[2:]}) != 4:
+            raise AssertionError("R2-R5 do not have distinct report revisions")
+        generations = values
 
     lifecycle = json.loads(
         (native_output / "lifecycle.json").read_text(encoding="utf-8")
@@ -83,33 +90,45 @@ def validate_native_evidence(
             comment.get("status") != "passed"
             or comment.get("mode") != "publish-comment"
             or comment.get("inputMode") != "flutter-widget-bridge"
-            or comment.get("uiActionCount") != 4
+            or comment.get("uiActionCount") != 6
             or not isinstance(comment.get("canonicalThreadId"), str)
         ):
             raise AssertionError("native gate did not prove a visible canonical UI comment")
-        for generation in generations[1:]:
-            generation_number = generation.get("generation")
-            observed = json.loads(
-                (native_output / "ui" / f"generation-{generation_number}.json").read_text(
-                    encoding="utf-8"
-                )
-            )
+        if require_decision:
+            decision = json.loads((native_output / "ui" / "decision.json").read_text(encoding="utf-8"))
             if (
-                observed.get("status") != "passed"
-                or observed.get("mode") != "observe-generation"
-                or observed.get("document", {}).get("artifactRevision")
-                != generation.get("reportRevision")
+                decision.get("status") != "passed"
+                or decision.get("mode") != "publish-decision"
+                or decision.get("inputMode") != "flutter-widget-bridge"
+                or decision.get("uiActionCount") != 3
+                or not isinstance(decision.get("decisionId"), str)
+                or not isinstance(decision.get("optionId"), str)
             ):
-                raise AssertionError(
-                    f"native UI did not observe generation R{generation_number}"
+                raise AssertionError("native gate did not prove a visible canonical UI decision")
+        if require_regenerations:
+            for generation in generations[1:]:
+                generation_number = generation.get("generation")
+                observed = json.loads(
+                    (native_output / "ui" / f"generation-{generation_number}.json").read_text(
+                        encoding="utf-8"
+                    )
                 )
+                if (
+                    observed.get("status") != "passed"
+                    or observed.get("mode") != "observe-generation"
+                    or observed.get("document", {}).get("artifactRevision")
+                    != generation.get("reportRevision")
+                ):
+                    raise AssertionError(
+                        f"native UI did not observe generation R{generation_number}"
+                    )
     return generations
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mana-root", required=True, type=Path)
-    parser.add_argument("--profile", choices=("smoke",), default="smoke")
+    parser.add_argument("--profile", choices=("smoke", "decision-smoke"), default="smoke")
     parser.add_argument("--output-root", type=Path, default=Path("build/native-feedback-audit"))
     parser.add_argument("--app", type=Path)
     parser.add_argument("--skip-build", action="store_true")
@@ -137,6 +156,8 @@ def main() -> int:
     native_output = output / "native"
     ui_port = reserve_loopback_port()
     ui_token = secrets.token_urlsafe(32)
+    second_ui_port = reserve_loopback_port()
+    second_ui_token = secrets.token_urlsafe(32)
     manifest = {
         "schemaVersion": "mana.familiar.native-feedback-e2e/v1",
         "status": "running",
@@ -179,11 +200,22 @@ def main() -> int:
             str(ui_port),
             "--first-ui-token",
             ui_token,
+            "--second-ui-port",
+            str(second_ui_port),
+            "--second-ui-token",
+            second_ui_token,
         ]
+        if args.profile == "decision-smoke":
+            command.extend(["--exercise-decision", "--skip-regenerations"])
         result = subprocess.run(command, cwd=familiar_root, text=True, check=False)
         if result.returncode:
             raise RuntimeError(f"native gate failed ({result.returncode})")
-        generations = validate_native_evidence(native_output, require_ui=True)
+        generations = validate_native_evidence(
+            native_output,
+            require_ui=True,
+            require_regenerations=args.profile == "smoke",
+            require_decision=args.profile == "decision-smoke",
+        )
         report = {
             **manifest,
             "status": "passed",
@@ -192,8 +224,8 @@ def main() -> int:
             "nativeEvidence": str(native_output.relative_to(output)),
             "uiDriver": {
                 "inputMode": "flutter-widget-bridge",
-                "uiActionCount": 4,
-                "regenerationObservations": 5,
+                "uiActionCount": 9 if args.profile == "decision-smoke" else 6,
+                "regenerationObservations": 5 if args.profile == "smoke" else 0,
             },
         }
         write_json(output / "report.json", report)
