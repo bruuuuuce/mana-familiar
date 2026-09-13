@@ -20,11 +20,12 @@ first_ui_token=""
 second_ui_port=""
 second_ui_token=""
 exercise_decision=false
+exercise_drafts=false
 skip_regenerations=false
 
 usage() {
   cat <<'EOF'
-Usage: tests/run-macos-native-window-e2e.sh [--app APP] [--project-root DIR] [--mana-root DIR] [--preferences-root DIR] [--story-start-fixture FILE] [--ui-driver FILE --first-ui-port PORT --first-ui-token TOKEN --second-ui-port PORT --second-ui-token TOKEN] [--evidence-dir DIR]
+Usage: tests/run-macos-native-window-e2e.sh [--app APP] [--project-root DIR] [--mana-root DIR] [--preferences-root DIR] [--story-start-fixture FILE] [--ui-driver FILE --first-ui-port PORT --first-ui-token TOKEN --second-ui-port PORT --second-ui-token TOKEN] [--exercise-decision|--exercise-drafts] [--evidence-dir DIR]
 
 The caller must grant this shell Accessibility permission (System Settings >
 Privacy & Security > Accessibility). The permission is required to exercise
@@ -46,6 +47,7 @@ while [ "$#" -gt 0 ]; do
     --second-ui-port) second_ui_port="$2"; shift 2 ;;
     --second-ui-token) second_ui_token="$2"; shift 2 ;;
     --exercise-decision) exercise_decision=true; shift ;;
+    --exercise-drafts) exercise_drafts=true; shift ;;
     --skip-regenerations) skip_regenerations=true; shift ;;
     --evidence-dir) evidence_dir="$2"; shift 2 ;;
     --help) usage; exit 0 ;;
@@ -114,23 +116,50 @@ focus_and_assert() {
   [ "$(tr -d '[:space:]' < "$evidence_dir/focus-$pid.txt")" = true ] || fail "native window $pid did not become frontmost"
 }
 
+epoch_milliseconds() {
+  # macOS ships Perl with a high-resolution clock. Avoid starting Python in
+  # this pre-debounce path: its cold start can itself exceed the 350 ms
+  # interval being measured.
+  /usr/bin/perl -MTime::HiRes=time -e 'printf "%d\n", time() * 1000'
+}
+
+# Values from the last real AppKit action. They are written into the draft
+# evidence so the runner can prove that the close/quit request was issued
+# inside the 350 ms draft debounce, rather than relying on process teardown.
+native_action_sent_at=""
+native_action_path=""
+draft_driver_returned_at=""
+
 send_native_action() {
-  local pid="$1" action="$2" label="$3"
+  local pid="$1" action="$2" label="$3" already_focused="${4:-false}"
   local attempt count=1
   for attempt in 1 2 3; do
-    focus_and_assert "$pid"
+    if [ "$already_focused" = false ] || [ "$attempt" -gt 1 ]; then
+      focus_and_assert "$pid"
+    fi
     case "$action" in
       close)
+        native_action_sent_at="$(epoch_milliseconds)"
+        native_action_path='close-shortcut'
         osascript -e 'tell application "System Events" to key code 13 using command down' \
           >>"$evidence_dir/native-actions.log" 2>>"$evidence_dir/accessibility-$pid.err" || fail 'could not send native Cmd-W'
         ;;
       quit)
+        native_action_sent_at="$(epoch_milliseconds)"
+        native_action_path='quit-shortcut'
         osascript -e 'tell application "System Events" to key code 12 using command down' \
           >>"$evidence_dir/native-actions.log" 2>>"$evidence_dir/accessibility-$pid.err" || fail 'could not send native Cmd-Q'
         ;;
       *) fail "unknown native lifecycle action: $action" ;;
     esac
-    sleep 1
+    # The draft path intentionally starts already focused and must invoke its
+    # fallback before the 350 ms debounce. Ordinary lifecycle exercises wait
+    # for the full native flush handshake before judging a shortcut delivery.
+    if [ "$already_focused" = true ]; then
+      sleep 0.1
+    else
+      sleep 1
+    fi
     if ! kill -0 "$pid" 2>/dev/null; then
       count=0
     else
@@ -144,6 +173,8 @@ send_native_action() {
     # and the draft-flush coordinator rather than terminating the process.
     if [ "$count" -ne 0 ] && [ "$action" = close ]; then
       printf '%s\n' 'fallback: File > Close Window' >>"$evidence_dir/native-actions.log"
+      native_action_sent_at="$(epoch_milliseconds)"
+      native_action_path='close-menu-fallback'
       osascript \
         -e "tell application \"System Events\" to tell (first application process whose unix id is $pid) to click menu item \"Close Window\" of menu \"File\" of menu bar item \"File\" of menu bar 1" \
         >>"$evidence_dir/native-actions.log" 2>>"$evidence_dir/accessibility-$pid.err" || true
@@ -222,7 +253,7 @@ run_regenerations() {
 }
 
 run_ui_driver() {
-  local port="$1" token="$2" mode="$3" expected_revision="${4:-}" evidence="$5"
+  local port="$1" token="$2" mode="$3" expected_revision="${4:-}" evidence="$5" draft_label="${6:-}"
   [ -n "$ui_driver" ] || return 0
   local arguments=(
     "$ui_driver"
@@ -236,7 +267,38 @@ run_ui_driver() {
   if [ -n "$expected_revision" ]; then
     arguments+=(--expected-revision "$expected_revision")
   fi
+  if [ -n "$draft_label" ]; then
+    arguments+=(--draft-label "$draft_label")
+  fi
   python3 "${arguments[@]}" || fail "native UI driver $mode failed"
+}
+
+record_pre_debounce_draft_action() {
+  local label="$1" action="$2" prepared_evidence="$3" previous_pid="$4" current_pid="$5"
+  local prepared elapsed
+  prepared="$(jq -er '.preparedEpochMilliseconds' "$prepared_evidence")"
+  [ -n "$native_action_sent_at" ] || fail "missing native action time for draft $label"
+  elapsed=$((native_action_sent_at - prepared))
+  printf 'draft=%s prepared=%s driver_returned=%s native_action=%s path=%s elapsed_ms=%s\n' \
+    "$label" "$prepared" "$draft_driver_returned_at" "$native_action_sent_at" "$native_action_path" "$elapsed" \
+    >>"$evidence_dir/native-actions.log"
+  [ "$elapsed" -ge 0 ] && [ "$elapsed" -le 350 ] || fail "draft $label native $action was not sent before the 350 ms debounce ($elapsed ms)"
+  case "$action:$native_action_path" in
+    close:close-shortcut|close:close-menu-fallback|quit:quit-shortcut) ;;
+    *) fail "draft $label used $native_action_path instead of a native $action action" ;;
+  esac
+  draft_records="$(jq -cn \
+    --argjson records "$draft_records" \
+    --arg label "$label" \
+    --arg action "$action" \
+    --arg native_action_path "$native_action_path" \
+    --arg previous "$previous_pid" \
+    --arg current "$current_pid" \
+    --argjson prepared "$prepared" \
+    --argjson driver_returned "$draft_driver_returned_at" \
+    --argjson sent "$native_action_sent_at" \
+    --argjson elapsed "$elapsed" \
+    '$records + [{label:$label,action:$action,nativeActionPath:$native_action_path,previousPid:$previous,currentPid:$current,preparedEpochMilliseconds:$prepared,driverReturnedEpochMilliseconds:$driver_returned,nativeActionSentEpochMilliseconds:$sent,elapsedBeforeDebounceMilliseconds:$elapsed}]')"
 }
 
 initial_report_revision=""
@@ -261,17 +323,27 @@ if [ -n "$ui_driver" ]; then
     --native-e2e-port "$first_ui_port"
     --native-e2e-token "$first_ui_token"
   )
+  second_initial_artifact='file:.mana/features/FEEDBACK-E2E/planning/story-start-implementation-plan-v2.json'
+  if [ "$exercise_drafts" = true ]; then
+    second_initial_artifact='file:.mana/features/FEEDBACK-E2E/planning/story-start-scope-v2.md'
+  fi
   second_arguments+=(
-    --initial-artifact file:.mana/features/FEEDBACK-E2E/planning/story-start-implementation-plan-v2.json
+    --initial-artifact "$second_initial_artifact"
     --native-e2e-port "$second_ui_port"
     --native-e2e-token "$second_ui_token"
   )
 fi
 
 prepare_initial_generation
-"$app_executable" "${first_arguments[@]}" >"$evidence_dir/runner-one.out" 2>"$evidence_dir/runner-one.err" &
-first_pid=$!
-wait_for_process "$first_pid"
+first_run=0
+launch_first() {
+  local suffix=""
+  [ "$first_run" -eq 0 ] || suffix="-restart-$first_run"
+  "$app_executable" "${first_arguments[@]}" >"$evidence_dir/runner-one$suffix.out" 2>"$evidence_dir/runner-one$suffix.err" &
+  first_pid=$!
+  wait_for_process "$first_pid"
+}
+launch_first
 
 second_run=0
 launch_second() {
@@ -296,12 +368,43 @@ if [ "$exercise_decision" = true ]; then
   focus_and_assert "$second_pid"
   run_ui_driver "$second_ui_port" "$second_ui_token" publish-decision "" "$evidence_dir/ui/decision.json"
 fi
+draft_records='[]'
+if [ "$exercise_drafts" = true ]; then
+  # A and B intentionally target the same section of the same producer
+  # artifact. Distinct window sessions must retain their own text even when a
+  # native Close/Quit reaches the Flutter flush handshake before debounce.
+  focus_and_assert "$first_pid"
+  run_ui_driver "$first_ui_port" "$first_ui_token" prepare-comment-draft "" "$evidence_dir/ui/draft-A-prepared.json" A
+  draft_driver_returned_at="$(epoch_milliseconds)"
+  previous_first_pid="$first_pid"
+  send_native_action "$first_pid" close draft-A-close true
+  first_pid=""
+  first_run=$((first_run + 1))
+  launch_first
+  focus_and_assert "$first_pid"
+  record_pre_debounce_draft_action A close "$evidence_dir/ui/draft-A-prepared.json" "$previous_first_pid" "$first_pid"
+  run_ui_driver "$first_ui_port" "$first_ui_token" observe-comment-draft "" "$evidence_dir/ui/draft-A-restored.json" A
+
+  focus_and_assert "$second_pid"
+  run_ui_driver "$second_ui_port" "$second_ui_token" prepare-comment-draft "" "$evidence_dir/ui/draft-B-prepared.json" B
+  draft_driver_returned_at="$(epoch_milliseconds)"
+  previous_second_draft_pid="$second_pid"
+  send_native_action "$second_pid" quit draft-B-quit true
+  second_pid=""
+  kill -0 "$first_pid" 2>/dev/null || fail 'quitting the B draft window terminated the A process'
+  second_run=$((second_run + 1))
+  launch_second
+  focus_and_assert "$second_pid"
+  record_pre_debounce_draft_action B quit "$evidence_dir/ui/draft-B-prepared.json" "$previous_second_draft_pid" "$second_pid"
+  run_ui_driver "$second_ui_port" "$second_ui_token" observe-comment-draft "" "$evidence_dir/ui/draft-B-restored.json" B
+fi
 run_regenerations
 
 # Restart B three times under the same session namespace. This exercises the
 # production Close and Quit actions against live native windows, while proving
 # that neither action can terminate the unrelated A process.
 lifecycle_records='[]'
+lifecycle_restart=0
 for action in close quit close; do
   previous_pid="$second_pid"
   send_native_action "$second_pid" "$action" "restart-$((second_run + 1))-$action"
@@ -310,8 +413,19 @@ for action in close quit close; do
   second_run=$((second_run + 1))
   launch_second
   focus_and_assert "$second_pid"
-  lifecycle_records="$(jq -cn --argjson records "$lifecycle_records" --argjson restart "$second_run" --arg action "$action" --arg previous "$previous_pid" --arg current "$second_pid" '$records + [{restart:$restart,action:$action,previousPid:$previous,currentPid:$current,session:"native-e2e-B"}]')"
+  lifecycle_restart=$((lifecycle_restart + 1))
+  lifecycle_records="$(jq -cn --argjson records "$lifecycle_records" --argjson restart "$lifecycle_restart" --arg action "$action" --arg previous "$previous_pid" --arg current "$second_pid" '$records + [{restart:$restart,action:$action,previousPid:$previous,currentPid:$current,session:"native-e2e-B"}]')"
 done
+
+if [ "$exercise_drafts" = true ]; then
+  focus_and_assert "$first_pid"
+  run_ui_driver "$first_ui_port" "$first_ui_token" observe-comment-draft "" "$evidence_dir/ui/draft-A-after-B-restarts.json" A
+  focus_and_assert "$second_pid"
+  run_ui_driver "$second_ui_port" "$second_ui_token" observe-comment-draft "" "$evidence_dir/ui/draft-B-after-restarts.json" B
+  jq -cn --argjson drafts "$draft_records" \
+    '{schemaVersion:"mana.familiar.native-drafts/v1",drafts:$drafts}' \
+    >"$evidence_dir/drafts.json"
+fi
 
 # Finish the live B window with the native Close action. A remains independently
 # focusable until its final Quit below.
