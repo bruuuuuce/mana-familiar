@@ -3,8 +3,9 @@
 
 The shell gate owns real macOS windows and Accessibility actions. This runner
 owns the isolated synthetic project and the durable audit bundle around it.
-It deliberately exposes only `smoke`: the 20-minute desktop-long profile is
-added after the UI driver can count genuine UI actions rather than polls.
+It exposes short, separately-scoped smoke profiles. The 20-minute
+`desktop-long` profile remains unavailable until the driver can count genuine
+UI actions and injected recovery episodes rather than polls.
 """
 from __future__ import annotations
 
@@ -53,6 +54,7 @@ def validate_native_evidence(
     require_ui: bool = False,
     require_regenerations: bool = True,
     require_decision: bool = False,
+    require_drafts: bool = False,
 ) -> list[dict[str, object]]:
     generations: list[dict[str, object]] = []
     if require_regenerations:
@@ -105,6 +107,69 @@ def validate_native_evidence(
                 or not isinstance(decision.get("optionId"), str)
             ):
                 raise AssertionError("native gate did not prove a visible canonical UI decision")
+        if require_drafts:
+            drafts = json.loads((native_output / "drafts.json").read_text(encoding="utf-8"))
+            values = drafts.get("drafts")
+            if not isinstance(values, list) or len(values) != 2:
+                raise AssertionError("native gate did not record two independent draft recoveries")
+            expected = (("A", "close"), ("B", "quit"))
+            for label, action in expected:
+                record = next(
+                    (
+                        value
+                        for value in values
+                        if isinstance(value, dict)
+                        and value.get("label") == label
+                        and value.get("action") == action
+                    ),
+                    None,
+                )
+                if (
+                    record is None
+                    or not isinstance(record.get("previousPid"), str)
+                    or not isinstance(record.get("currentPid"), str)
+                    or record["previousPid"] == record["currentPid"]
+                    or record.get("nativeActionPath")
+                    not in ({"close-shortcut", "close-menu-fallback"} if action == "close" else {"quit-shortcut"})
+                    or not isinstance(record.get("preparedEpochMilliseconds"), int)
+                    or not isinstance(record.get("driverReturnedEpochMilliseconds"), int)
+                    or not isinstance(record.get("nativeActionSentEpochMilliseconds"), int)
+                    or not record["preparedEpochMilliseconds"]
+                    <= record["driverReturnedEpochMilliseconds"]
+                    <= record["nativeActionSentEpochMilliseconds"]
+                    or not isinstance(record.get("elapsedBeforeDebounceMilliseconds"), int)
+                    or not 0 <= record["elapsedBeforeDebounceMilliseconds"] <= 350
+                ):
+                    raise AssertionError(f"native gate did not recover draft {label} via {action}")
+                prepared = json.loads(
+                    (native_output / "ui" / f"draft-{label}-prepared.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                restored = json.loads(
+                    (native_output / "ui" / f"draft-{label}-restored.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                after_name = (
+                    "draft-A-after-B-restarts.json"
+                    if label == "A"
+                    else "draft-B-after-restarts.json"
+                )
+                after_restarts = json.loads(
+                    (native_output / "ui" / after_name).read_text(
+                        encoding="utf-8"
+                    )
+                )
+                expected_files = (prepared, restored, after_restarts)
+                if (
+                    any(value.get("status") != "passed" for value in expected_files)
+                    or prepared.get("mode") != "prepare-comment-draft"
+                    or any(value.get("mode") != "observe-comment-draft" for value in (restored, after_restarts))
+                    or any(value.get("draftLabel") != label for value in expected_files)
+                    or len({value.get("bodySha256") for value in expected_files}) != 1
+                ):
+                    raise AssertionError(f"native UI did not retain draft {label} across restarts")
         if require_regenerations:
             for generation in generations[1:]:
                 generation_number = generation.get("generation")
@@ -128,9 +193,16 @@ def validate_native_evidence(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mana-root", required=True, type=Path)
-    parser.add_argument("--profile", choices=("smoke", "decision-smoke"), default="smoke")
+    parser.add_argument(
+        "--profile", choices=("smoke", "decision-smoke", "draft-smoke"), default="smoke"
+    )
     parser.add_argument("--output-root", type=Path, default=Path("build/native-feedback-audit"))
     parser.add_argument("--app", type=Path)
+    parser.add_argument(
+        "--preferences-root",
+        type=Path,
+        help="caller-owned local preferences root; retained after the native run",
+    )
     parser.add_argument("--skip-build", action="store_true")
     args = parser.parse_args()
 
@@ -205,8 +277,12 @@ def main() -> int:
             "--second-ui-token",
             second_ui_token,
         ]
+        if args.preferences_root is not None:
+            command.extend(["--preferences-root", str(args.preferences_root.resolve())])
         if args.profile == "decision-smoke":
             command.extend(["--exercise-decision", "--skip-regenerations"])
+        if args.profile == "draft-smoke":
+            command.extend(["--exercise-drafts", "--skip-regenerations"])
         result = subprocess.run(command, cwd=familiar_root, text=True, check=False)
         if result.returncode:
             raise RuntimeError(f"native gate failed ({result.returncode})")
@@ -215,6 +291,7 @@ def main() -> int:
             require_ui=True,
             require_regenerations=args.profile == "smoke",
             require_decision=args.profile == "decision-smoke",
+            require_drafts=args.profile == "draft-smoke",
         )
         report = {
             **manifest,
@@ -224,7 +301,13 @@ def main() -> int:
             "nativeEvidence": str(native_output.relative_to(output)),
             "uiDriver": {
                 "inputMode": "flutter-widget-bridge",
-                "uiActionCount": 9 if args.profile == "decision-smoke" else 6,
+                "uiActionCount": (
+                    9
+                    if args.profile == "decision-smoke"
+                    else 20
+                    if args.profile == "draft-smoke"
+                    else 6
+                ),
                 "regenerationObservations": 5 if args.profile == "smoke" else 0,
             },
         }

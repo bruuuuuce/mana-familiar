@@ -83,6 +83,65 @@ class NativeFeedbackRunnerTest(unittest.TestCase):
             ),
             encoding="utf-8",
         )
+        for label, action, after_restart in (
+            ("A", "close", "draft-A-after-B-restarts.json"),
+            ("B", "quit", "draft-B-after-restarts.json"),
+        ):
+            body_sha = f"draft-{label.lower()}"
+            (ui / f"draft-{label}-prepared.json").write_text(
+                json.dumps(
+                    {
+                        "status": "passed",
+                        "mode": "prepare-comment-draft",
+                        "draftLabel": label,
+                        "bodySha256": body_sha,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            for name in (f"draft-{label}-restored.json", after_restart):
+                (ui / name).write_text(
+                    json.dumps(
+                        {
+                            "status": "passed",
+                            "mode": "observe-comment-draft",
+                            "draftLabel": label,
+                            "bodySha256": body_sha,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+        (directory / "drafts.json").write_text(
+            json.dumps(
+                {
+                    "drafts": [
+                        {
+                            "label": "A",
+                            "action": "close",
+                            "nativeActionPath": "close-menu-fallback",
+                            "previousPid": "10",
+                            "currentPid": "11",
+                            "preparedEpochMilliseconds": 1,
+                            "driverReturnedEpochMilliseconds": 2,
+                            "nativeActionSentEpochMilliseconds": 3,
+                            "elapsedBeforeDebounceMilliseconds": 25,
+                        },
+                        {
+                            "label": "B",
+                            "action": "quit",
+                            "nativeActionPath": "quit-shortcut",
+                            "previousPid": "12",
+                            "currentPid": "13",
+                            "preparedEpochMilliseconds": 4,
+                            "driverReturnedEpochMilliseconds": 5,
+                            "nativeActionSentEpochMilliseconds": 6,
+                            "elapsedBeforeDebounceMilliseconds": 30,
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         for generation in generations[1:]:
             (ui / f"generation-{generation['generation']}.json").write_text(
                 json.dumps(
@@ -151,6 +210,29 @@ class NativeFeedbackRunnerTest(unittest.TestCase):
                 require_regenerations=False,
                 require_decision=True,
             )
+
+    def test_requires_both_native_draft_recoveries_before_debounce(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            self._write_complete_native_evidence(directory)
+            (directory / "regenerations.json").unlink()
+            runner.validate_native_evidence(
+                directory,
+                require_ui=True,
+                require_regenerations=False,
+                require_drafts=True,
+            )
+
+            drafts = json.loads((directory / "drafts.json").read_text(encoding="utf-8"))
+            drafts["drafts"][1]["elapsedBeforeDebounceMilliseconds"] = 351
+            (directory / "drafts.json").write_text(json.dumps(drafts), encoding="utf-8")
+            with self.assertRaisesRegex(AssertionError, "draft B"):
+                runner.validate_native_evidence(
+                    directory,
+                    require_ui=True,
+                    require_regenerations=False,
+                    require_drafts=True,
+                )
 
 
 if __name__ == "__main__":

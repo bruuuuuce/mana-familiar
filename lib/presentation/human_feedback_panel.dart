@@ -51,8 +51,12 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
   Object? _error;
   var _sending = false;
   var _composerEdited = false;
+  var _suppressComposerDrafts = false;
   var _showResolved = false;
   var _showPreview = false;
+  var _composerDraftLoadState = 'not-requested';
+  var _lastComposerBody = '';
+  var _lastComposerAuthor = '';
   HumanFeedbackCapabilities? _capabilities;
   NativeE2EPanelBindings? _nativeE2EPanel;
 
@@ -63,15 +67,7 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
     _load();
     _loadCapabilities();
     widget.refreshSignal?.addListener(_load);
-    widget.drafts?.load(widget.target).then((draft) {
-      if (!mounted || draft == null || _composerEdited) {
-        return;
-      }
-      _body.text = draft.body;
-      _author.text = draft.author;
-      _idempotencyKey = draft.idempotencyKey;
-      setState(() {});
-    });
+    unawaited(_loadComposerDraft());
     _body.addListener(_onComposerEdited);
     _author.addListener(_onComposerEdited);
     _registerNativeE2EPanel();
@@ -124,13 +120,52 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
       'comment:${DateTime.now().microsecondsSinceEpoch}';
 
   void _onComposerEdited() {
+    if (_suppressComposerDrafts ||
+        (_body.text == _lastComposerBody &&
+            _author.text == _lastComposerAuthor)) {
+      return;
+    }
+    _lastComposerBody = _body.text;
+    _lastComposerAuthor = _author.text;
     _composerEdited = true;
     _saveDraft();
   }
 
+  void _replaceComposer({required String body, required String author}) {
+    _suppressComposerDrafts = true;
+    _body.text = body;
+    _author.text = author;
+    _lastComposerBody = body;
+    _lastComposerAuthor = author;
+    _suppressComposerDrafts = false;
+  }
+
+  Future<void> _loadComposerDraft() async {
+    final drafts = widget.drafts;
+    if (drafts == null) return;
+    _composerDraftLoadState = 'loading';
+    final draft = await drafts.load(widget.target);
+    if (!mounted) return;
+    if (draft == null) {
+      setState(() => _composerDraftLoadState = 'absent');
+      return;
+    }
+    if (_composerEdited) {
+      setState(() => _composerDraftLoadState = 'superseded-by-input');
+      return;
+    }
+    _replaceComposer(body: draft.body, author: draft.author);
+    _idempotencyKey = draft.idempotencyKey;
+    setState(() => _composerDraftLoadState = 'restored');
+  }
+
   void _saveDraft() {
     final drafts = widget.drafts;
-    if (drafts == null || (_body.text.isEmpty && _author.text.isEmpty)) return;
+    if (drafts == null ||
+        !_composerEdited ||
+        (_body.text.isEmpty && _author.text.isEmpty)) {
+      return;
+    }
     drafts.schedule(
       HumanFeedbackDraft(
         target: widget.target,
@@ -144,11 +179,13 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
 
   Map<String, Object?> _nativeE2EStatus() => {
     'target': {
+      'projectId': widget.target.projectId,
       'artifactId': widget.target.artifactId,
       'artifactRevision': widget.target.artifactRevision,
       'sectionId': widget.target.sectionId,
     },
     'composer': {'author': _author.text, 'body': _body.text},
+    'composerDraftLoadState': _composerDraftLoadState,
     'loading': _threads == null,
     'sending': _sending,
     'error': _error?.toString(),
@@ -191,8 +228,6 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
     if (!mounted) throw StateError('comment panel is no longer mounted');
     _author.text = author;
     _body.text = body;
-    _composerEdited = true;
-    _saveDraft();
     if (mounted) setState(() {});
   }
 
@@ -220,8 +255,7 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
     await widget.drafts?.discard(widget.target);
     if (!mounted) return;
     setState(() {
-      _body.clear();
-      _author.clear();
+      _replaceComposer(body: '', author: '');
       _idempotencyKey = _newIdempotencyKey();
       _composerEdited = false;
       _error = null;
@@ -308,7 +342,8 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
       );
       if (_body.text == body && _author.text.trim() == author) {
         await widget.drafts?.discard(widget.target);
-        _body.clear();
+        _replaceComposer(body: '', author: _author.text);
+        _composerEdited = false;
       }
       await _load();
     } on HumanFeedbackConflict catch (error) {

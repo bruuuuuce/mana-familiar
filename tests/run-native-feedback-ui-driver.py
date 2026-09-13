@@ -24,6 +24,16 @@ AUTHOR = "Native E2E"
 BODY = "Decisione osservata dalla UI\n\n- verifica Unicode: è"
 REPLY_BODY = "Risposta osservata dalla UI\n\n- conferma: sì"
 DECISION_RATIONALE = "Decisione registrata dalla UI\n\n- opzione verificata"
+DRAFTS = {
+    "A": {
+        "author": "Native E2E draft A",
+        "body": "Bozza A non pubblicata\n\n- deve sopravvivere a Cmd-W",
+    },
+    "B": {
+        "author": "Native E2E draft B",
+        "body": "Bozza B non pubblicata\n\n- deve sopravvivere a Cmd-Q",
+    },
+}
 
 
 def write_json(path: Path, value: object) -> None:
@@ -59,7 +69,10 @@ class Bridge:
 def wait_for(
     bridge: Bridge, predicate: Callable[[dict[str, Any]], bool], description: str
 ) -> dict[str, Any]:
-    deadline = time.monotonic() + 45
+    # A clean synthetic workspace can make the first producer inspect spend
+    # tens of seconds building its catalog. This is a bounded readiness wait,
+    # not a polling action, and must outlast that supported cold path.
+    deadline = time.monotonic() + 90
     last: object = None
     while time.monotonic() < deadline:
         try:
@@ -165,6 +178,42 @@ def canonical_entry(mana_root: Path, project_root: Path, target: dict[str, Any])
     raise AssertionError("published UI comment/reply is absent from canonical feedback history")
 
 
+def canonical_draft_is_absent(
+    mana_root: Path, project_root: Path, target: dict[str, Any], *, body: str
+) -> None:
+    artifact_id = target.get("artifactId")
+    revision = target.get("artifactRevision")
+    if not isinstance(artifact_id, str) or not isinstance(revision, str):
+        raise AssertionError("mounted panel has no canonical artifact target")
+    command = [
+        str(mana_root / "scripts" / "mana-human-feedback.sh"),
+        "--project-root",
+        str(project_root),
+        "list-history",
+        "--artifact-id",
+        artifact_id,
+        "--artifact-revision",
+        revision,
+        "--section-id",
+        SECTION_ID,
+        "--json",
+    ]
+    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    if completed.returncode:
+        raise AssertionError(f"canonical feedback read failed: {completed.stderr.strip()}")
+    value = json.loads(completed.stdout)
+    threads = value.get("threads")
+    if not isinstance(threads, list):
+        raise AssertionError("canonical feedback response has no thread list")
+    if any(
+        isinstance(entry, dict) and entry.get("body") == body
+        for thread in threads
+        if isinstance(thread, dict)
+        for entry in thread.get("entries", [])
+    ):
+        raise AssertionError("unpublished local draft appeared in canonical feedback history")
+
+
 def payload_free_document_status(status: dict[str, Any]) -> dict[str, Any]:
     value = document(status) or {}
     anchors = value.get("stableSectionAnchors")
@@ -268,6 +317,84 @@ def observe_generation(args: argparse.Namespace, bridge: Bridge) -> dict[str, ob
     }
 
 
+def draft_values(label: str | None) -> dict[str, str]:
+    if label not in DRAFTS:
+        raise AssertionError("draft mode needs a known A or B draft label")
+    return DRAFTS[label]
+
+
+def open_stable_comment_panel(args: argparse.Namespace, bridge: Bridge) -> dict[str, Any]:
+    status = wait_for(bridge, stable_document, "a mounted Story Start document with stable targets")
+    if document(status).get("activeSectionId") != SECTION_ID:
+        bridge.call("selectSection", sectionId=SECTION_ID)
+        status = wait_for(
+            bridge,
+            lambda current: document(current) is not None
+            and document(current).get("activeSectionId") == SECTION_ID,
+            "the selected stable section",
+        )
+    if panel(status) is None or panel(status).get("target", {}).get("sectionId") != SECTION_ID:
+        bridge.call("openComments")
+        status = wait_for(
+            bridge,
+            lambda current: panel(current) is not None
+            and panel(current).get("target", {}).get("sectionId") == SECTION_ID,
+            "the mounted comments panel",
+        )
+    target = panel(status).get("target")
+    if not isinstance(target, dict):
+        raise AssertionError("mounted panel lacks its target")
+    return target
+
+
+def prepare_comment_draft(args: argparse.Namespace, bridge: Bridge) -> dict[str, object]:
+    values = draft_values(args.draft_label)
+    target = open_stable_comment_panel(args, bridge)
+    bridge.call("setComposer", author=values["author"], body=values["body"])
+    status = wait_for(
+        bridge,
+        lambda current: panel(current) is not None
+        and panel(current).get("composer", {}).get("author") == values["author"]
+        and panel(current).get("composer", {}).get("body") == values["body"],
+        "the UI composer to retain its unpublished draft",
+    )
+    canonical_draft_is_absent(args.mana_root, args.project_root, target, body=values["body"])
+    return {
+        "schemaVersion": "mana.familiar.native-e2e-ui/v1",
+        "status": "passed",
+        "mode": "prepare-comment-draft",
+        "inputMode": "flutter-widget-bridge",
+        "uiActionCount": 3,
+        "draftLabel": args.draft_label,
+        "preparedEpochMilliseconds": time.time_ns() // 1_000_000,
+        "bodySha256": hashlib.sha256(values["body"].encode("utf-8")).hexdigest(),
+        "document": payload_free_document_status(status),
+    }
+
+
+def observe_comment_draft(args: argparse.Namespace, bridge: Bridge) -> dict[str, object]:
+    values = draft_values(args.draft_label)
+    target = open_stable_comment_panel(args, bridge)
+    status = wait_for(
+        bridge,
+        lambda current: panel(current) is not None
+        and panel(current).get("composer", {}).get("author") == values["author"]
+        and panel(current).get("composer", {}).get("body") == values["body"],
+        "the restored unpublished UI draft",
+    )
+    canonical_draft_is_absent(args.mana_root, args.project_root, target, body=values["body"])
+    return {
+        "schemaVersion": "mana.familiar.native-e2e-ui/v1",
+        "status": "passed",
+        "mode": "observe-comment-draft",
+        "inputMode": "flutter-widget-bridge",
+        "uiActionCount": 2,
+        "draftLabel": args.draft_label,
+        "bodySha256": hashlib.sha256(values["body"].encode("utf-8")).hexdigest(),
+        "document": payload_free_document_status(status),
+    }
+
+
 def publish_decision(args: argparse.Namespace, bridge: Bridge) -> dict[str, object]:
     status = wait_for(
         bridge,
@@ -357,19 +484,32 @@ def main() -> int:
     parser.add_argument("--mana-root", type=Path, required=True)
     parser.add_argument(
         "--mode",
-        choices=("publish-comment", "publish-decision", "observe-generation"),
+        choices=(
+            "publish-comment",
+            "prepare-comment-draft",
+            "observe-comment-draft",
+            "publish-decision",
+            "observe-generation",
+        ),
         required=True,
     )
+    parser.add_argument("--draft-label", choices=("A", "B"))
     parser.add_argument("--expected-revision")
     parser.add_argument("--evidence", type=Path, required=True)
     args = parser.parse_args()
     if args.mode == "observe-generation" and not args.expected_revision:
         parser.error("--expected-revision is required for observe-generation")
+    if args.mode in ("prepare-comment-draft", "observe-comment-draft") and not args.draft_label:
+        parser.error("draft modes require --draft-label")
     try:
         bridge = Bridge(args.port, args.token)
         result = (
             publish_comment(args, bridge)
             if args.mode == "publish-comment"
+            else prepare_comment_draft(args, bridge)
+            if args.mode == "prepare-comment-draft"
+            else observe_comment_draft(args, bridge)
+            if args.mode == "observe-comment-draft"
             else publish_decision(args, bridge)
             if args.mode == "publish-decision"
             else observe_generation(args, bridge)

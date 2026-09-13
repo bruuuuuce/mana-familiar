@@ -200,6 +200,14 @@ senza presentare una rigenerazione successiva come prova valida:
 python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile decision-smoke
 ```
 
+Le bozze hanno a loro volta uno smoke separato su due Runner e sullo stesso
+target: crea testi distinti, invia Close e Quit entro il debounce di 350 ms,
+poi ne verifica il ripristino locale senza scritture canoniche involontarie.
+
+```sh
+python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile draft-smoke
+```
+
 ## Contract
 
 The Observatory supports the eight `mana.inspect.* /v1` schemas documented in

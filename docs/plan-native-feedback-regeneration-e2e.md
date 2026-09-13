@@ -17,7 +17,9 @@ confrontandone la presenza sia nella UI sia nella lettura canonica Mana. Dopo
 R1–R5 il driver aspetta la revisione esatta esposta dal documento montato. Uno
 smoke distinto apre la form dell'implementation plan, registra una decisione
 con alternativa valida e motivazione e confronta la scelta con lo stato
-canonico Mana.
+canonico Mana. Un terzo smoke apre due Runner sullo stesso target, conserva
+bozze differenti in A/B con Close e Quit inviati entro il debounce di 350 ms,
+e ne verifica il recupero dopo nuovi PID e dopo gli ulteriori restart B.
 
 L'automazione macOS non può ancora individuare i singoli widget Flutter con
 Accessibility: su questo embedder la finestra è esposta come un unico gruppo
@@ -30,8 +32,8 @@ L'input di commento, risposta e decisione è quindi marcato
 R1–R5: una scelta richiede una ripianificazione governata e la fixture
 deterministica delle cinque rigenerazioni non proietta ancora la scelta nel
 decision register successivo. Rimangono aperti quel percorso integrato,
-le bozze, il profilo `desktop-long`, gli episodi di fault richiesti e il gate
-Windows.
+bozze di reply/decisione e tra progetti diversi, il profilo `desktop-long`,
+gli episodi di fault richiesti e il gate Windows.
 
 ## Obiettivo e perimetro
 
@@ -53,7 +55,9 @@ Windows resta un gate distinto da eseguire su Windows reale. Non è richiesto pe
   sintetico alla finestra già dichiarata frontmost.
 - `HumanFeedbackDraftStore` ha namespace per sessione, progetto, artefatto e
   composer; conserva revisioni precedenti e migra il formato vecchio. Rimane
-  da provare dalla UI il recupero incrociato A/B.
+  da provare dalla UI il recupero di reply, decisioni e progetti diversi. Lo
+  smoke `draft-smoke` prova invece due bozze commento distinte sullo stesso
+  target in A/B, Close/Quit entro il debounce e ripristino dopo restart.
 - Close e Quit usano un handshake AppKit/Flutter che attende il flush. Il
   fallback non classifica la sola scomparsa di un PID come successo.
 - La lettura della storia conserva target e revisione originali e Mana espone
@@ -144,10 +148,12 @@ Interfacce disponibili:
 ```sh
 python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile smoke
 python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile decision-smoke
+python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile draft-smoke
 ```
 
 - Smoke (disponibile): commento e risposta canonici, R1–R5 osservate dal documento UI e tre restart; timeout complessivo iniziale 15 minuti. Il timeout è un limite operativo, non un tempo minimo da consumare.
 - Decision-smoke (disponibile): commento e risposta in A, una decisione nell'implementation plan B, stato canonico della scelta e lifecycle; deliberatamente senza rigenerazioni successive alla scelta.
+- Draft-smoke (disponibile): due bozze commento differenti sul medesimo target e in sessioni A/B; Cmd-W e Cmd-Q sono inviati entro 350 ms dal testo, il fallback `File → Close Window` resta nativo e viene timestampato, e i testi si ritrovano dopo i rispettivi restart e dopo i tre restart B. Il driver controlla inoltre che una bozza non compaia nella storia canonica Mana.
 - Desktop-long (da implementare, comando previsto `--profile desktop-long`): almeno 20 minuti e 300 azioni UI distribuite, due finestre, cinque rigenerazioni, tre restart, dieci episodi recuperabili. Contare separatamente azioni UI, mutazioni accettate, rigenerazioni, restart e guasti; i sondaggi del runner non sono azioni utente.
 - Soak da 60 minuti/1.000 azioni: estensione successiva alla stabilizzazione del profilo desktop-long. Il C03 producer già esistente resta un controllo distinto.
 
@@ -165,8 +171,8 @@ Eseguire formattazione, analisi, test Flutter/Python pertinenti e build macOS; p
 
 - [x] Commento e risposta UI verificati nel thread canonico; decisione UI verificata nello stato canonico, in smoke separati.
 - [x] Cinque pubblicazioni reali governate, ciascuna osservata dalla UI nello smoke commenti/risposte.
-- [ ] Due finestre sul medesimo progetto con bozze indipendenti e focus verificato.
-- [ ] Tre restart con nuovi PID e ripristino verificato; Close/Quit senza perdita del testo previsto.
+- [x] Due finestre sul medesimo progetto e target, con bozze indipendenti e focus verificato.
+- [x] Tre restart B con nuovi PID e ripristino verificato; Close/Quit senza perdita dei testi A/B previsti.
 - [ ] Storia raggiungibile dopo revisioni nuove, target rimosso e alternative mutate.
 - [ ] Conflitti/ACK persi recuperati senza perdita o duplicazione di contributi.
 - [ ] Preferenze reali intatte, cleanup limitato alla run, nessun processo residuo.
