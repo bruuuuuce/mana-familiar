@@ -29,6 +29,15 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed .
       - run: flutter analyze
       - run: flutter test
+      - name: C03 Human Feedback producer smoke
+        run: python3 tests/run-c03-human-feedback-harness.py --mana-root ../mana --profile smoke
+      - name: Upload C03 Human Feedback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c03-human-feedback-smoke
+          path: mana-familiar/build/feedback-audit
+          if-no-files-found: warn
       - run: flutter build macos --debug
 
   validate-windows:

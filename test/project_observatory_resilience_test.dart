@@ -6,35 +6,84 @@ import 'package:mana_familiar/mana_inspect.dart';
 import 'package:mana_familiar/presentation/project_observatory_page.dart';
 
 void main() {
-  testWidgets('keeps semantic content visible with a refresh warning', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ProjectObservatoryPage(
-          client: ManaInspectClient(projectRoot: '/project'),
-          knowledge: const SizedBox(),
-          initialReadModel: ManaSemanticReadModel(
-            project: ManaInspectProject.fromJson(_project),
-            mode: ManaSemanticMode.fullSemantic,
-            workItems: ManaWorkItemsResponse.fromJson(_workItems),
-            refreshError: const ManaInspectException(
-              ManaInspectFailure.command,
-              'temporary failure',
+  for (final scenario in [
+    (
+      name: 'complete successful empty attention permits a positive conclusion',
+      coverage: 'complete',
+      refreshFailed: false,
+      attention: false,
+      positive: true,
+      state: 'Nothing needs attention',
+    ),
+    (
+      name: 'partial successful empty attention limits the conclusion',
+      coverage: 'partial',
+      refreshFailed: false,
+      attention: false,
+      positive: false,
+      state: 'Attention data is partial',
+    ),
+    (
+      name: 'none successful empty attention is not determinable',
+      coverage: 'none',
+      refreshFailed: false,
+      attention: false,
+      positive: false,
+      state: 'Attention data is unavailable',
+    ),
+    (
+      name: 'failed refresh with empty attention does not reassure',
+      coverage: 'complete',
+      refreshFailed: true,
+      attention: false,
+      positive: false,
+      state: 'Attention data may be stale',
+    ),
+    (
+      name: 'failed refresh preserves reported attention as stale',
+      coverage: 'complete',
+      refreshFailed: true,
+      attention: true,
+      positive: false,
+      state: 'Needs attention (last data may be stale)',
+    ),
+  ]) {
+    testWidgets(scenario.name, (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProjectObservatoryPage(
+            client: ManaInspectClient(projectRoot: '/project'),
+            knowledge: const SizedBox(),
+            initialReadModel: _model(
+              coverage: scenario.coverage,
+              refreshFailed: scenario.refreshFailed,
+              attention: scenario.attention,
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('Nothing needs attention'), findsOneWidget);
-    expect(
-      find.text('Refresh incomplete. Showing the last successful data.'),
-      findsOneWidget,
-    );
-  });
+      expect(find.text(scenario.state), findsOneWidget);
+      expect(
+        find.text('Nothing needs attention'),
+        scenario.positive ? findsOneWidget : findsNothing,
+      );
+      if (scenario.refreshFailed) {
+        expect(
+          find.text('Refresh incomplete. Showing the last successful data.'),
+          findsOneWidget,
+        );
+      }
+      if (scenario.attention) {
+        expect(find.text('Payment verification failed'), findsOneWidget);
+      } else if (!scenario.positive) {
+        expect(find.text('Refresh data'), findsOneWidget);
+        expect(find.textContaining('cannot be determined'), findsOneWidget);
+      }
+    });
+  }
 
   testWidgets(
     'suppresses stale detail responses and reuses the current revision cache',
@@ -106,12 +155,65 @@ const _project = {
   ],
 };
 
-const _workItems = {
-  'schema': inspectWorkItemsSchema,
-  'work_items': [],
-  'coverage': 'none',
-  'diagnostics': [],
-};
+ManaSemanticReadModel _model({
+  required String coverage,
+  required bool refreshFailed,
+  required bool attention,
+}) {
+  const field = ManaProvenance.explicitWorkspaceManifest;
+  final items = attention
+      ? [
+          ManaWorkItemSummary(
+            id: 'feature:PAY-42',
+            type: ManaWorkItemType.feature,
+            externalTicketId: const ManaSemanticField(
+              value: 'PAY-42',
+              provenance: field,
+            ),
+            title: const ManaSemanticField(
+              value: 'Prevent duplicate payments',
+              provenance: field,
+            ),
+            purpose: const ManaSemanticField(value: null, provenance: field),
+            branch: const ManaSemanticField(value: null, provenance: field),
+            canonicalBranch: true,
+            lifecycle: const ManaLifecycle(
+              ManaLifecycleState.blocked,
+              field,
+              'complete',
+            ),
+            review: const ManaReview(ManaReviewState.unknown, field, 'none'),
+            attentionItems: const [
+              ManaAttentionItem(
+                id: 'verification-failed',
+                category: 'verification',
+                severity: 'error',
+                workItemId: 'feature:PAY-42',
+                relatedArtifactIds: [],
+                provenance: field,
+                label: 'Payment verification failed',
+              ),
+            ],
+            artifacts: const [],
+          ),
+        ]
+      : const <ManaWorkItemSummary>[];
+  return ManaSemanticReadModel(
+    project: ManaInspectProject.fromJson(_project),
+    mode: ManaSemanticMode.fullSemantic,
+    workItems: ManaWorkItemsResponse(
+      workItems: items,
+      coverage: coverage,
+      diagnostics: const [],
+    ),
+    refreshError: refreshFailed
+        ? const ManaInspectException(
+            ManaInspectFailure.command,
+            'temporary failure',
+          )
+        : null,
+  );
+}
 
 const _summary = {
   'artifact_id': 'verification:one',

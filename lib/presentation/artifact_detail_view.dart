@@ -4,7 +4,9 @@ import '../application/artifact_renderer.dart';
 import '../application/mana_inspect.dart';
 import '../application/operational_model.dart';
 import '../application/governance_model.dart';
+import '../application/human_feedback.dart';
 import '../source_workspace.dart';
+import 'human_feedback_panel.dart';
 import 'markdown_diagram.dart';
 import 'source_reference_view.dart';
 
@@ -24,6 +26,9 @@ class ArtifactDetailView extends StatelessWidget {
     this.projectRoot,
     this.documentPresentation = false,
     this.contextualTitle,
+    this.feedback,
+    this.feedbackDrafts,
+    this.feedbackProjectId,
   });
 
   final ManaInspectArtifactSummary artifact;
@@ -40,6 +45,9 @@ class ArtifactDetailView extends StatelessWidget {
   /// the reading experience.
   final bool documentPresentation;
   final String? contextualTitle;
+  final HumanFeedbackRepository? feedback;
+  final HumanFeedbackDraftStore? feedbackDrafts;
+  final String? feedbackProjectId;
 
   @override
   Widget build(BuildContext context) {
@@ -79,6 +87,33 @@ class ArtifactDetailView extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         _summary(context),
+        if (_supportsDecisionRecording(loadedDetail))
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const Key('record-story-start-decision'),
+                onPressed: () => showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => HumanDecisionPanel(
+                    repository: feedback! as ManaHumanFeedbackRepository,
+                    sourcePath: artifact.path,
+                    target: HumanFeedbackTarget(
+                      projectId: feedbackProjectId ?? '',
+                      artifactId: artifact.id,
+                      artifactRevision:
+                          artifact.raw['revision_id'] as String? ?? '',
+                    ),
+                    drafts: feedbackDrafts,
+                  ),
+                ),
+                icon: const Icon(Icons.account_tree_outlined),
+                label: const Text('Record decision'),
+              ),
+            ),
+          ),
         if (loading)
           const Padding(
             padding: EdgeInsets.all(16),
@@ -112,6 +147,17 @@ class ArtifactDetailView extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  bool _supportsDecisionRecording(ManaInspectArtifactDetail? loadedDetail) {
+    if (feedback is! ManaHumanFeedbackRepository ||
+        loadedDetail?.payload is! Map) {
+      return false;
+    }
+    final payload = loadedDetail!.payload as Map;
+    return payload['schemaVersion'] ==
+            'mana.story-start.implementation-plan/v2' &&
+        payload['decisionRegister'] is List;
   }
 
   Widget _documentWorkspace(
@@ -151,6 +197,9 @@ class ArtifactDetailView extends StatelessWidget {
             detail: detail,
             onOpenRelatedArtifact: onOpenRelatedArtifact,
             documentPresentation: true,
+            feedback: feedback,
+            feedbackDrafts: feedbackDrafts,
+            feedbackProjectId: feedbackProjectId,
           ),
         ),
       ),
@@ -247,6 +296,9 @@ class ArtifactDetailView extends StatelessWidget {
             detail: detail,
             onOpenRelatedArtifact: onOpenRelatedArtifact,
             documentPresentation: documentPresentation,
+            feedback: feedback,
+            feedbackDrafts: feedbackDrafts,
+            feedbackProjectId: feedbackProjectId,
           ),
           ArtifactPayloadView.metadata => const Text(
             'Metadata only; payload content is not displayed.',
@@ -516,6 +568,9 @@ class MarkdownNoteView extends StatefulWidget {
     this.detail,
     this.onOpenRelatedArtifact,
     this.documentPresentation = false,
+    this.feedback,
+    this.feedbackDrafts,
+    this.feedbackProjectId,
   });
 
   final String markdown;
@@ -524,6 +579,9 @@ class MarkdownNoteView extends StatefulWidget {
   final ManaInspectArtifactDetail? detail;
   final ValueChanged<String>? onOpenRelatedArtifact;
   final bool documentPresentation;
+  final HumanFeedbackRepository? feedback;
+  final HumanFeedbackDraftStore? feedbackDrafts;
+  final String? feedbackProjectId;
 
   @override
   State<MarkdownNoteView> createState() => _MarkdownNoteViewState();
@@ -613,26 +671,73 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
     _scheduleActiveHeadingUpdate();
   }
 
+  HumanFeedbackTarget? get _feedbackTarget {
+    final artifact = widget.artifact;
+    final projectId = widget.feedbackProjectId;
+    final revision = artifact?.raw['revision_id'];
+    if (artifact == null ||
+        projectId == null ||
+        revision is! String ||
+        revision.isEmpty) {
+      return null;
+    }
+    return HumanFeedbackTarget(
+      projectId: projectId,
+      artifactId: artifact.id,
+      artifactRevision: revision,
+      sectionId: _activeAnchor,
+    );
+  }
+
+  void _openComments() {
+    final repository = widget.feedback;
+    final target = _feedbackTarget;
+    if (repository == null || target == null) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => HumanFeedbackPanel(
+        repository: repository,
+        target: target,
+        drafts: widget.feedbackDrafts,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final controls = Align(
       alignment: Alignment.centerLeft,
-      child: SegmentedButton<MarkdownReaderMode>(
-        segments: MarkdownReaderMode.values
-            .map(
-              (mode) => ButtonSegment(
-                value: mode,
-                label: Text(switch (mode) {
-                  MarkdownReaderMode.reader => 'Reader',
-                  MarkdownReaderMode.source => 'Source',
-                  MarkdownReaderMode.metadata => 'Metadata',
-                }),
-              ),
-            )
-            .toList(),
-        selected: {_mode},
-        showSelectedIcon: false,
-        onSelectionChanged: (modes) => setState(() => _mode = modes.first),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SegmentedButton<MarkdownReaderMode>(
+            segments: MarkdownReaderMode.values
+                .map(
+                  (mode) => ButtonSegment(
+                    value: mode,
+                    label: Text(switch (mode) {
+                      MarkdownReaderMode.reader => 'Reader',
+                      MarkdownReaderMode.source => 'Source',
+                      MarkdownReaderMode.metadata => 'Metadata',
+                    }),
+                  ),
+                )
+                .toList(),
+            selected: {_mode},
+            showSelectedIcon: false,
+            onSelectionChanged: (modes) => setState(() => _mode = modes.first),
+          ),
+          if (widget.feedback != null && _feedbackTarget != null)
+            OutlinedButton.icon(
+              key: const Key('document-comments'),
+              onPressed: _openComments,
+              icon: const Icon(Icons.forum_outlined),
+              label: const Text('Comments'),
+            ),
+        ],
       ),
     );
     if (widget.documentPresentation) {

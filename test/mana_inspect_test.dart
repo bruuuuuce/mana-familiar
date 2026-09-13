@@ -14,6 +14,15 @@ void main() {
     expect(project.raw['future_additive_field'], 'safe');
   });
 
+  test('treats Human Feedback as an explicit optional project capability', () {
+    final project = ManaInspectProject.fromJson({
+      ..._project,
+      'capabilities': ['human_feedback'],
+    });
+    expect(project.supportsCapability('human_feedback'), isTrue);
+    expect(project.supportsCapability('unknown_future_capability'), isFalse);
+  });
+
   test('parses the canonical v1 project and source fixture shapes', () {
     final project = ManaInspectProject.fromJson(_canonicalProject);
     final source = ManaInspectSourceRelations.fromJson(_canonicalSource);

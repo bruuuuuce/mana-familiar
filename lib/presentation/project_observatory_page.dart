@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../application/mana_inspect.dart';
+import '../application/human_feedback.dart';
 import '../application/semantic_navigation.dart';
 import '../application/mana_workspace_watcher.dart';
 import 'artifact_detail_view.dart';
@@ -28,6 +29,8 @@ class ProjectObservatoryPage extends StatefulWidget {
     this.artifactDetailLoader,
     this.watcher,
     this.onRefresh,
+    this.feedback,
+    this.feedbackDrafts,
   });
   final ManaInspectClient client;
   final Widget knowledge;
@@ -44,6 +47,8 @@ class ProjectObservatoryPage extends StatefulWidget {
   artifactDetailLoader;
   final ManaWorkspaceWatcher? watcher;
   final Future<void> Function()? onRefresh;
+  final HumanFeedbackRepository? feedback;
+  final HumanFeedbackDraftStore? feedbackDrafts;
   @override
   State<ProjectObservatoryPage> createState() => _ProjectObservatoryPageState();
 }
@@ -70,6 +75,8 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   int _detailRequest = 0;
   final Map<String, ManaInspectArtifactDetail> _detailCache = {};
   final Map<String, ManaWorkItemResponse> _workDetails = {};
+  final Map<String, Object> _workDetailErrors = {};
+  var _workDetailRequest = 0;
   String _workFilter = 'all';
   String _workSearch = '';
   ManaActivityKind? _activityKindFilter;
@@ -105,6 +112,11 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       });
     });
     _watcher.start();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadWorkDetailIfNeeded();
+      _loadDetailIfNeeded();
+    });
   }
 
   @override
@@ -162,14 +174,21 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     setState(() {
       _refreshPending = false;
       _detailCache.clear();
+      _workDetails.clear();
+      _workDetailErrors.clear();
+      _workDetailRequest++;
+      _repository.invalidateWorkItemDetails();
       _detail = null;
       _detailError = null;
+      // A refresh error belongs to the previous attempt.  Keep rendering the
+      // last good model while the next attempt is in flight.
+      _error = null;
     });
-    if (widget.onRefresh != null) {
-      await widget.onRefresh!();
-      return;
-    }
     try {
+      if (widget.onRefresh != null) {
+        await widget.onRefresh!();
+        return;
+      }
       // Unlike initial load, a user-requested refresh must fetch every
       // semantic surface again. Reusing initialLoad would retain previously
       // loaded project context and activity in the repository.
@@ -178,7 +197,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       setState(() => _model = model);
       _loadDetailIfNeeded();
     } catch (error) {
-      if (mounted) setState(() => _error = error);
+      // Do not replace useful, potentially stale evidence with a dead-end
+      // error page. Initial load still has no model and is handled by _load.
+      if (mounted && _model == null) setState(() => _error = error);
     }
   }
 
@@ -266,14 +287,20 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     if (model == null ||
         id == null ||
         _workDetails.containsKey(id) ||
+        _workDetailErrors.containsKey(id) ||
         model.mode == ManaSemanticMode.legacyCatalog)
       return;
+    final request = ++_workDetailRequest;
     _repository
         .workItem(id, model.project)
         .then((detail) {
-          if (mounted) setState(() => _workDetails[id] = detail);
+          if (mounted && request == _workDetailRequest)
+            setState(() => _workDetails[id] = detail);
         })
-        .catchError((_) {});
+        .catchError((Object error) {
+          if (mounted && request == _workDetailRequest)
+            setState(() => _workDetailErrors[id] = error);
+        });
   }
 
   ManaInspectArtifactSummary? _artifact(
@@ -288,6 +315,13 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         in model.workItems?.workItems ?? const <ManaWorkItemSummary>[]) {
       for (final ref in work.artifacts) {
         if (ref.id == id) return _summary(ref);
+      }
+    }
+    for (final detail in _workDetails.values) {
+      for (final section in detail.sections) {
+        for (final ref in section.artifacts) {
+          if (ref.id == id) return _summary(ref);
+        }
       }
     }
     for (final category
@@ -315,6 +349,13 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         in model.workItems?.workItems ?? const <ManaWorkItemSummary>[]) {
       for (final reference in work.artifacts) {
         if (reference.id == id) return reference;
+      }
+    }
+    for (final detail in _workDetails.values) {
+      for (final section in detail.sections) {
+        for (final reference in section.artifacts) {
+          if (reference.id == id) return reference;
+        }
       }
     }
     for (final category
@@ -386,6 +427,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     final artifact = route.artifactId == null
         ? null
         : _artifact(model, route.artifactId!);
+    final feedback = model.project.supportsCapability('human_feedback')
+        ? widget.feedback
+        : null;
     return Scaffold(
       appBar: AppBar(
         title: _projectTitle(model.project),
@@ -499,6 +543,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                                 sourceLoader: widget.client.source,
                                 projectRoot: widget.client.projectRoot,
                                 documentPresentation: true,
+                                feedback: feedback,
+                                feedbackDrafts: widget.feedbackDrafts,
+                                feedbackProjectId: model.project.projectId,
                                 contextualTitle:
                                     _reference(model, artifact.id)?.label ??
                                     'Untitled document',
@@ -519,6 +566,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                           sourceLoader: widget.client.source,
                           projectRoot: widget.client.projectRoot,
                           documentPresentation: true,
+                          feedback: feedback,
+                          feedbackDrafts: widget.feedbackDrafts,
+                          feedbackProjectId: model.project.projectId,
                           contextualTitle:
                               _reference(model, artifact.id)?.label ??
                               'Untitled document',
@@ -546,6 +596,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                                 },
                                 sourceLoader: widget.client.source,
                                 projectRoot: widget.client.projectRoot,
+                                feedback: feedback,
+                                feedbackDrafts: widget.feedbackDrafts,
+                                feedbackProjectId: model.project.projectId,
                               ),
                             ),
                           ],
@@ -561,6 +614,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                           },
                           sourceLoader: widget.client.source,
                           projectRoot: widget.client.projectRoot,
+                          feedback: feedback,
+                          feedbackDrafts: widget.feedbackDrafts,
+                          feedbackProjectId: model.project.projectId,
                         ),
                 ),
               ],
@@ -829,10 +885,12 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         _cockpitIdentity(model.project, work: work, attention: attention),
         const SizedBox(height: 30),
         if (attention.isEmpty)
-          _healthyAttentionState()
+          _attentionEmptyState(model)
         else
           _emphasisSurface(
-            title: 'Needs attention',
+            title: model.refreshError == null
+                ? 'Needs attention'
+                : 'Needs attention (last data may be stale)',
             icon: Icons.priority_high_rounded,
             children: attention
                 .map(
@@ -842,14 +900,16 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                       color: Theme.of(context).colorScheme.error,
                     ),
                     title: a.label ?? a.id,
-                    subtitle: _humanize(a.category),
+                    subtitle: _attentionWorkDescription(a, work),
                     trailing: _statusPill(a.severity),
-                    onTap: () => _navigate(
-                      ObservatoryRoute(
-                        destination: ObservatoryDestination.work,
-                        workItemId: a.workItemId,
-                      ),
-                    ),
+                    onTap: _attentionWorkItem(a, work) == null
+                        ? null
+                        : () => _navigate(
+                            ObservatoryRoute(
+                              destination: ObservatoryDestination.work,
+                              workItemId: a.workItemId,
+                            ),
+                          ),
                   ),
                 )
                 .toList(),
@@ -1007,6 +1067,94 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
 
   Widget _sectionHeading(String title) =>
       Text(title, style: Theme.of(context).textTheme.titleLarge);
+
+  ManaWorkItemSummary? _attentionWorkItem(
+    ManaAttentionItem attention,
+    List<ManaWorkItemSummary> work,
+  ) => work.where((item) => item.id == attention.workItemId).firstOrNull;
+
+  String _attentionWorkDescription(
+    ManaAttentionItem attention,
+    List<ManaWorkItemSummary> work,
+  ) {
+    final item = _attentionWorkItem(attention, work);
+    if (item == null) {
+      return '${_humanize(attention.category)} · Work association unavailable (${_workDisplayId(attention.workItemId)})';
+    }
+    final title = item.title.value;
+    final identity = _workPrimaryLabel(item);
+    return '${_humanize(attention.category)} · Work: $identity${title == null || title == identity ? '' : ' — $title'}';
+  }
+
+  Widget _attentionEmptyState(ManaSemanticReadModel model) {
+    final coverage = model.workItems?.coverage;
+    if (model.refreshError != null) {
+      return _attentionUncertainState(
+        icon: Icons.sync_problem_outlined,
+        title: 'Attention data may be stale',
+        message:
+            'Refresh did not complete. The last successful attention data may be incomplete or stale, so project health cannot be determined.',
+      );
+    }
+    if (coverage == 'complete') return _healthyAttentionState();
+    final unavailable = coverage == null || coverage == 'none';
+    return _attentionUncertainState(
+      icon: unavailable ? Icons.help_outline : Icons.info_outline,
+      title: unavailable
+          ? 'Attention data is unavailable'
+          : 'Attention data is partial',
+      message: unavailable
+          ? 'Mana has not reported enough work-item data. Project health cannot be determined.'
+          : 'Mana reported no attention items, but the available work-item data is partial. Project health cannot be determined.',
+    );
+  }
+
+  Widget _attentionUncertainState({
+    required IconData icon,
+    required String title,
+    required String message,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _sectionHeading('Needs attention'),
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 3),
+                  Text(
+                    message,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextButton.icon(
+                    onPressed: _refresh,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Refresh data'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
 
   Widget _healthyAttentionState() => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1230,9 +1378,18 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     }
     final section = route.section ?? ManaSectionId.overview;
     final detail = _workDetails[selected.id];
-    final refs = detail == null
+    // A detail response is authoritative for this dossier only when it names
+    // the currently selected stable work-item identity. An empty detail list
+    // is meaningful; a missing response is not silently treated as empty.
+    final detailForSelected = detail?.workItem.id == selected.id
+        ? detail
+        : null;
+    final attention = detailForSelected == null
+        ? selected.attentionItems
+        : detailForSelected.attentionItems;
+    final refs = detailForSelected == null
         ? selected.artifacts.where((a) => a.sectionId == section).toList()
-        : detail.sections
+        : detailForSelected.sections
               .where((s) => s.id == section)
               .expand((s) => s.artifacts)
               .toList();
@@ -1254,11 +1411,27 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
             padding: const EdgeInsets.only(top: 8),
             child: Text(
               selected.review.state == ManaReviewState.unknown
-                  ? 'Mana has not reported a review state for this work item.'
+                  ? _unknownReviewMessage(selected.review)
                   : 'Review state: ${_humanize(selected.review.state.name)}',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
+            ),
+          ),
+        if (section == ManaSectionId.overview &&
+            selected.lifecycle.state == ManaLifecycleState.blocked &&
+            attention.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          _blockedWorkAttention(selected, attention),
+        ],
+        if (section == ManaSectionId.overview &&
+            selected.lifecycle.state == ManaLifecycleState.blocked &&
+            detailForSelected == null &&
+            _workDetailErrors.containsKey(selected.id))
+          const Padding(
+            padding: EdgeInsets.only(top: 12),
+            child: Text(
+              'The latest dossier detail could not be loaded; showing the summary data.',
             ),
           ),
         if (section == ManaSectionId.timeline && activity.isNotEmpty)
@@ -1284,6 +1457,142 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       ],
     );
   }
+
+  Widget _blockedWorkAttention(
+    ManaWorkItemSummary item,
+    List<ManaAttentionItem> attentionItems,
+  ) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Theme.of(
+        context,
+      ).colorScheme.errorContainer.withValues(alpha: .45),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.block_outlined,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Why this work is blocked',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ...attentionItems.map(
+          (attention) => _blockedAttentionCard(item, attention),
+        ),
+      ],
+    ),
+  );
+
+  Widget _blockedAttentionCard(
+    ManaWorkItemSummary item,
+    ManaAttentionItem attention,
+  ) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                attention.label ?? attention.id,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              _statusPill(_humanize(attention.category)),
+              _statusPill(attention.severity),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Text(
+            'Work: ${_workPrimaryLabel(item)}${item.title.value == null || item.title.value == _workPrimaryLabel(item) ? '' : ' — ${item.title.value}'}',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          Text(
+            'Work ID: ${item.id}',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            attention.nextAction == null || attention.nextAction!.trim().isEmpty
+                ? 'Next action: Mana did not report one.'
+                : 'Next action: ${attention.nextAction}',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          if (attention.relatedArtifactIds.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4,
+              runSpacing: 2,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  'Related artifacts:',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                ...attention.relatedArtifactIds.map((id) {
+                  final artifact = _workArtifact(item, id);
+                  if (artifact == null) return Text(id);
+                  return TextButton(
+                    onPressed: () => _openArtifact(
+                      _summary(artifact),
+                      workItemId: item.id,
+                      section: artifact.sectionId,
+                    ),
+                    child: Text(artifact.label ?? artifact.id),
+                  );
+                }),
+              ],
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
+
+  ManaArtifactReference? _workArtifact(ManaWorkItemSummary item, String id) {
+    final summary = item.artifacts
+        .where((reference) => reference.id == id)
+        .firstOrNull;
+    if (summary != null) return summary;
+    final detail = _workDetails[item.id];
+    if (detail?.workItem.id != item.id) return null;
+    for (final section in detail!.sections) {
+      final reference = section.artifacts
+          .where((value) => value.id == id)
+          .firstOrNull;
+      if (reference != null) return reference;
+    }
+    return null;
+  }
+
+  String _unknownReviewMessage(ManaReview review) =>
+      review.provenance == ManaProvenance.unavailable ||
+          review.coverage == 'none'
+      ? 'Mana could not provide review information for this work item.'
+      : 'Mana reports the review state as unknown for this work item.';
 
   Widget _workQueueRow(ManaWorkItemSummary item) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
@@ -2401,7 +2710,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       ManaSectionId.timeline => Icons.schedule_outlined,
       _ => Icons.article_outlined,
     },
-    title: 'Nothing reported for ${_sectionLabel(section).toLowerCase()}',
+    title: section == ManaSectionId.overview
+        ? 'No overview documents reported'
+        : 'No documents reported for ${_sectionLabel(section).toLowerCase()}',
     message: section == ManaSectionId.evidence
         ? 'Mana has not reported evidence for this work item.'
         : 'Mana has not reported documents or material for this semantic section.',
