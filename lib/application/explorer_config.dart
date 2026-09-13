@@ -10,6 +10,8 @@ class ExplorerConfig {
     this.preferencesRoot,
     this.windowSessionId,
     this.initialArtifactId,
+    this.nativeE2EPort,
+    this.nativeE2EToken,
     this.journeyId,
     this.fixturePath,
     this.inspectSnapshotPath,
@@ -31,6 +33,17 @@ class ExplorerConfig {
   /// links from a desktop launcher and keeps the target producer-owned rather
   /// than reconstructing it from a local path.
   final String? initialArtifactId;
+
+  /// Loopback-only debug test transport. Both values are required before the
+  /// app exposes it; ordinary product launches never create a listener.
+  final int? nativeE2EPort;
+  final String? nativeE2EToken;
+
+  bool get hasNativeE2EBridge =>
+      nativeE2EPort != null &&
+      nativeE2EPort! >= 0 &&
+      nativeE2EToken != null &&
+      nativeE2EToken!.isNotEmpty;
   final String? journeyId;
   final String? fixturePath;
 
@@ -44,6 +57,8 @@ class ExplorerConfig {
     preferencesRoot: preferencesRoot,
     windowSessionId: windowSessionId,
     initialArtifactId: initialArtifactId,
+    nativeE2EPort: nativeE2EPort,
+    nativeE2EToken: nativeE2EToken,
     journeyId: journeyId,
     fixturePath: fixturePath,
     inspectSnapshotPath: inspectSnapshotPath,
@@ -97,6 +112,12 @@ class ExplorerConfig {
           : null,
       initialArtifactId: args.contains('--initial-artifact')
           ? value('--initial-artifact', '')
+          : null,
+      nativeE2EPort: args.contains('--native-e2e-port')
+          ? int.tryParse(value('--native-e2e-port', ''))
+          : null,
+      nativeE2EToken: args.contains('--native-e2e-token')
+          ? value('--native-e2e-token', '')
           : null,
       journeyId: args.contains('--journey') ? value('--journey', '') : null,
       fixturePath: artifactPath,

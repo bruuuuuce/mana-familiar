@@ -12,6 +12,8 @@ import argparse
 import hashlib
 import json
 import platform
+import secrets
+import socket
 import subprocess
 import sys
 import time
@@ -39,7 +41,15 @@ def repository_state(path: Path) -> dict[str, object]:
     }
 
 
-def validate_native_evidence(native_output: Path) -> list[dict[str, object]]:
+def reserve_loopback_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
+
+
+def validate_native_evidence(
+    native_output: Path, *, require_ui: bool = False
+) -> list[dict[str, object]]:
     regenerations = json.loads(
         (native_output / "regenerations.json").read_text(encoding="utf-8")
     )
@@ -67,6 +77,32 @@ def validate_native_evidence(native_output: Path) -> list[dict[str, object]]:
             raise AssertionError("native lifecycle lost the B draft session")
         if restart.get("previousPid") == restart.get("currentPid"):
             raise AssertionError("native restart reused its previous process")
+    if require_ui:
+        comment = json.loads((native_output / "ui" / "comment.json").read_text(encoding="utf-8"))
+        if (
+            comment.get("status") != "passed"
+            or comment.get("mode") != "publish-comment"
+            or comment.get("inputMode") != "flutter-widget-bridge"
+            or comment.get("uiActionCount") != 4
+            or not isinstance(comment.get("canonicalThreadId"), str)
+        ):
+            raise AssertionError("native gate did not prove a visible canonical UI comment")
+        for generation in generations[1:]:
+            generation_number = generation.get("generation")
+            observed = json.loads(
+                (native_output / "ui" / f"generation-{generation_number}.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            if (
+                observed.get("status") != "passed"
+                or observed.get("mode") != "observe-generation"
+                or observed.get("document", {}).get("artifactRevision")
+                != generation.get("reportRevision")
+            ):
+                raise AssertionError(
+                    f"native UI did not observe generation R{generation_number}"
+                )
     return generations
 
 
@@ -91,11 +127,16 @@ def main() -> int:
         parser.error(f"missing native macOS gate: {gate}")
 
     run_id = f"run-{int(time.time())}-{hashlib.sha256(str(time.time_ns()).encode()).hexdigest()[:10]}"
-    output = args.output_root / run_id
+    # The macOS bundle has its own working directory. Every path passed from
+    # this outer runner to a Runner process must therefore be absolute rather
+    # than relative to the Familiar checkout.
+    output = (args.output_root / run_id).resolve()
     output.mkdir(parents=True, exist_ok=False)
     project = output / "project"
     project.mkdir()
     native_output = output / "native"
+    ui_port = reserve_loopback_port()
+    ui_token = secrets.token_urlsafe(32)
     manifest = {
         "schemaVersion": "mana.familiar.native-feedback-e2e/v1",
         "status": "running",
@@ -132,17 +173,28 @@ def main() -> int:
             str(fixture),
             "--evidence-dir",
             str(native_output),
+            "--ui-driver",
+            str(familiar_root / "tests" / "run-native-feedback-ui-driver.py"),
+            "--first-ui-port",
+            str(ui_port),
+            "--first-ui-token",
+            ui_token,
         ]
         result = subprocess.run(command, cwd=familiar_root, text=True, check=False)
         if result.returncode:
             raise RuntimeError(f"native gate failed ({result.returncode})")
-        generations = validate_native_evidence(native_output)
+        generations = validate_native_evidence(native_output, require_ui=True)
         report = {
             **manifest,
             "status": "passed",
             "durationSeconds": round(time.monotonic() - started, 3),
             "generations": generations,
             "nativeEvidence": str(native_output.relative_to(output)),
+            "uiDriver": {
+                "inputMode": "flutter-widget-bridge",
+                "uiActionCount": 4,
+                "regenerationObservations": 5,
+            },
         }
         write_json(output / "report.json", report)
         write_json(output / "manifest.json", report)

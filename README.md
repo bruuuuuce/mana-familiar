@@ -179,7 +179,11 @@ mentre Mana pubblica nuove versioni; l'asserzione semantica sui collegamenti
 dei target resta nel contratto Mana/Familiar.
 
 Con il checkout Mana compatibile, lo smoke nativo pubblica V0/R1–R5 con la
-pipeline Story Start v2 e conserva un manifest completo:
+pipeline Story Start v2 e conserva un manifest completo. In debug usa un
+bridge loopback limitato ai widget montati per selezionare un target stabile,
+pubblicare un commento e verificare il thread nella UI e in Mana; non è un
+input Accessibility. Focus e lifecycle restano azioni macOS reali. Dopo ogni
+rigenerazione il gate attende la revisione esatta esposta dal documento UI:
 
 ```sh
 python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana

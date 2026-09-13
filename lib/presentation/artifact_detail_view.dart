@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +9,7 @@ import '../application/mana_inspect.dart';
 import '../application/operational_model.dart';
 import '../application/governance_model.dart';
 import '../application/human_feedback.dart';
+import '../native_e2e_bridge.dart';
 import '../source_workspace.dart';
 import 'human_feedback_panel.dart';
 import 'markdown_diagram.dart';
@@ -32,6 +35,7 @@ class ArtifactDetailView extends StatelessWidget {
     this.feedbackDrafts,
     this.feedbackProjectId,
     this.feedbackRefresh,
+    this.nativeE2E,
   });
 
   final ManaInspectArtifactSummary artifact;
@@ -52,6 +56,7 @@ class ArtifactDetailView extends StatelessWidget {
   final HumanFeedbackDraftStore? feedbackDrafts;
   final String? feedbackProjectId;
   final ValueListenable<int>? feedbackRefresh;
+  final NativeE2EBridge? nativeE2E;
 
   @override
   Widget build(BuildContext context) {
@@ -205,6 +210,7 @@ class ArtifactDetailView extends StatelessWidget {
             feedbackDrafts: feedbackDrafts,
             feedbackProjectId: feedbackProjectId,
             feedbackRefresh: feedbackRefresh,
+            nativeE2E: nativeE2E,
           ),
         ),
       ),
@@ -304,6 +310,8 @@ class ArtifactDetailView extends StatelessWidget {
             feedback: feedback,
             feedbackDrafts: feedbackDrafts,
             feedbackProjectId: feedbackProjectId,
+            feedbackRefresh: feedbackRefresh,
+            nativeE2E: nativeE2E,
           ),
           ArtifactPayloadView.metadata => const Text(
             'Metadata only; payload content is not displayed.',
@@ -581,6 +589,7 @@ class MarkdownNoteView extends StatefulWidget {
     this.feedbackDrafts,
     this.feedbackProjectId,
     this.feedbackRefresh,
+    this.nativeE2E,
   });
 
   final String markdown;
@@ -593,6 +602,7 @@ class MarkdownNoteView extends StatefulWidget {
   final HumanFeedbackDraftStore? feedbackDrafts;
   final String? feedbackProjectId;
   final ValueListenable<int>? feedbackRefresh;
+  final NativeE2EBridge? nativeE2E;
 
   @override
   State<MarkdownNoteView> createState() => _MarkdownNoteViewState();
@@ -606,8 +616,10 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
   final Map<String, GlobalKey> _headingKeys = {};
   Map<String, String> _stableFeedbackSections = const {};
   String? _activeAnchor;
+  String? _selectedFeedbackSectionId;
   var _trackingScheduled = false;
   var _feedbackTargetRequest = 0;
+  NativeE2EDocumentBindings? _nativeE2EDocument;
 
   @override
   void initState() {
@@ -615,11 +627,19 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
     _prepareDocument();
     _scrollController.addListener(_scheduleActiveHeadingUpdate);
     _loadStableFeedbackTargets();
+    _registerNativeE2EDocument();
   }
 
   @override
   void didUpdateWidget(covariant MarkdownNoteView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.nativeE2E != widget.nativeE2E) {
+      final oldBindings = _nativeE2EDocument;
+      if (oldBindings != null) {
+        oldWidget.nativeE2E?.unregisterDocument(oldBindings);
+      }
+      _nativeE2EDocument = null;
+    }
     if (oldWidget.markdown != widget.markdown) _prepareDocument();
     if (oldWidget.markdown != widget.markdown ||
         oldWidget.artifact?.raw['revision_id'] !=
@@ -627,6 +647,7 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
         oldWidget.feedback != widget.feedback) {
       _loadStableFeedbackTargets();
     }
+    _registerNativeE2EDocument();
   }
 
   void _prepareDocument() {
@@ -641,6 +662,7 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
     _activeAnchor = _document.headings.isEmpty
         ? null
         : _document.headings.first.anchor;
+    _registerNativeE2EDocument();
   }
 
   HumanFeedbackTarget? get _feedbackDocumentTarget {
@@ -665,7 +687,10 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
     final repository = widget.feedback;
     final request = ++_feedbackTargetRequest;
     if (target == null || repository is! ManaHumanFeedbackRepository) {
-      if (mounted) setState(() => _stableFeedbackSections = const {});
+      if (mounted) {
+        setState(() => _stableFeedbackSections = const {});
+        _registerNativeE2EDocument();
+      }
       return;
     }
     final producerTargets = await repository.targets(target);
@@ -685,11 +710,59 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
             section.id;
       }
     }
-    setState(() => _stableFeedbackSections = mapped);
+    setState(() {
+      _stableFeedbackSections = mapped;
+      if (!_stableFeedbackSections.containsValue(_selectedFeedbackSectionId)) {
+        _selectedFeedbackSectionId = null;
+      }
+    });
+    _registerNativeE2EDocument();
+  }
+
+  void _registerNativeE2EDocument() {
+    final bridge = widget.nativeE2E;
+    if (bridge == null || _feedbackDocumentTarget == null) return;
+    final bindings = NativeE2EDocumentBindings(
+      status: () => {
+        'artifactId': widget.artifact?.id,
+        'artifactRevision': _feedbackDocumentTarget?.artifactRevision,
+        'activeSectionId':
+            _selectedFeedbackSectionId ??
+            _stableFeedbackSections[_activeAnchor],
+        'stableSectionAnchors': {
+          for (final entry in _stableFeedbackSections.entries)
+            entry.value: entry.key,
+        },
+      },
+      selectSection: (sectionId) async {
+        String? anchor;
+        for (final entry in _stableFeedbackSections.entries) {
+          if (entry.value == sectionId) {
+            anchor = entry.key;
+            break;
+          }
+        }
+        if (anchor == null) {
+          throw StateError('stable section is not available: $sectionId');
+        }
+        if (mounted) {
+          setState(() => _selectedFeedbackSectionId = sectionId);
+        }
+        // Scrolling is a visual consequence of selecting the UI target. It
+        // must not hold the local test transport open while macOS temporarily
+        // pauses background-window animation frames.
+        unawaited(_showHeading(anchor));
+      },
+      openComments: _openComments,
+    );
+    _nativeE2EDocument = bindings;
+    bridge.registerDocument(bindings);
   }
 
   @override
   void dispose() {
+    final bindings = _nativeE2EDocument;
+    if (bindings != null) widget.nativeE2E?.unregisterDocument(bindings);
     _scrollController
       ..removeListener(_scheduleActiveHeadingUpdate)
       ..dispose();
@@ -743,11 +816,12 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
       projectId: document.projectId,
       artifactId: document.artifactId,
       artifactRevision: document.artifactRevision,
-      sectionId: _stableFeedbackSections[_activeAnchor],
+      sectionId:
+          _selectedFeedbackSectionId ?? _stableFeedbackSections[_activeAnchor],
     );
   }
 
-  void _openComments() {
+  Future<void> _openComments() async {
     final repository = widget.feedback;
     final target = _feedbackTarget;
     if (repository == null || target == null) return;
@@ -759,6 +833,7 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
         target: target,
         drafts: widget.feedbackDrafts,
         refreshSignal: widget.feedbackRefresh,
+        nativeE2E: widget.nativeE2E,
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../application/artifact_renderer.dart';
 import '../application/human_feedback.dart';
+import '../native_e2e_bridge.dart';
 
 /// A producer-backed thread panel. It holds recoverable local drafts only; all
 /// published contributions travel through [HumanFeedbackRepository].
@@ -16,6 +17,7 @@ class HumanFeedbackPanel extends StatefulWidget {
     required this.target,
     this.drafts,
     this.refreshSignal,
+    this.nativeE2E,
   });
 
   final HumanFeedbackRepository repository;
@@ -26,6 +28,7 @@ class HumanFeedbackPanel extends StatefulWidget {
   /// Keeping the panel subscribed avoids showing a stale thread list while a
   /// Story Start regeneration completes underneath an open bottom sheet.
   final ValueListenable<int>? refreshSignal;
+  final NativeE2EBridge? nativeE2E;
 
   @override
   State<HumanFeedbackPanel> createState() => _HumanFeedbackPanelState();
@@ -51,6 +54,7 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
   var _showResolved = false;
   var _showPreview = false;
   HumanFeedbackCapabilities? _capabilities;
+  NativeE2EPanelBindings? _nativeE2EPanel;
 
   @override
   void initState() {
@@ -70,6 +74,7 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
     });
     _body.addListener(_onComposerEdited);
     _author.addListener(_onComposerEdited);
+    _registerNativeE2EPanel();
   }
 
   @override
@@ -96,6 +101,8 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
 
   @override
   void dispose() {
+    final bindings = _nativeE2EPanel;
+    if (bindings != null) widget.nativeE2E?.unregisterPanel(bindings);
     widget.refreshSignal?.removeListener(_load);
     _body.removeListener(_onComposerEdited);
     _author.removeListener(_onComposerEdited);
@@ -111,7 +118,10 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
   }
 
   String _newIdempotencyKey() =>
-      'comment:${widget.target.key}:${DateTime.now().microsecondsSinceEpoch}';
+      // Mana operation IDs are filesystem-safe, project-global identifiers.
+      // [HumanFeedbackTarget.key] is intentionally URL/path-shaped and may
+      // contain percent escapes and slashes, so it cannot be used verbatim.
+      'comment:${DateTime.now().microsecondsSinceEpoch}';
 
   void _onComposerEdited() {
     _composerEdited = true;
@@ -130,6 +140,58 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
         updatedAt: DateTime.now(),
       ),
     );
+  }
+
+  Map<String, Object?> _nativeE2EStatus() => {
+    'target': {
+      'artifactId': widget.target.artifactId,
+      'artifactRevision': widget.target.artifactRevision,
+      'sectionId': widget.target.sectionId,
+    },
+    'composer': {'author': _author.text, 'body': _body.text},
+    'loading': _threads == null,
+    'sending': _sending,
+    'error': _error?.toString(),
+    'threads': _threads
+        ?.map(
+          (thread) => {
+            'id': thread.id,
+            'state': thread.state.name,
+            'linkState': thread.linkState.name,
+            'entries': thread.entries
+                .map(
+                  (entry) => {
+                    'id': entry.id,
+                    'author': entry.author,
+                    'body': entry.body,
+                    'isReply': entry.isReply,
+                  },
+                )
+                .toList(growable: false),
+          },
+        )
+        .toList(growable: false),
+  };
+
+  void _registerNativeE2EPanel() {
+    final bridge = widget.nativeE2E;
+    if (bridge == null) return;
+    final bindings = NativeE2EPanelBindings(
+      status: _nativeE2EStatus,
+      setComposer: _setComposerForNativeE2E,
+      publish: _publish,
+    );
+    _nativeE2EPanel = bindings;
+    bridge.registerPanel(bindings);
+  }
+
+  Future<void> _setComposerForNativeE2E(String author, String body) async {
+    if (!mounted) throw StateError('comment panel is no longer mounted');
+    _author.text = author;
+    _body.text = body;
+    _composerEdited = true;
+    _saveDraft();
+    if (mounted) setState(() {});
   }
 
   Future<void> _discardComposerDraft() async {

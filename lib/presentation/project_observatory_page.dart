@@ -8,6 +8,7 @@ import '../application/mana_inspect.dart';
 import '../application/human_feedback.dart';
 import '../application/semantic_navigation.dart';
 import '../application/mana_workspace_watcher.dart';
+import '../native_e2e_bridge.dart';
 import 'artifact_detail_view.dart';
 import 'review_inbox_page.dart';
 
@@ -31,6 +32,7 @@ class ProjectObservatoryPage extends StatefulWidget {
     this.onRefresh,
     this.feedback,
     this.feedbackDrafts,
+    this.nativeE2E,
   });
   final ManaInspectClient client;
   final Widget knowledge;
@@ -49,6 +51,7 @@ class ProjectObservatoryPage extends StatefulWidget {
   final Future<void> Function()? onRefresh;
   final HumanFeedbackRepository? feedback;
   final HumanFeedbackDraftStore? feedbackDrafts;
+  final NativeE2EBridge? nativeE2E;
   @override
   State<ProjectObservatoryPage> createState() => _ProjectObservatoryPageState();
 }
@@ -95,12 +98,14 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   var _watchUnavailable = false;
   var _catalogLoading = false;
   Object? _catalogError;
+  NativeE2EObservatoryBindings? _nativeE2EObservatory;
 
   @override
   void initState() {
     super.initState();
     _model = widget.initialReadModel ?? _legacyModel();
     _loading = _model == null;
+    _registerNativeE2EObservatory();
     if (_loading) _load();
     _watchSubscription = _watcher.events.listen((event) {
       if (!mounted) return;
@@ -126,6 +131,8 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
 
   @override
   void dispose() {
+    final bindings = _nativeE2EObservatory;
+    if (bindings != null) widget.nativeE2E?.unregisterObservatory(bindings);
     _watchSubscription?.cancel();
     _watcher.dispose();
     _feedbackRefresh.dispose();
@@ -166,6 +173,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       // producer-backed summary is available.
       _loadDetailIfNeeded();
       _loadWorkDetailIfNeeded();
+      _loadCatalogIfNeeded();
       unawaited(_loadSupportingSurfaces());
     } catch (e) {
       if (mounted)
@@ -275,7 +283,13 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     _repository
         .loadCatalog()
         .then((updated) {
-          if (mounted) setState(() => _model = updated);
+          if (mounted) {
+            setState(() => _model = updated);
+            // An initial deep link can name a catalog-only artifact. Its
+            // detail cannot load until this asynchronous catalog lookup makes
+            // the producer-owned summary available.
+            _loadDetailIfNeeded();
+          }
         })
         .catchError((Object error) {
           if (mounted) setState(() => _catalogError = error);
@@ -369,6 +383,34 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         status: ref.status,
         raw: ref.label == null ? const {} : {'label': ref.label},
       );
+
+  void _registerNativeE2EObservatory() {
+    final bridge = widget.nativeE2E;
+    if (bridge == null) return;
+    final bindings = NativeE2EObservatoryBindings(
+      status: () {
+        final model = _model;
+        final route = _navigation.current;
+        return {
+          'loading': _loading,
+          'error': _error?.toString(),
+          'route': {
+            'destination': route.destination.name,
+            'artifactId': route.artifactId,
+          },
+          'catalogArtifactCount': model?.catalog?.artifacts.length ?? 0,
+          'routedArtifactFound': model == null || route.artifactId == null
+              ? null
+              : _artifact(model, route.artifactId!) != null,
+          'detailLoading': _detailLoading,
+          'detailError': _detailError?.toString(),
+          'detailArtifactId': _detail?.artifact.id,
+        };
+      },
+    );
+    _nativeE2EObservatory = bindings;
+    bridge.registerObservatory(bindings);
+  }
 
   ManaArtifactReference? _reference(ManaSemanticReadModel model, String id) {
     for (final work
@@ -573,6 +615,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                                 feedbackDrafts: widget.feedbackDrafts,
                                 feedbackProjectId: model.project.projectId,
                                 feedbackRefresh: _feedbackRefresh,
+                                nativeE2E: widget.nativeE2E,
                                 contextualTitle:
                                     _reference(model, artifact.id)?.label ??
                                     'Untitled document',
@@ -597,6 +640,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                           feedbackDrafts: widget.feedbackDrafts,
                           feedbackProjectId: model.project.projectId,
                           feedbackRefresh: _feedbackRefresh,
+                          nativeE2E: widget.nativeE2E,
                           contextualTitle:
                               _reference(model, artifact.id)?.label ??
                               'Untitled document',
@@ -628,6 +672,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                                 feedbackDrafts: widget.feedbackDrafts,
                                 feedbackProjectId: model.project.projectId,
                                 feedbackRefresh: _feedbackRefresh,
+                                nativeE2E: widget.nativeE2E,
                               ),
                             ),
                           ],
@@ -647,6 +692,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                           feedbackDrafts: widget.feedbackDrafts,
                           feedbackProjectId: model.project.projectId,
                           feedbackRefresh: _feedbackRefresh,
+                          nativeE2E: widget.nativeE2E,
                         ),
                 ),
               ],
