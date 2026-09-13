@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../application/explorer_config.dart';
 import '../application/mana_inspect.dart';
 import '../application/human_feedback.dart';
+import '../application/semantic_navigation.dart';
 import '../native_project_window.dart';
 import '../presentation/explorer_page.dart';
 import '../presentation/project_observatory_page.dart';
@@ -32,6 +33,7 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
     Directory(
       '${widget.preferences.storageRoot.path}${Platform.pathSeparator}human-feedback-drafts',
     ),
+    sessionId: widget.config.windowSessionId ?? 'default',
   );
 
   Future<void> _openProject(String projectRoot) async {
@@ -51,9 +53,20 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
     if (mounted) setState(() {});
   }
 
+  ObservatoryRoute? _initialRoute() {
+    final artifactId = widget.config.initialArtifactId;
+    if (artifactId == null || artifactId.isEmpty) return null;
+    return ObservatoryRoute(
+      destination: ObservatoryDestination.advanced,
+      advancedSection: AdvancedSection.artifacts,
+      artifactId: artifactId,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
+    NativeProjectWindow.installClosePreparation(_feedbackDrafts.flushAll);
     if (widget.config.hasExplicitProjectRoot) {
       NativeProjectWindow.presentProject(_projectRoot);
     }
@@ -97,6 +110,7 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
                 manaRoot: widget.config.manaRoot,
                 snapshotPath: widget.config.inspectSnapshotPath,
               ),
+              initialRoute: _initialRoute(),
               feedback: widget.config.inspectSnapshotPath == null
                   ? ManaHumanFeedbackRepository(
                       projectRoot: _projectRoot,

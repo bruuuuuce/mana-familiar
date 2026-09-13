@@ -35,6 +35,73 @@ void main() {
     expect(loaded?.idempotencyKey, 'operation-1');
   });
 
+  test('draft survives a newer revision in the same window session', () async {
+    final root = await Directory.systemTemp.createTemp('mana-feedback-draft-');
+    addTearDown(() => root.delete(recursive: true));
+    final store = HumanFeedbackDraftStore(
+      root,
+      debounce: Duration.zero,
+      sessionId: 'window-A',
+    );
+    final draft = HumanFeedbackDraft(
+      target: target,
+      body: 'Keep this during regeneration.',
+      author: 'Ada',
+      idempotencyKey: 'regeneration-draft',
+      updatedAt: DateTime.utc(2026),
+    );
+    store.schedule(draft);
+    await store.flush(target);
+    const regenerated = HumanFeedbackTarget(
+      projectId: 'project:demo',
+      artifactId: 'file:.mana/features/DEMO/planning/plan.md',
+      artifactRevision: 'sha256:def',
+      sectionId: 'decisions',
+    );
+
+    final restored = await store.load(regenerated);
+
+    expect(restored?.body, draft.body);
+    expect(restored?.target.artifactRevision, 'sha256:abc');
+  });
+
+  test('two window sessions keep drafts for one target independent', () async {
+    final root = await Directory.systemTemp.createTemp('mana-feedback-draft-');
+    addTearDown(() => root.delete(recursive: true));
+    final first = HumanFeedbackDraftStore(
+      root,
+      debounce: Duration.zero,
+      sessionId: 'window-A',
+    );
+    final second = HumanFeedbackDraftStore(
+      root,
+      debounce: Duration.zero,
+      sessionId: 'window-B',
+    );
+    first.schedule(
+      HumanFeedbackDraft(
+        target: target,
+        body: 'A only',
+        author: 'Ada',
+        idempotencyKey: 'draft-A',
+        updatedAt: DateTime.utc(2026),
+      ),
+    );
+    second.schedule(
+      HumanFeedbackDraft(
+        target: target,
+        body: 'B only',
+        author: 'Bea',
+        idempotencyKey: 'draft-B',
+        updatedAt: DateTime.utc(2026),
+      ),
+    );
+    await Future.wait([first.flush(target), second.flush(target)]);
+
+    expect((await first.load(target))?.body, 'A only');
+    expect((await second.load(target))?.body, 'B only');
+  });
+
   test('discard removes a local draft without touching its artifact', () async {
     final root = await Directory.systemTemp.createTemp('mana-feedback-draft-');
     addTearDown(() => root.delete(recursive: true));
@@ -325,6 +392,74 @@ void main() {
       expect(threads.map((thread) => thread.id), ['thread-new', 'thread-last']);
     },
   );
+
+  test(
+    'loads source targets and changed links from history-capable Mana',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mana-feedback-client-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      await File('${root.path}${Platform.pathSeparator}mana').writeAsString('');
+      final repository = ManaHumanFeedbackRepository(
+        projectRoot: root.path,
+        run: (executable, arguments, request) async {
+          if (arguments.contains('capabilities')) {
+            return const HumanFeedbackCommandResult(
+              exitCode: 0,
+              stderr: '',
+              stdout:
+                  '{"schemaVersion":"mana.human-feedback.capabilities/v1","operations":["list-history"]}',
+            );
+          }
+          expect(arguments, contains('list-history'));
+          return const HumanFeedbackCommandResult(
+            exitCode: 0,
+            stderr: '',
+            stdout:
+                '{"schemaVersion":"mana.human-feedback.thread-history/v1","threads":[{"threadId":"thread_history","revision":"1","state":"open","target":{"artifactId":"file:.mana/features/DEMO/planning/plan.md","artifactRevision":"sha256:older","sectionId":"decisions"},"linkState":"changed","entries":[]}],"nextCursor":null,"viewRevision":"history-1"}',
+          );
+        },
+      );
+
+      final threads = await repository.threadsForDisplay(target);
+
+      expect(threads.single.target.artifactRevision, 'sha256:older');
+      expect(threads.single.linkState, HumanFeedbackLinkState.changed);
+    },
+  );
+
+  test('uses producer-declared stable section targets when available', () async {
+    final root = await Directory.systemTemp.createTemp('mana-feedback-client-');
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}${Platform.pathSeparator}mana').writeAsString('');
+    final repository = ManaHumanFeedbackRepository(
+      projectRoot: root.path,
+      run: (executable, arguments, request) async {
+        if (arguments.contains('capabilities')) {
+          return const HumanFeedbackCommandResult(
+            exitCode: 0,
+            stderr: '',
+            stdout:
+                '{"schemaVersion":"mana.human-feedback.capabilities/v1","operations":["targets"]}',
+          );
+        }
+        expect(arguments, contains('targets'));
+        return const HumanFeedbackCommandResult(
+          exitCode: 0,
+          stderr: '',
+          stdout:
+              '{"schemaVersion":"mana.human-feedback.targets/v1","stableSections":true,"sections":[{"sectionId":"base-implementation-plan","headingIndex":3}]}',
+        );
+      },
+    );
+
+    final targets = await repository.targets(target);
+
+    expect(targets.stableSections, isTrue);
+    expect(targets.sections.single.id, 'base-implementation-plan');
+    expect(targets.sections.single.headingIndex, 3);
+  });
 
   test(
     'terminates a stalled producer instead of waiting indefinitely',

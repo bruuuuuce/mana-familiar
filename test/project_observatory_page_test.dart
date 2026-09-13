@@ -107,50 +107,34 @@ void main() {
     expect(find.text('Partial catalog'), findsOneWidget);
   });
 
-  testWidgets(
-    'marks Refresh when the Mana workspace changes and clears it manually',
-    (tester) async {
-      final watcher = _FakeWatcher();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: ProjectObservatoryPage(
-            client: ManaInspectClient(projectRoot: '/project'),
-            knowledge: const Text('Knowledge module'),
-            initialCatalog: ManaInspectCatalog.fromJson(_catalog),
-            watcher: watcher,
-            onRefresh: () async {},
-          ),
+  testWidgets('coalesces a Mana workspace change into a refresh', (
+    tester,
+  ) async {
+    final watcher = _FakeWatcher();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProjectObservatoryPage(
+          client: ManaInspectClient(projectRoot: '/project'),
+          knowledge: const Text('Knowledge module'),
+          initialCatalog: ManaInspectCatalog.fromJson(_catalog),
+          watcher: watcher,
+          onRefresh: () async {},
         ),
-      );
-      await tester.pump();
-      watcher.add(ManaWorkspaceWatchEvent.changed);
-      await tester.pump();
-      await tester.pump();
+      ),
+    );
+    await tester.pump();
+    watcher.add(ManaWorkspaceWatchEvent.changed);
+    await tester.pumpAndSettle();
 
-      expect(
-        tester
-            .widget<IconButton>(find.byKey(const Key('refresh-button')))
-            .isSelected,
-        isTrue,
-      );
-      expect(
-        find.byKey(const Key('refresh-pending-indicator')),
-        findsOneWidget,
-      );
-      expect(find.byTooltip('Refresh — changes detected'), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('refresh-button')));
-      await tester.pump();
-
-      expect(
-        tester
-            .widget<IconButton>(find.byKey(const Key('refresh-button')))
-            .isSelected,
-        isFalse,
-      );
-      expect(find.byKey(const Key('refresh-pending-indicator')), findsNothing);
-    },
-  );
+    expect(
+      tester
+          .widget<IconButton>(find.byKey(const Key('refresh-button')))
+          .isSelected,
+      isFalse,
+    );
+    expect(find.byKey(const Key('refresh-pending-indicator')), findsNothing);
+    expect(find.byTooltip('Refresh'), findsOneWidget);
+  });
 
   testWidgets('shows a non-blocking warning when .mana cannot be watched', (
     tester,

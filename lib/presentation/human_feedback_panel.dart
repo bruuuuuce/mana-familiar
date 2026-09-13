@@ -1,4 +1,8 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../application/artifact_renderer.dart';
 import '../application/human_feedback.dart';
@@ -11,19 +15,31 @@ class HumanFeedbackPanel extends StatefulWidget {
     required this.repository,
     required this.target,
     this.drafts,
+    this.refreshSignal,
   });
 
   final HumanFeedbackRepository repository;
   final HumanFeedbackTarget target;
   final HumanFeedbackDraftStore? drafts;
 
+  /// Increments after the Observatory accepts an external Mana publication.
+  /// Keeping the panel subscribed avoids showing a stale thread list while a
+  /// Story Start regeneration completes underneath an open bottom sheet.
+  final ValueListenable<int>? refreshSignal;
+
   @override
   State<HumanFeedbackPanel> createState() => _HumanFeedbackPanelState();
+}
+
+class _PublishCommentIntent extends Intent {
+  const _PublishCommentIntent();
 }
 
 class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
   final _body = TextEditingController();
   final _author = TextEditingController();
+  final _authorFocus = FocusNode();
+  final _bodyFocus = FocusNode();
   final Map<String, TextEditingController> _replies = {};
   final Map<String, String> _replyIdempotencyKeys = {};
   final Set<String> _replying = {};
@@ -42,6 +58,7 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
     _idempotencyKey = _newIdempotencyKey();
     _load();
     _loadCapabilities();
+    widget.refreshSignal?.addListener(_load);
     widget.drafts?.load(widget.target).then((draft) {
       if (!mounted || draft == null || _composerEdited) {
         return;
@@ -53,6 +70,14 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
     });
     _body.addListener(_onComposerEdited);
     _author.addListener(_onComposerEdited);
+  }
+
+  @override
+  void didUpdateWidget(covariant HumanFeedbackPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshSignal == widget.refreshSignal) return;
+    oldWidget.refreshSignal?.removeListener(_load);
+    widget.refreshSignal?.addListener(_load);
   }
 
   Future<void> _loadCapabilities() async {
@@ -71,11 +96,14 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
 
   @override
   void dispose() {
+    widget.refreshSignal?.removeListener(_load);
     _body.removeListener(_onComposerEdited);
     _author.removeListener(_onComposerEdited);
     _saveDraft();
     _body.dispose();
     _author.dispose();
+    _authorFocus.dispose();
+    _bodyFocus.dispose();
     for (final reply in _replies.values) {
       reply.dispose();
     }
@@ -147,7 +175,10 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
 
   Future<void> _load() async {
     try {
-      final threads = await widget.repository.threads(widget.target);
+      final repository = widget.repository;
+      final threads = repository is ManaHumanFeedbackRepository
+          ? await repository.threadsForDisplay(widget.target)
+          : await repository.threads(widget.target);
       if (mounted) {
         setState(() {
           _threads = threads;
@@ -299,157 +330,186 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
         ?.where((thread) => thread.state != HumanFeedbackThreadState.resolved)
         .length;
     return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          24,
-          20,
-          24,
-          24 + MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final threadListHeight = (constraints.maxHeight * .38).clamp(
-              160.0,
-              480.0,
-            );
-            return SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Comments',
-                      style: Theme.of(context).textTheme.titleLarge,
+      child: Shortcuts(
+        shortcuts: const {
+          SingleActivator(LogicalKeyboardKey.enter, meta: true):
+              _PublishCommentIntent(),
+        },
+        child: Actions(
+          actions: {
+            _PublishCommentIntent: CallbackAction<_PublishCommentIntent>(
+              onInvoke: (_) {
+                if (!_sending) unawaited(_publish());
+                return null;
+              },
+            ),
+          },
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              24,
+              20,
+              24,
+              24 + MediaQuery.viewInsetsOf(context).bottom,
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final threadListHeight = (constraints.maxHeight * .38).clamp(
+                  160.0,
+                  480.0,
+                );
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Comments are saved separately from the generated document.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 12),
-                    if (threads != null)
-                      SegmentedButton<bool>(
-                        key: const Key('feedback-thread-filter'),
-                        segments: [
-                          ButtonSegment(
-                            value: false,
-                            label: Text('Open (${openCount ?? 0})'),
-                          ),
-                          ButtonSegment(
-                            value: true,
-                            label: Text('All (${threads.length})'),
-                          ),
-                        ],
-                        selected: {_showResolved},
-                        showSelectedIcon: false,
-                        onSelectionChanged: _sending
-                            ? null
-                            : (selection) => setState(
-                                () => _showResolved = selection.single,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Comments',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Comments are saved separately from the generated document.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 12),
+                        if (threads != null)
+                          SegmentedButton<bool>(
+                            key: const Key('feedback-thread-filter'),
+                            segments: [
+                              ButtonSegment(
+                                value: false,
+                                label: Text('Open (${openCount ?? 0})'),
                               ),
-                      ),
-                    if (threads != null) const SizedBox(height: 8),
-                    SizedBox(
-                      height: threadListHeight,
-                      child: visibleThreads == null
-                          ? const Center(child: CircularProgressIndicator())
-                          : ListView(
-                              children: [
-                                if (visibleThreads.isEmpty)
-                                  Text(
-                                    _showResolved
-                                        ? 'No comments yet.'
-                                        : 'No open comments.',
+                              ButtonSegment(
+                                value: true,
+                                label: Text('All (${threads.length})'),
+                              ),
+                            ],
+                            selected: {_showResolved},
+                            showSelectedIcon: false,
+                            onSelectionChanged: _sending
+                                ? null
+                                : (selection) => setState(
+                                    () => _showResolved = selection.single,
                                   ),
-                                ...visibleThreads.map(_thread),
+                          ),
+                        if (threads != null) const SizedBox(height: 8),
+                        SizedBox(
+                          height: threadListHeight,
+                          child: visibleThreads == null
+                              ? const Center(child: CircularProgressIndicator())
+                              : ListView(
+                                  children: [
+                                    if (visibleThreads.isEmpty)
+                                      Text(
+                                        _showResolved
+                                            ? 'No comments yet.'
+                                            : 'No open comments.',
+                                      ),
+                                    ...visibleThreads.map(_thread),
+                                  ],
+                                ),
+                        ),
+                        if (_error != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '$_error',
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.error,
+                                    ),
+                                  ),
+                                ),
+                                TextButton(
+                                  key: const Key('feedback-retry'),
+                                  onPressed: _sending ? null : _retryLoad,
+                                  child: const Text('Retry'),
+                                ),
                               ],
                             ),
-                    ),
-                    if (_error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '$_error',
-                                style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error,
-                                ),
-                              ),
-                            ),
-                            TextButton(
-                              key: const Key('feedback-retry'),
-                              onPressed: _sending ? null : _retryLoad,
-                              child: const Text('Retry'),
-                            ),
+                          ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          key: const Key('feedback-author'),
+                          controller: _author,
+                          focusNode: _authorFocus,
+                          autofocus: true,
+                          onSubmitted: (_) => _bodyFocus.requestFocus(),
+                          decoration: const InputDecoration(
+                            labelText: 'Author',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SegmentedButton<bool>(
+                          key: const Key('feedback-composer-mode'),
+                          segments: const [
+                            ButtonSegment(value: false, label: Text('Write')),
+                            ButtonSegment(value: true, label: Text('Preview')),
                           ],
+                          selected: {_showPreview},
+                          showSelectedIcon: false,
+                          onSelectionChanged: _sending
+                              ? null
+                              : (selection) => setState(
+                                  () => _showPreview = selection.single,
+                                ),
                         ),
-                      ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      key: const Key('feedback-author'),
-                      controller: _author,
-                      decoration: const InputDecoration(labelText: 'Author'),
-                    ),
-                    const SizedBox(height: 8),
-                    SegmentedButton<bool>(
-                      key: const Key('feedback-composer-mode'),
-                      segments: const [
-                        ButtonSegment(value: false, label: Text('Write')),
-                        ButtonSegment(value: true, label: Text('Preview')),
+                        const SizedBox(height: 8),
+                        if (_showPreview)
+                          _InertMarkdownPreview(markdown: _body.text)
+                        else
+                          TextField(
+                            key: const Key('feedback-body'),
+                            controller: _body,
+                            focusNode: _bodyFocus,
+                            minLines: 3,
+                            maxLines: 7,
+                            decoration: const InputDecoration(
+                              labelText: 'Comment',
+                              alignLabelWithHint: true,
+                            ),
+                          ),
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Wrap(
+                            spacing: 8,
+                            children: [
+                              TextButton(
+                                key: const Key('feedback-discard-draft'),
+                                onPressed: _sending
+                                    ? null
+                                    : _discardComposerDraft,
+                                child: const Text('Discard draft'),
+                              ),
+                              FilledButton.icon(
+                                key: const Key('feedback-publish'),
+                                onPressed: _sending || !_supports('create')
+                                    ? null
+                                    : _publish,
+                                icon: const Icon(Icons.send_outlined),
+                                label: const Text('Publish comment'),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
-                      selected: {_showPreview},
-                      showSelectedIcon: false,
-                      onSelectionChanged: _sending
-                          ? null
-                          : (selection) =>
-                                setState(() => _showPreview = selection.single),
                     ),
-                    const SizedBox(height: 8),
-                    if (_showPreview)
-                      _InertMarkdownPreview(markdown: _body.text)
-                    else
-                      TextField(
-                        key: const Key('feedback-body'),
-                        controller: _body,
-                        minLines: 3,
-                        maxLines: 7,
-                        decoration: const InputDecoration(
-                          labelText: 'Comment',
-                          alignLabelWithHint: true,
-                        ),
-                      ),
-                    const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Wrap(
-                        spacing: 8,
-                        children: [
-                          TextButton(
-                            key: const Key('feedback-discard-draft'),
-                            onPressed: _sending ? null : _discardComposerDraft,
-                            child: const Text('Discard draft'),
-                          ),
-                          FilledButton.icon(
-                            key: const Key('feedback-publish'),
-                            onPressed: _sending || !_supports('create')
-                                ? null
-                                : _publish,
-                            icon: const Icon(Icons.send_outlined),
-                            label: const Text('Publish comment'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+                  ),
+                );
+              },
+            ),
+          ),
         ),
       ),
     );
