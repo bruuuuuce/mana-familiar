@@ -181,12 +181,23 @@ dei target resta nel contratto Mana/Familiar.
 Con il checkout Mana compatibile, lo smoke nativo pubblica V0/R1–R5 con la
 pipeline Story Start v2 e conserva un manifest completo. In debug usa un
 bridge loopback limitato ai widget montati per selezionare un target stabile,
-pubblicare un commento e verificare il thread nella UI e in Mana; non è un
-input Accessibility. Focus e lifecycle restano azioni macOS reali. Dopo ogni
-rigenerazione il gate attende la revisione esatta esposta dal documento UI:
+pubblicare un commento e una risposta e verificarne il thread nella UI e in
+Mana; non è un input Accessibility. Focus e lifecycle restano azioni macOS
+reali. Dopo ogni rigenerazione il gate attende la revisione esatta esposta dal
+documento UI:
 
 ```sh
 python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana
+```
+
+La registrazione di una decisione ha uno smoke separato, perché la scelta
+impone una ripianificazione governata: la fixture deterministica R1–R5 non
+proietta ancora la scelta nel successivo decision register. Il profilo verifica
+la scelta nella form UI e nello stato canonico Mana, oltre a focus e lifecycle,
+senza presentare una rigenerazione successiva come prova valida:
+
+```sh
+python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile decision-smoke
 ```
 
 ## Contract

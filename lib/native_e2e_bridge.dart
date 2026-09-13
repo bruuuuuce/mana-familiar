@@ -19,6 +19,8 @@ class NativeE2EBridge {
   NativeE2EDocumentBindings? _document;
   NativeE2EPanelBindings? _panel;
   NativeE2EObservatoryBindings? _observatory;
+  NativeE2EArtifactBindings? _artifact;
+  NativeE2EDecisionBindings? _decision;
 
   int get boundPort => _server?.port ?? port;
 
@@ -35,6 +37,8 @@ class NativeE2EBridge {
     _document = null;
     _panel = null;
     _observatory = null;
+    _artifact = null;
+    _decision = null;
     await _server?.close(force: true);
     _server = null;
   }
@@ -61,6 +65,22 @@ class NativeE2EBridge {
 
   void unregisterObservatory(NativeE2EObservatoryBindings bindings) {
     if (identical(_observatory, bindings)) _observatory = null;
+  }
+
+  void registerArtifact(NativeE2EArtifactBindings bindings) {
+    _artifact = bindings;
+  }
+
+  void unregisterArtifact(NativeE2EArtifactBindings bindings) {
+    if (identical(_artifact, bindings)) _artifact = null;
+  }
+
+  void registerDecision(NativeE2EDecisionBindings bindings) {
+    _decision = bindings;
+  }
+
+  void unregisterDecision(NativeE2EDecisionBindings bindings) {
+    if (identical(_decision, bindings)) _decision = null;
   }
 
   Future<void> _serve() async {
@@ -135,6 +155,50 @@ class NativeE2EBridge {
         if (panel == null) throw StateError('comment panel is not ready');
         await panel.publish();
         return _status();
+      case 'setReply':
+        final threadId = input['threadId'];
+        final body = input['body'];
+        if (threadId is! String || body is! String) {
+          throw ArgumentError('threadId and body are required');
+        }
+        final panel = _panel;
+        if (panel == null) throw StateError('comment panel is not ready');
+        await panel.setReply(threadId, body);
+        return _status();
+      case 'publishReply':
+        final threadId = input['threadId'];
+        if (threadId is! String) throw ArgumentError('threadId is required');
+        final panel = _panel;
+        if (panel == null) throw StateError('comment panel is not ready');
+        await panel.publishReply(threadId);
+        return _status();
+      case 'openDecision':
+        final artifact = _artifact;
+        if (artifact == null) throw StateError('decision action is not ready');
+        await artifact.openDecision();
+        return _status();
+      case 'setDecision':
+        final decisionId = input['decisionId'];
+        final optionId = input['optionId'];
+        final author = input['author'];
+        final rationale = input['rationale'];
+        if (decisionId is! String ||
+            optionId is! String ||
+            author is! String ||
+            rationale is! String) {
+          throw ArgumentError(
+            'decisionId, optionId, author and rationale are required',
+          );
+        }
+        final decision = _decision;
+        if (decision == null) throw StateError('decision panel is not ready');
+        await decision.setDecision(decisionId, optionId, author, rationale);
+        return _status();
+      case 'publishDecision':
+        final decision = _decision;
+        if (decision == null) throw StateError('decision panel is not ready');
+        await decision.publish();
+        return _status();
       default:
         throw ArgumentError('unsupported action: $action');
     }
@@ -145,6 +209,8 @@ class NativeE2EBridge {
     'document': _document?.status(),
     'panel': _panel?.status(),
     'observatory': _observatory?.status(),
+    'artifact': _artifact?.status(),
+    'decision': _decision?.status(),
   };
 
   Future<void> _write(
@@ -182,11 +248,15 @@ class NativeE2EPanelBindings {
     required this.status,
     required this.setComposer,
     required this.publish,
+    required this.setReply,
+    required this.publishReply,
   });
 
   final Map<String, Object?> Function() status;
   final Future<void> Function(String author, String body) setComposer;
   final Future<void> Function() publish;
+  final Future<void> Function(String threadId, String body) setReply;
+  final Future<void> Function(String threadId) publishReply;
 }
 
 /// Payload-free mounted-shell state used only to diagnose a failed UI setup.
@@ -194,4 +264,34 @@ class NativeE2EObservatoryBindings {
   const NativeE2EObservatoryBindings({required this.status});
 
   final Map<String, Object?> Function() status;
+}
+
+/// Widget-owned action that opens the existing decision form for one artifact.
+class NativeE2EArtifactBindings {
+  const NativeE2EArtifactBindings({
+    required this.status,
+    required this.openDecision,
+  });
+
+  final Map<String, Object?> Function() status;
+  final Future<void> Function() openDecision;
+}
+
+/// Widget-owned controls for the mounted decision form.
+class NativeE2EDecisionBindings {
+  const NativeE2EDecisionBindings({
+    required this.status,
+    required this.setDecision,
+    required this.publish,
+  });
+
+  final Map<String, Object?> Function() status;
+  final Future<void> Function(
+    String decisionId,
+    String optionId,
+    String author,
+    String rationale,
+  )
+  setDecision;
+  final Future<void> Function() publish;
 }

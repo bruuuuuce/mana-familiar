@@ -180,6 +180,8 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
       status: _nativeE2EStatus,
       setComposer: _setComposerForNativeE2E,
       publish: _publish,
+      setReply: _setReplyForNativeE2E,
+      publishReply: _publishReplyForNativeE2E,
     );
     _nativeE2EPanel = bindings;
     bridge.registerPanel(bindings);
@@ -192,6 +194,26 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
     _composerEdited = true;
     _saveDraft();
     if (mounted) setState(() {});
+  }
+
+  HumanFeedbackThread _threadForNativeE2E(String threadId) {
+    final thread = _threads
+        ?.where((candidate) => candidate.id == threadId)
+        .firstOrNull;
+    if (thread == null) throw StateError('thread is not available: $threadId');
+    return thread;
+  }
+
+  Future<void> _setReplyForNativeE2E(String threadId, String body) async {
+    if (!mounted) throw StateError('comment panel is no longer mounted');
+    final thread = _threadForNativeE2E(threadId);
+    setState(() => _replying.add(threadId));
+    _replyController(thread).text = body;
+  }
+
+  Future<void> _publishReplyForNativeE2E(String threadId) async {
+    if (!mounted) throw StateError('comment panel is no longer mounted');
+    await _reply(_threadForNativeE2E(threadId));
   }
 
   Future<void> _discardComposerDraft() async {
@@ -758,12 +780,14 @@ class HumanDecisionPanel extends StatefulWidget {
     required this.sourcePath,
     required this.target,
     this.drafts,
+    this.nativeE2E,
   });
 
   final ManaHumanFeedbackRepository repository;
   final String sourcePath;
   final HumanFeedbackTarget target;
   final HumanFeedbackDraftStore? drafts;
+  final NativeE2EBridge? nativeE2E;
 
   @override
   State<HumanDecisionPanel> createState() => _HumanDecisionPanelState();
@@ -780,6 +804,7 @@ class _HumanDecisionPanelState extends State<HumanDecisionPanel> {
   var _saving = false;
   var _draftEdited = false;
   late String _idempotencyKey;
+  NativeE2EDecisionBindings? _nativeE2EDecision;
 
   @override
   void initState() {
@@ -787,11 +812,14 @@ class _HumanDecisionPanelState extends State<HumanDecisionPanel> {
     _idempotencyKey = _newIdempotencyKey();
     _author.addListener(_onDraftEdited);
     _rationale.addListener(_onDraftEdited);
+    _registerNativeE2EDecision();
     _load();
   }
 
   @override
   void dispose() {
+    final bindings = _nativeE2EDecision;
+    if (bindings != null) widget.nativeE2E?.unregisterDecision(bindings);
     _author.removeListener(_onDraftEdited);
     _rationale.removeListener(_onDraftEdited);
     _saveDraft();
@@ -805,6 +833,69 @@ class _HumanDecisionPanelState extends State<HumanDecisionPanel> {
 
   String _newIdempotencyKey() =>
       'decision:${DateTime.now().microsecondsSinceEpoch}';
+
+  Map<String, Object?> _nativeE2EDecisionStatus() => {
+    'loading': _targets == null && _error == null,
+    'saving': _saving,
+    'error': _error?.toString(),
+    'selectedDecisionId': _decisionId,
+    'selectedOptionId': _optionId,
+    'author': _author.text,
+    'rationale': _rationale.text,
+    'decisions': _targets?.decisions
+        .map(
+          (decision) => {
+            'id': decision.id,
+            'status': decision.status,
+            'options': decision.options
+                .map((option) => {'id': option.id})
+                .toList(growable: false),
+            'state': {
+              'revision': _states[decision.id]?.revision,
+              'selectedOptionId': _states[decision.id]?.selectedOptionId,
+            },
+          },
+        )
+        .toList(growable: false),
+  };
+
+  void _registerNativeE2EDecision() {
+    final bridge = widget.nativeE2E;
+    if (bridge == null) return;
+    final bindings = NativeE2EDecisionBindings(
+      status: _nativeE2EDecisionStatus,
+      setDecision: _setDecisionForNativeE2E,
+      publish: _save,
+    );
+    _nativeE2EDecision = bindings;
+    bridge.registerDecision(bindings);
+  }
+
+  Future<void> _setDecisionForNativeE2E(
+    String decisionId,
+    String optionId,
+    String author,
+    String rationale,
+  ) async {
+    if (!mounted) throw StateError('decision panel is no longer mounted');
+    final decision = _targets?.decisions
+        .where((candidate) => candidate.id == decisionId)
+        .firstOrNull;
+    if (decision == null || decision.status != 'open') {
+      throw StateError('decision is not open: $decisionId');
+    }
+    if (!decision.options.any((option) => option.id == optionId)) {
+      throw StateError('option is not available: $optionId');
+    }
+    setState(() {
+      _decisionId = decisionId;
+      _optionId = optionId;
+      _author.text = author;
+      _rationale.text = rationale;
+      _draftEdited = true;
+    });
+    _saveDraft();
+  }
 
   void _onDraftEdited() {
     _draftEdited = true;

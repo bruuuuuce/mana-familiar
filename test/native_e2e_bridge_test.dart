@@ -35,6 +35,14 @@ void main() {
       String? author;
       String? body;
       var published = 0;
+      String? replyThread;
+      String? replyBody;
+      var replyPublished = 0;
+      var decisionOpened = false;
+      String? decisionId;
+      String? optionId;
+      String? rationale;
+      var decisionPublished = 0;
       bridge.registerDocument(
         NativeE2EDocumentBindings(
           status: () => {
@@ -54,6 +62,31 @@ void main() {
             body = nextBody;
           },
           publish: () async => published++,
+          setReply: (threadId, body) async {
+            replyThread = threadId;
+            replyBody = body;
+          },
+          publishReply: (threadId) async {
+            expect(threadId, replyThread);
+            replyPublished++;
+          },
+        ),
+      );
+      bridge.registerArtifact(
+        NativeE2EArtifactBindings(
+          status: () => {'artifactId': 'plan'},
+          openDecision: () async => decisionOpened = true,
+        ),
+      );
+      bridge.registerDecision(
+        NativeE2EDecisionBindings(
+          status: () => {'selectedDecisionId': decisionId},
+          setDecision: (nextDecisionId, nextOptionId, _, nextRationale) async {
+            decisionId = nextDecisionId;
+            optionId = nextOptionId;
+            rationale = nextRationale;
+          },
+          publish: () async => decisionPublished++,
         ),
       );
 
@@ -78,12 +111,44 @@ void main() {
         'body': 'Line one\nLine two',
       });
       await request(bridge, {'token': 'test-token', 'action': 'publish'});
+      await request(bridge, {
+        'token': 'test-token',
+        'action': 'setReply',
+        'threadId': 'thread-1',
+        'body': 'Confirmed',
+      });
+      await request(bridge, {
+        'token': 'test-token',
+        'action': 'publishReply',
+        'threadId': 'thread-1',
+      });
+      await request(bridge, {'token': 'test-token', 'action': 'openDecision'});
+      await request(bridge, {
+        'token': 'test-token',
+        'action': 'setDecision',
+        'decisionId': 'decision-1',
+        'optionId': 'option-a',
+        'author': 'Ada',
+        'rationale': 'Keep the durable option.',
+      });
+      await request(bridge, {
+        'token': 'test-token',
+        'action': 'publishDecision',
+      });
 
       expect(selected, 'implementation');
       expect(commentsOpened, isTrue);
       expect(author, 'Ada');
       expect(body, 'Line one\nLine two');
       expect(published, 1);
+      expect(replyThread, 'thread-1');
+      expect(replyBody, 'Confirmed');
+      expect(replyPublished, 1);
+      expect(decisionOpened, isTrue);
+      expect(decisionId, 'decision-1');
+      expect(optionId, 'option-a');
+      expect(rationale, 'Keep the durable option.');
+      expect(decisionPublished, 1);
 
       final denied = await request(bridge, {
         'token': 'wrong',

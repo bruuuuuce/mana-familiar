@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mana_familiar/application/human_feedback.dart';
 import 'package:mana_familiar/mana_inspect.dart';
 import 'package:mana_familiar/presentation/artifact_detail_view.dart';
 
@@ -210,6 +211,42 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'offers the producer-backed decision form from the declared artifact type',
+    (tester) async {
+      final summary = {
+        ..._summaryJson('implementation-plan'),
+        'artifact_id':
+            'file:.mana/features/P/planning/story-start-implementation-plan-v2.json',
+        'path':
+            '.mana/features/P/planning/story-start-implementation-plan-v2.json',
+        'schema': '/vmana.story-start.implementation-plan/v2',
+      };
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ArtifactDetailView(
+            artifact: ManaInspectArtifactSummary.fromJson(summary),
+            feedback: ManaHumanFeedbackRepository(projectRoot: '/project'),
+            detail: ManaInspectArtifactDetail.fromJson({
+              'schema': inspectArtifactSchema,
+              'artifact': summary,
+              // Inspect deliberately withholds the full plan. The summary
+              // type is still producer-declared and the panel will negotiate
+              // its actual choices before it writes anything.
+              'payload': {'schema': 'unknown', 'included': false},
+              'relations': [],
+            }),
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('record-story-start-decision')),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 ManaInspectArtifactSummary _summary(String kind) =>

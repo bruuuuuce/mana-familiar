@@ -17,10 +17,14 @@ story_start_fixture=""
 ui_driver=""
 first_ui_port=""
 first_ui_token=""
+second_ui_port=""
+second_ui_token=""
+exercise_decision=false
+skip_regenerations=false
 
 usage() {
   cat <<'EOF'
-Usage: tests/run-macos-native-window-e2e.sh [--app APP] [--project-root DIR] [--mana-root DIR] [--preferences-root DIR] [--story-start-fixture FILE] [--ui-driver FILE --first-ui-port PORT --first-ui-token TOKEN] [--evidence-dir DIR]
+Usage: tests/run-macos-native-window-e2e.sh [--app APP] [--project-root DIR] [--mana-root DIR] [--preferences-root DIR] [--story-start-fixture FILE] [--ui-driver FILE --first-ui-port PORT --first-ui-token TOKEN --second-ui-port PORT --second-ui-token TOKEN] [--evidence-dir DIR]
 
 The caller must grant this shell Accessibility permission (System Settings >
 Privacy & Security > Accessibility). The permission is required to exercise
@@ -39,6 +43,10 @@ while [ "$#" -gt 0 ]; do
     --ui-driver) ui_driver="$2"; shift 2 ;;
     --first-ui-port) first_ui_port="$2"; shift 2 ;;
     --first-ui-token) first_ui_token="$2"; shift 2 ;;
+    --second-ui-port) second_ui_port="$2"; shift 2 ;;
+    --second-ui-token) second_ui_token="$2"; shift 2 ;;
+    --exercise-decision) exercise_decision=true; shift ;;
+    --skip-regenerations) skip_regenerations=true; shift ;;
     --evidence-dir) evidence_dir="$2"; shift 2 ;;
     --help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 64 ;;
@@ -52,7 +60,7 @@ fail() { echo "macOS native E2E failed: $*" >&2; exit 1; }
 [ -z "$story_start_fixture" ] || [ -x "$story_start_fixture" ] || fail "Story Start fixture is not executable: $story_start_fixture"
 [ -z "$ui_driver" ] || [ -f "$ui_driver" ] || fail "UI driver is not a file: $ui_driver"
 if [ -n "$ui_driver" ]; then
-  [ -n "$first_ui_port" ] && [ -n "$first_ui_token" ] || fail 'UI driver needs --first-ui-port and --first-ui-token'
+  [ -n "$first_ui_port" ] && [ -n "$first_ui_token" ] && [ -n "$second_ui_port" ] && [ -n "$second_ui_token" ] || fail 'UI driver needs a port and token for both windows'
   [ -n "$mana_root" ] && [ -n "$story_start_fixture" ] || fail 'UI driver needs Mana and a Story Start fixture'
 fi
 
@@ -186,6 +194,7 @@ report_digest() {
 }
 
 run_regenerations() {
+  [ "$skip_regenerations" = false ] || return 0
   [ -n "$story_start_fixture" ] || return 0
   local report="$project_root/.mana/features/FEEDBACK-E2E/planning/story-start-scope-v2.md"
   local current records
@@ -206,19 +215,19 @@ run_regenerations() {
     sleep 1
     focus_and_assert "$first_pid"
     focus_and_assert "$second_pid"
-    run_ui_driver observe-generation "$current" "$evidence_dir/ui/generation-$generation.json"
+    run_ui_driver "$first_ui_port" "$first_ui_token" observe-generation "$current" "$evidence_dir/ui/generation-$generation.json"
   done
   jq -cn --argjson generations "$records" '{schemaVersion:"mana.familiar.native-regenerations/v1",generations:$generations}' \
     >"$evidence_dir/regenerations.json"
 }
 
 run_ui_driver() {
-  local mode="$1" expected_revision="${2:-}" evidence="$3"
+  local port="$1" token="$2" mode="$3" expected_revision="${4:-}" evidence="$5"
   [ -n "$ui_driver" ] || return 0
   local arguments=(
     "$ui_driver"
-    --port "$first_ui_port"
-    --token "$first_ui_token"
+    --port "$port"
+    --token "$token"
     --project-root "$project_root"
     --mana-root "$mana_root"
     --mode "$mode"
@@ -252,6 +261,11 @@ if [ -n "$ui_driver" ]; then
     --native-e2e-port "$first_ui_port"
     --native-e2e-token "$first_ui_token"
   )
+  second_arguments+=(
+    --initial-artifact file:.mana/features/FEEDBACK-E2E/planning/story-start-implementation-plan-v2.json
+    --native-e2e-port "$second_ui_port"
+    --native-e2e-token "$second_ui_token"
+  )
 fi
 
 prepare_initial_generation
@@ -277,7 +291,11 @@ focus_and_assert "$second_pid"
 # while the driver selects and publishes so AppKit is not allowed to throttle
 # its short scroll animation as a background window.
 focus_and_assert "$first_pid"
-run_ui_driver publish-comment "" "$evidence_dir/ui/comment.json"
+run_ui_driver "$first_ui_port" "$first_ui_token" publish-comment "" "$evidence_dir/ui/comment.json"
+if [ "$exercise_decision" = true ]; then
+  focus_and_assert "$second_pid"
+  run_ui_driver "$second_ui_port" "$second_ui_token" publish-decision "" "$evidence_dir/ui/decision.json"
+fi
 run_regenerations
 
 # Restart B three times under the same session namespace. This exercises the

@@ -101,25 +101,10 @@ class ArtifactDetailView extends StatelessWidget {
             padding: const EdgeInsets.only(top: 10),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                key: const Key('record-story-start-decision'),
-                onPressed: () => showModalBottomSheet<void>(
-                  context: context,
-                  isScrollControlled: true,
-                  builder: (_) => HumanDecisionPanel(
-                    repository: feedback! as ManaHumanFeedbackRepository,
-                    sourcePath: artifact.path,
-                    target: HumanFeedbackTarget(
-                      projectId: feedbackProjectId ?? '',
-                      artifactId: artifact.id,
-                      artifactRevision:
-                          artifact.raw['revision_id'] as String? ?? '',
-                    ),
-                    drafts: feedbackDrafts,
-                  ),
-                ),
-                icon: const Icon(Icons.account_tree_outlined),
-                label: const Text('Record decision'),
+              child: _NativeE2EDecisionAction(
+                bridge: nativeE2E,
+                artifactId: artifact.id,
+                onOpen: () => _openDecision(context),
               ),
             ),
           ),
@@ -159,14 +144,44 @@ class ArtifactDetailView extends StatelessWidget {
   }
 
   bool _supportsDecisionRecording(ManaInspectArtifactDetail? loadedDetail) {
-    if (feedback is! ManaHumanFeedbackRepository ||
-        loadedDetail?.payload is! Map) {
+    if (feedback is! ManaHumanFeedbackRepository) {
       return false;
     }
+    // Newer inspect producers may intentionally withhold the complete plan
+    // payload, while retaining the producer-declared artifact schema in the
+    // summary. The decision form still asks Mana for the current choices and
+    // validates them before a write; this check merely controls whether the
+    // user can open that producer-backed form.
+    final declaredSchema = artifact.raw['schema'];
+    if (declaredSchema is String &&
+        declaredSchema.endsWith('mana.story-start.implementation-plan/v2')) {
+      return true;
+    }
+    if (loadedDetail?.payload is! Map) return false;
     final payload = loadedDetail!.payload as Map;
     return payload['schemaVersion'] ==
             'mana.story-start.implementation-plan/v2' &&
         payload['decisionRegister'] is List;
+  }
+
+  Future<void> _openDecision(BuildContext context) async {
+    final repository = feedback;
+    if (repository is! ManaHumanFeedbackRepository) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => HumanDecisionPanel(
+        repository: repository,
+        sourcePath: artifact.path,
+        target: HumanFeedbackTarget(
+          projectId: feedbackProjectId ?? '',
+          artifactId: artifact.id,
+          artifactRevision: artifact.raw['revision_id'] as String? ?? '',
+        ),
+        drafts: feedbackDrafts,
+        nativeE2E: nativeE2E,
+      ),
+    );
   }
 
   Widget _documentWorkspace(
@@ -555,6 +570,74 @@ class ArtifactDetailView extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Keeps the optional debug driver bound to the same decision button a person
+/// uses, without giving that transport access to a repository.
+class _NativeE2EDecisionAction extends StatefulWidget {
+  const _NativeE2EDecisionAction({
+    required this.bridge,
+    required this.artifactId,
+    required this.onOpen,
+  });
+
+  final NativeE2EBridge? bridge;
+  final String artifactId;
+  final Future<void> Function() onOpen;
+
+  @override
+  State<_NativeE2EDecisionAction> createState() =>
+      _NativeE2EDecisionActionState();
+}
+
+class _NativeE2EDecisionActionState extends State<_NativeE2EDecisionAction> {
+  NativeE2EArtifactBindings? _bindings;
+
+  @override
+  void initState() {
+    super.initState();
+    _register();
+  }
+
+  @override
+  void didUpdateWidget(covariant _NativeE2EDecisionAction oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bridge != widget.bridge) {
+      final bindings = _bindings;
+      if (bindings != null) oldWidget.bridge?.unregisterArtifact(bindings);
+      _bindings = null;
+    }
+    _register();
+  }
+
+  void _register() {
+    final bridge = widget.bridge;
+    if (bridge == null) return;
+    final bindings = NativeE2EArtifactBindings(
+      status: () => {
+        'artifactId': widget.artifactId,
+        'canRecordDecision': true,
+      },
+      openDecision: widget.onOpen,
+    );
+    _bindings = bindings;
+    bridge.registerArtifact(bindings);
+  }
+
+  @override
+  void dispose() {
+    final bindings = _bindings;
+    if (bindings != null) widget.bridge?.unregisterArtifact(bindings);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton.icon(
+    key: const Key('record-story-start-decision'),
+    onPressed: () => unawaited(widget.onOpen()),
+    icon: const Icon(Icons.account_tree_outlined),
+    label: const Text('Record decision'),
+  );
 }
 
 /// Registry entry for Journey artifacts. Direct Journey exploration remains
