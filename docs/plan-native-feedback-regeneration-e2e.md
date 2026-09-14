@@ -28,12 +28,13 @@ loopback, attivo esclusivamente in build debug e limitato a callback dei
 widget montati; non accede a repository o filesystem e non sostituisce Mana.
 L'input di commento, risposta e decisione è quindi marcato
 `flutter-widget-bridge`, mentre focus, Close/Quit e il fallback
-`File → Close Window` restano azioni macOS reali. La decisione è separata da
+`File → Close Window` e Quit dal menu applicazione restano azioni macOS reali. La decisione è separata da
 R1–R5: una scelta richiede una ripianificazione governata e la fixture
 deterministica delle cinque rigenerazioni non proietta ancora la scelta nel
 decision register successivo. Rimangono aperti quel percorso integrato,
-bozze di reply/decisione e tra progetti diversi, il profilo `desktop-long`,
-gli episodi di fault richiesti e il gate Windows.
+bozze di reply/decisione e tra progetti diversi e il gate Windows.
+Il profilo `desktop-long` e i dieci episodi di fault sono implementati;
+la verifica della run completa resta in corso.
 
 ## Obiettivo e perimetro
 
@@ -50,9 +51,8 @@ Windows resta un gate distinto da eseguire su Windows reale. Non è richiesto pe
   Il menu Open Project, l'intero ripristino bozze e il secondo progetto non
   sono ancora esercitati nell'E2E.
 - Il gate usa root temporanee e ricontrolla il PID focalizzato immediatamente
-  prima di ciascuna azione. Prova prima Cmd-W/Cmd-Q; Close può registrare il
-  fallback nativo `File → Close Window` quando macOS non consegna un tasto
-  sintetico alla finestra già dichiarata frontmost.
+  prima di ciascuna azione. Close/Quit usano i menu nativi per PID, senza
+  tasti globali o riferimenti AX salvati per nome tra le due istanze omonime.
 - `HumanFeedbackDraftStore` ha namespace per sessione, progetto, artefatto e
   composer; conserva revisioni precedenti e migra il formato vecchio. Rimane
   da provare dalla UI il recupero di reply, decisioni e progetti diversi. Lo
@@ -115,7 +115,7 @@ Preparare una pubblicazione iniziale V0, un documento con target stabili, un tar
 | --- | --- | --- |
 | R1 | Rigenerazione identica, stessa identità e contenuto | Nuova esecuzione pipeline provata anche se hash invariati; thread ancora validi, nessun duplicato, bozze intatte |
 | R2 | Contenuto modificato, identità stabile | Revisione aggiornata, contributi precedenti visibili come changed secondo contratto, focus e testo preservati |
-| Restart 1 | Digitare e chiudere A con Cmd-W prima del debounce, riaprirla | Nuovo PID; bozza A recuperata esattamente, B viva e bozza B intatta |
+| Restart 1 | Digitare e chiudere A con Close nativo prima del debounce, riaprirla | Nuovo PID; bozza A recuperata esattamente, B viva e bozza B intatta |
 | R3 | Rinominare un heading mantenendo ID e introdurre riferimenti ambigui su un altro target | Caso stabile distinto da ambiguous; nessun riaggancio basato sul titolo |
 | Restart 2 | Quit nativo di B con motivazione o risposta non pubblicata, poi riapertura | Recupero del composer corretto; storia persistita invariata |
 | R4 | Rimuovere un target pubblicato | Stato missing, testo e storia ancora raggiungibili, nessuna scrittura involontaria sul target eliminato |
@@ -149,12 +149,13 @@ Interfacce disponibili:
 python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile smoke
 python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile decision-smoke
 python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile draft-smoke
+python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile desktop-long
 ```
 
 - Smoke (disponibile): commento e risposta canonici, R1–R5 osservate dal documento UI e tre restart; timeout complessivo iniziale 15 minuti. Il timeout è un limite operativo, non un tempo minimo da consumare.
 - Decision-smoke (disponibile): commento e risposta in A, una decisione nell'implementation plan B, stato canonico della scelta e lifecycle; deliberatamente senza rigenerazioni successive alla scelta.
-- Draft-smoke (disponibile): due bozze commento differenti sul medesimo target e in sessioni A/B; Cmd-W e Cmd-Q sono inviati entro 350 ms dal testo, il fallback `File → Close Window` resta nativo e viene timestampato, e i testi si ritrovano dopo i rispettivi restart e dopo i tre restart B. Il driver controlla inoltre che una bozza non compaia nella storia canonica Mana.
-- Desktop-long (da implementare, comando previsto `--profile desktop-long`): almeno 20 minuti e 300 azioni UI distribuite, due finestre, cinque rigenerazioni, tre restart, dieci episodi recuperabili. Contare separatamente azioni UI, mutazioni accettate, rigenerazioni, restart e guasti; i sondaggi del runner non sono azioni utente.
+- Draft-smoke (disponibile): due bozze commento differenti sul medesimo target e in sessioni A/B; Close e Quit dai menu nativi per PID sono inviati entro 350 ms dal testo e timestampati, e i testi si ritrovano dopo i rispettivi restart e dopo i tre restart B. Il driver controlla inoltre che una bozza non compaia nella storia canonica Mana.
+- Desktop-long (implementato, verifica completa in corso): almeno 20 minuti e 300 azioni UI distribuite, due finestre, cinque rigenerazioni, tre restart, dieci episodi recuperabili. Le azioni alternano set/publish di commenti e reply attraverso i widget montati. I fault scattano solo a ciclo completo: conflitti ai passi 8/176, scritture bozza fallite 12/256, risposte ritardate 16/280, ACK persi 64/204 e letture fallite 96/232. I primi fault bozza/ritardo fungono da preflight; i secondi restano nel quarto finale. Ogni episodio verifica errore e recupero UI e, per le scritture, conteggi canonici esatti. I fault usano gli hook Mana reali tramite un wrapper nel progetto sintetico e permessi sul solo storage temporaneo. Contare separatamente azioni UI, mutazioni accettate, rigenerazioni, restart e guasti; i sondaggi del runner non sono azioni utente.
 - Soak da 60 minuti/1.000 azioni: estensione successiva alla stabilizzazione del profilo desktop-long. Il C03 producer già esistente resta un controllo distinto.
 
 Per run: manifest con revisioni Mana/Familiar, digest delle modifiche locali e del bundle, modalità build, sistema, seed, comandi ed exit code; trace timestampata, PID/sessioni, hash delle pubblicazioni, asserzioni, screenshot e risultato `passed/failed/blocked`. Persistenza incrementale anche su errore e cancellazione. Usare solo payload sintetici. Conservare i fallimenti e i rerun in directory diverse.

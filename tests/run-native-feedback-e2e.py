@@ -3,13 +3,14 @@
 
 The shell gate owns real macOS windows and Accessibility actions. This runner
 owns the isolated synthetic project and the durable audit bundle around it.
-It exposes short, separately-scoped smoke profiles. The 20-minute
-`desktop-long` profile remains unavailable until the driver can count genuine
-UI actions and injected recovery episodes rather than polls.
+It exposes short, separately-scoped smoke profiles and a 20-minute
+`desktop-long` profile that counts mounted widget actions and verifies ten
+injected recovery episodes separately from readiness polls.
 """
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import json
 import platform
@@ -55,6 +56,7 @@ def validate_native_evidence(
     require_regenerations: bool = True,
     require_decision: bool = False,
     require_drafts: bool = False,
+    require_desktop_long: bool = False,
 ) -> list[dict[str, object]]:
     generations: list[dict[str, object]] = []
     if require_regenerations:
@@ -130,7 +132,7 @@ def validate_native_evidence(
                     or not isinstance(record.get("currentPid"), str)
                     or record["previousPid"] == record["currentPid"]
                     or record.get("nativeActionPath")
-                    not in ({"close-shortcut", "close-menu-fallback"} if action == "close" else {"quit-shortcut"})
+                    not in ({"close-menu", "close-shortcut", "close-menu-fallback"} if action == "close" else {"quit-menu", "quit-shortcut", "quit-menu-fallback"})
                     or not isinstance(record.get("preparedEpochMilliseconds"), int)
                     or not isinstance(record.get("driverReturnedEpochMilliseconds"), int)
                     or not isinstance(record.get("nativeActionSentEpochMilliseconds"), int)
@@ -187,6 +189,110 @@ def validate_native_evidence(
                     raise AssertionError(
                         f"native UI did not observe generation R{generation_number}"
                     )
+        if require_desktop_long:
+            desktop_long = json.loads(
+                (native_output / "desktop-long.json").read_text(encoding="utf-8")
+            )
+            actions = desktop_long.get("actions")
+            faults = desktop_long.get("faults")
+            scheduled = desktop_long.get("scheduledUiActionCount")
+            minimum_duration = desktop_long.get("minimumDurationSeconds")
+            started = desktop_long.get("startedEpochMilliseconds")
+            ended = desktop_long.get("endedEpochMilliseconds")
+            if (
+                desktop_long.get("schemaVersion") != "mana.familiar.native-desktop-long/v1"
+                or desktop_long.get("status") != "passed"
+                or not isinstance(scheduled, int)
+                or scheduled < 300
+                or not isinstance(minimum_duration, int)
+                or minimum_duration < 20 * 60
+                or not isinstance(started, int)
+                or not isinstance(ended, int)
+                or ended - started < minimum_duration * 1000
+                or not isinstance(actions, list)
+                or len(actions) != scheduled
+                or not isinstance(faults, list)
+            ):
+                raise AssertionError("desktop-long evidence is incomplete")
+            if [action.get("ordinal") for action in actions if isinstance(action, dict)] != list(
+                range(1, scheduled + 1)
+            ):
+                raise AssertionError("desktop-long UI actions are missing or reordered")
+            expected_action = ("set-comment", "publish-comment", "set-reply", "publish-reply")
+            if any(
+                not isinstance(action, dict)
+                or action.get("status") != "passed"
+                or action.get("mode") != "desktop-long-action"
+                or action.get("inputMode") != "flutter-widget-bridge"
+                or action.get("uiActionCount") != 1
+                or action.get("longAction") != expected_action[index % 4]
+                or not isinstance(action.get("scheduledEpochMilliseconds"), int)
+                or not isinstance(action.get("completedEpochMilliseconds"), int)
+                or action["completedEpochMilliseconds"] < action["scheduledEpochMilliseconds"]
+                for index, action in enumerate(actions)
+            ):
+                raise AssertionError("desktop-long did not record 300 genuine UI actions")
+            if sum(action["uiActionCount"] for action in actions) < 300:
+                raise AssertionError("desktop-long UI action count is below 300")
+            expected_faults = Counter(
+                {
+                    "conflict": 2,
+                    "ack-loss": 2,
+                    "read-failure": 2,
+                    "draft-write-failure": 2,
+                    "delayed-create": 2,
+                }
+            )
+            actual_faults = Counter(
+                fault.get("type") for fault in faults if isinstance(fault, dict)
+            )
+            if actual_faults != expected_faults or len(faults) != 10:
+                raise AssertionError("desktop-long did not record ten recovery episodes")
+            for fault in faults:
+                if (
+                    not isinstance(fault, dict)
+                    or not isinstance(fault.get("label"), str)
+                    or not isinstance(fault.get("evidence"), list)
+                    or not fault["evidence"]
+                ):
+                    raise AssertionError("desktop-long fault evidence is malformed")
+                evidence = []
+                for relative_path in fault["evidence"]:
+                    if not isinstance(relative_path, str):
+                        raise AssertionError("desktop-long fault evidence path is malformed")
+                    value = json.loads((native_output / relative_path).read_text(encoding="utf-8"))
+                    if (
+                        value.get("status") != "passed"
+                        or value.get("inputMode") != "flutter-widget-bridge"
+                        or value.get("faultKind") != fault["type"]
+                        or value.get("faultLabel") != fault["label"]
+                    ):
+                        raise AssertionError(f"desktop-long fault {fault['label']} was not observed")
+                    evidence.append(value)
+                kind = fault["type"]
+                modes = [value.get("mode") for value in evidence]
+                if kind == "conflict":
+                    if modes != ["fault-conflict"] or evidence[0].get("canonicalCountsAfterRecovery") != [1, 1]:
+                        raise AssertionError(f"desktop-long conflict {fault['label']} was not recovered")
+                elif kind in {"ack-loss", "draft-write-failure"}:
+                    before = 1 if kind == "ack-loss" else 0
+                    if (
+                        modes != ["fault-publish-error", "fault-retry-publish"]
+                        or evidence[0].get("canonicalCountBeforeRecovery") != before
+                        or evidence[1].get("canonicalCountAfterRecovery") != 1
+                    ):
+                        raise AssertionError(f"desktop-long {kind} {fault['label']} was not recovered")
+                elif kind == "read-failure":
+                    if modes != ["fault-read-failure", "fault-retry-load"]:
+                        raise AssertionError(f"desktop-long read failure {fault['label']} was not recovered")
+                elif kind == "delayed-create":
+                    if (
+                        modes != ["fault-delayed-publish"]
+                        or not isinstance(evidence[0].get("elapsedMilliseconds"), int)
+                        or evidence[0]["elapsedMilliseconds"] < 2000
+                        or evidence[0].get("canonicalCountAfterRecovery") != 1
+                    ):
+                        raise AssertionError(f"desktop-long delay {fault['label']} was not observed")
     return generations
 
 
@@ -194,7 +300,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mana-root", required=True, type=Path)
     parser.add_argument(
-        "--profile", choices=("smoke", "decision-smoke", "draft-smoke"), default="smoke"
+        "--profile", choices=("smoke", "decision-smoke", "draft-smoke", "desktop-long"), default="smoke"
     )
     parser.add_argument("--output-root", type=Path, default=Path("build/native-feedback-audit"))
     parser.add_argument("--app", type=Path)
@@ -283,15 +389,24 @@ def main() -> int:
             command.extend(["--exercise-decision", "--skip-regenerations"])
         if args.profile == "draft-smoke":
             command.extend(["--exercise-drafts", "--skip-regenerations"])
+        if args.profile == "desktop-long":
+            command.extend(
+                [
+                    "--exercise-desktop-long",
+                    "--fault-wrapper",
+                    str(familiar_root / "tests" / "native-human-feedback-fault-wrapper.sh"),
+                ]
+            )
         result = subprocess.run(command, cwd=familiar_root, text=True, check=False)
         if result.returncode:
             raise RuntimeError(f"native gate failed ({result.returncode})")
         generations = validate_native_evidence(
             native_output,
             require_ui=True,
-            require_regenerations=args.profile == "smoke",
+            require_regenerations=args.profile in ("smoke", "desktop-long"),
             require_decision=args.profile == "decision-smoke",
             require_drafts=args.profile == "draft-smoke",
+            require_desktop_long=args.profile == "desktop-long",
         )
         report = {
             **manifest,
@@ -306,9 +421,13 @@ def main() -> int:
                     if args.profile == "decision-smoke"
                     else 20
                     if args.profile == "draft-smoke"
+                    else 300
+                    if args.profile == "desktop-long"
                     else 6
                 ),
-                "regenerationObservations": 5 if args.profile == "smoke" else 0,
+                "regenerationObservations": 5
+                if args.profile in ("smoke", "desktop-long")
+                else 0,
             },
         }
         write_json(output / "report.json", report)

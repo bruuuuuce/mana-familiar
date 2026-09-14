@@ -204,7 +204,10 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       _workDetailErrors.clear();
       _workDetailRequest++;
       _repository.invalidateWorkItemDetails();
-      _detail = null;
+      // Keep the last readable document mounted until its replacement arrives.
+      // Clearing it here disposes the reader (and its selection/scroll state)
+      // on every feedback or atomic-publication filesystem event.
+      _detailRequest++;
       _detailError = null;
       // A refresh error belongs to the previous attempt.  Keep rendering the
       // last good model while the next attempt is in flight.
@@ -214,6 +217,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       if (widget.onRefresh != null) {
         await widget.onRefresh!();
         _feedbackRefresh.value++;
+        _loadDetailIfNeeded();
         return;
       }
       // Unlike initial load, a user-requested refresh must fetch every
@@ -405,6 +409,11 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
           'detailLoading': _detailLoading,
           'detailError': _detailError?.toString(),
           'detailArtifactId': _detail?.artifact.id,
+          'detailArtifactRevision': _detail?.artifact.raw['revision_id'],
+          'detailArtifactKind': _detail?.artifact.kind,
+          'detailContentType': _detail?.artifact.raw['content_type'],
+          'detailPayloadType': _detail?.payload.runtimeType.toString(),
+          'feedbackProjectId': _model?.project.projectId,
         };
       },
     );

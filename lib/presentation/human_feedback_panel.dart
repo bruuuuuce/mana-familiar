@@ -219,6 +219,7 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
       publish: _publish,
       setReply: _setReplyForNativeE2E,
       publishReply: _publishReplyForNativeE2E,
+      retry: _retryLoad,
     );
     _nativeE2EPanel = bindings;
     bridge.registerPanel(bindings);
