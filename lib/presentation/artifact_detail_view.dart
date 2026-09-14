@@ -85,61 +85,67 @@ class ArtifactDetailView extends StatelessWidget {
         loadedDetail != null) {
       return _documentWorkspace(context, plan!, loadedDetail);
     }
-    return ListView(
+    // Payloads are bounded by the renderer. Keep their reader mounted even
+    // when technical metadata pushes it below the viewport, so reloads and
+    // native window restoration do not discard its state or controls.
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(32, 18, 32, 40),
-      children: [
-        Text(
-          documentPresentation
-              ? (contextualTitle ?? 'Document')
-              : 'Artifact detail',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        const SizedBox(height: 6),
-        _summary(context),
-        if (_supportsDecisionRecording(loadedDetail))
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: _NativeE2EDecisionAction(
-                bridge: nativeE2E,
-                artifactId: artifact.id,
-                onOpen: () => _openDecision(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            documentPresentation
+                ? (contextualTitle ?? 'Document')
+                : 'Artifact detail',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 6),
+          _summary(context),
+          if (_supportsDecisionRecording(loadedDetail))
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _NativeE2EDecisionAction(
+                  bridge: nativeE2E,
+                  artifactId: artifact.id,
+                  onOpen: () => _openDecision(context),
+                ),
               ),
             ),
-          ),
-        if (loading)
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator()),
-          ),
-        if (error != null)
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('Artifact details are unavailable'),
-              subtitle: Text('$error'),
+          if (loading && loadedDetail == null)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
             ),
-          ),
-        if (plan != null) ...[
-          _warnings(loadedDetail!),
-          _payload(context, plan, loadedDetail),
-          if (!documentPresentation) _rawPayload(rawPayload),
-          _relations(relations),
-          _sourceAnchors(loadedDetail),
-          _provenance(loadedDetail),
+          if (error != null)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('Artifact details are unavailable'),
+                subtitle: Text('$error'),
+              ),
+            ),
+          if (plan != null) ...[
+            _warnings(loadedDetail!),
+            _payload(context, plan, loadedDetail),
+            if (!documentPresentation) _rawPayload(rawPayload),
+            _relations(relations),
+            _sourceAnchors(loadedDetail),
+            _provenance(loadedDetail),
+          ],
+          if (!loading && plan == null && error == null)
+            const Card(
+              child: ListTile(
+                leading: Icon(Icons.info_outline),
+                title: Text('Artifact payload was not requested'),
+                subtitle: Text(
+                  'The summary remains available without interpreting raw paths.',
+                ),
+              ),
+            ),
         ],
-        if (!loading && plan == null && error == null)
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.info_outline),
-              title: Text('Artifact payload was not requested'),
-              subtitle: Text(
-                'The summary remains available without interpreting raw paths.',
-              ),
-            ),
-          ),
-      ],
+      ),
     );
   }
 
@@ -217,7 +223,7 @@ class ArtifactDetailView extends StatelessWidget {
           child: MarkdownNoteView(
             markdown: plan.text ?? '',
             source: plan.sourceText,
-            artifact: artifact,
+            artifact: detail.artifact,
             detail: detail,
             onOpenRelatedArtifact: onOpenRelatedArtifact,
             documentPresentation: true,
@@ -318,7 +324,7 @@ class ArtifactDetailView extends StatelessWidget {
           ArtifactPayloadView.markdown => MarkdownNoteView(
             markdown: plan.text ?? '',
             source: plan.sourceText,
-            artifact: artifact,
+            artifact: detail.artifact,
             detail: detail,
             onOpenRelatedArtifact: onOpenRelatedArtifact,
             documentPresentation: documentPresentation,

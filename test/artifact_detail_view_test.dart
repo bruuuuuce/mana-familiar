@@ -5,6 +5,48 @@ import 'package:mana_familiar/mana_inspect.dart';
 import 'package:mana_familiar/presentation/artifact_detail_view.dart';
 
 void main() {
+  testWidgets('mounts the bounded reader below technical metadata after load', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 180));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final summary = ManaInspectArtifactSummary.fromJson({
+      ..._summaryJson('markdown'),
+      'path': '.mana/note.md',
+      'content_type': 'text/markdown',
+    });
+    Widget view({ManaInspectArtifactDetail? detail, bool loading = false}) =>
+        MaterialApp(
+          home: ArtifactDetailView(
+            artifact: summary,
+            detail: detail,
+            loading: loading,
+          ),
+        );
+    await tester.pumpWidget(view(loading: true));
+    await tester.pump();
+    await tester.pumpWidget(
+      view(
+        detail: ManaInspectArtifactDetail.fromJson({
+          'schema': inspectArtifactSchema,
+          'artifact': summary.raw,
+          'payload': {
+            'included': true,
+            'kind': 'text',
+            'value': '# Note\n\nBody',
+          },
+          'relations': [],
+          'diagnostics': List.generate(
+            30,
+            (index) => 'Producer diagnostic $index',
+          ),
+        }),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(MarkdownNoteView, skipOffstage: false), findsOneWidget);
+  });
+
   testWidgets('shows verification facts without calling it approval', (
     tester,
   ) async {

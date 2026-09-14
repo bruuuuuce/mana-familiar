@@ -171,7 +171,7 @@ tests/run-macos-native-window-e2e.sh
 ```
 
 Avvia due processi Runner reali, verifica il focus in entrambe le direzioni,
-poi esercita `Cmd-W` e `Cmd-Q`. Richiede il permesso Accessibility per il
+poi esercita Close e Quit tramite menu nativi per PID. Richiede il permesso Accessibility per il
 terminale che esegue il comando; conserva l'evidenza in `build/native-e2e/`.
 Familiar non avvia un provider dalla UI. Le rigenerazioni restano esterne e
 il gate nativo verifica che finestre, focus e lifecycle rimangano corretti
@@ -207,6 +207,28 @@ poi ne verifica il ripristino locale senza scritture canoniche involontarie.
 ```sh
 python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile draft-smoke
 ```
+
+Il profilo nativo `desktop-long` distribuisce 300 azioni dei widget montati
+su almeno 20 minuti, alternando commenti e risposte tra due finestre reali.
+Intercala cinque rigenerazioni Story Start, tre restart nativi con nuovi PID
+e dieci episodi recuperabili: due conflitti, due ACK persi, due letture
+fallite, due scritture bozza fallite e due risposte ritardate. Le evidenze
+verificano errori e recuperi dalla UI e i conteggi canonici Mana; sondaggi e
+attese non sono contati come azioni. I fault usano un wrapper nel solo
+progetto sintetico e lo storage delle bozze resta temporaneo.
+
+```sh
+python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile desktop-long
+```
+
+Il report finale richiede tutte le 300 azioni, R1–R5, tre restart e dieci
+recuperi; evidenza incompleta produce failure. Il bridge resta
+`flutter-widget-bridge`, con focus e Close/Quit macOS reali tramite i menu
+File e applicazione indirizzati per PID, senza tasti globali. Questa prova
+legge i widget dopo un frame di build/layout richiesto dal bridge anche nelle
+finestre occluse; non certifica la consegna dei pixel a schermo. La build
+debug non certifica le soglie prestazionali delle build profile, il gate
+Windows, il soak o la decisione seguita da ripianificazione governata.
 
 ## Contract
 

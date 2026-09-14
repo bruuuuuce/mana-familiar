@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 
 /// Debug-only, loopback-only bridge for the native desktop acceptance driver.
 ///
@@ -11,7 +12,21 @@ import 'package:flutter/foundation.dart';
 /// macOS actions in the shell gate. The bridge is unavailable in profile and
 /// release builds so it cannot become a product control surface.
 class NativeE2EBridge {
-  NativeE2EBridge({required this.port, required this.token});
+  NativeE2EBridge({
+    required this.port,
+    required this.token,
+    Future<void> Function()? settleFrame,
+  }) : _settleFrame = settleFrame ?? _settleMountedWidgets;
+
+  final Future<void> Function() _settleFrame;
+
+  static Future<void> _settleMountedWidgets() async {
+    final binding = SchedulerBinding.instance;
+    // Occluded macOS windows may not receive vsync. Build/layout the real
+    // mounted widgets before reading them; this does not prove pixel delivery.
+    binding.scheduleWarmUpFrame();
+    await binding.endOfFrame;
+  }
 
   final int port;
   final String token;
@@ -127,6 +142,7 @@ class NativeE2EBridge {
   ) async {
     switch (action) {
       case 'status':
+        await _settleFrame();
         return _status();
       case 'selectSection':
         final sectionId = input['sectionId'];
@@ -171,6 +187,11 @@ class NativeE2EBridge {
         final panel = _panel;
         if (panel == null) throw StateError('comment panel is not ready');
         await panel.publishReply(threadId);
+        return _status();
+      case 'retryFeedback':
+        final panel = _panel;
+        if (panel == null) throw StateError('comment panel is not ready');
+        await panel.retry();
         return _status();
       case 'openDecision':
         final artifact = _artifact;
@@ -250,6 +271,7 @@ class NativeE2EPanelBindings {
     required this.publish,
     required this.setReply,
     required this.publishReply,
+    required this.retry,
   });
 
   final Map<String, Object?> Function() status;
@@ -257,6 +279,7 @@ class NativeE2EPanelBindings {
   final Future<void> Function() publish;
   final Future<void> Function(String threadId, String body) setReply;
   final Future<void> Function(String threadId) publishReply;
+  final Future<void> Function() retry;
 }
 
 /// Payload-free mounted-shell state used only to diagnose a failed UI setup.

@@ -34,6 +34,19 @@ DRAFTS = {
         "body": "Bozza B non pubblicata\n\n- deve sopravvivere a Cmd-Q",
     },
 }
+LONG_AUTHOR = "Native desktop-long"
+
+
+def long_comment_body(sequence: int) -> str:
+    return f"Desktop-long comment {sequence:03d}\n\n- azione UI distribuita"
+
+
+def long_reply_body(sequence: int) -> str:
+    return f"Desktop-long reply {sequence:03d}\n\n- conferma del thread"
+
+
+def fault_body(kind: str, label: str) -> str:
+    return f"Desktop-long {kind} {label}\n\n- recupero verificato dalla UI"
 
 
 def write_json(path: Path, value: object) -> None:
@@ -49,7 +62,12 @@ class Bridge:
         self.token = token
 
     def call(self, action: str, **arguments: str) -> dict[str, Any]:
-        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        # A mounted Publish callback can flush drafts, run the real producer
+        # and reload the panel. The two producer reads/writes each have a
+        # 30-second app timeout; do not abandon their acknowledgement at 5 s.
+        # Status polls never invoke a producer and keep their short timeout.
+        timeout = 5 if action == "status" else 95
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=timeout)
         try:
             payload = json.dumps({"token": self.token, "action": action, **arguments})
             connection.request(
@@ -108,7 +126,10 @@ def stable_document(status: dict[str, Any], revision: str | None = None) -> bool
     )
 
 
-def visible_entry(status: dict[str, Any], *, body: str) -> bool:
+def visible_entry(
+    status: dict[str, Any], *, body: str, author: str = AUTHOR,
+    link_states: tuple[str, ...] = ("valid",),
+) -> bool:
     value = panel(status)
     if value is None or value.get("loading") is True:
         return False
@@ -117,15 +138,37 @@ def visible_entry(status: dict[str, Any], *, body: str) -> bool:
         return False
     return any(
         isinstance(thread, dict)
-        and thread.get("linkState") == "valid"
+        and thread.get("linkState") in link_states
         and any(
             isinstance(entry, dict)
-            and entry.get("author") == AUTHOR
+            and entry.get("author") == author
             and entry.get("body") == body
             for entry in thread.get("entries", [])
         )
         for thread in threads
     )
+
+
+def visible_thread_id(
+    status: dict[str, Any], *, body: str, author: str = AUTHOR
+) -> str | None:
+    value = panel(status)
+    threads = value.get("threads") if value is not None else None
+    if not isinstance(threads, list):
+        return None
+    for thread in threads:
+        if not isinstance(thread, dict):
+            continue
+        if any(
+            isinstance(entry, dict)
+            and entry.get("author") == author
+            and entry.get("body") == body
+            for entry in thread.get("entries", [])
+        ):
+            thread_id = thread.get("id")
+            if isinstance(thread_id, str):
+                return thread_id
+    return None
 
 
 def canonical_entry(mana_root: Path, project_root: Path, target: dict[str, Any]) -> str:
@@ -212,6 +255,42 @@ def canonical_draft_is_absent(
         for entry in thread.get("entries", [])
     ):
         raise AssertionError("unpublished local draft appeared in canonical feedback history")
+
+
+def canonical_body_count(
+    mana_root: Path, project_root: Path, target: dict[str, Any], *, body: str
+) -> int:
+    artifact_id = target.get("artifactId")
+    revision = target.get("artifactRevision")
+    if not isinstance(artifact_id, str) or not isinstance(revision, str):
+        raise AssertionError("mounted panel has no canonical artifact target")
+    command = [
+        str(mana_root / "scripts" / "mana-human-feedback.sh"),
+        "--project-root",
+        str(project_root),
+        "list-history",
+        "--artifact-id",
+        artifact_id,
+        "--artifact-revision",
+        revision,
+        "--section-id",
+        SECTION_ID,
+        "--json",
+    ]
+    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    if completed.returncode:
+        raise AssertionError(f"canonical feedback read failed: {completed.stderr.strip()}")
+    value = json.loads(completed.stdout)
+    threads = value.get("threads")
+    if not isinstance(threads, list):
+        raise AssertionError("canonical feedback response has no thread list")
+    return sum(
+        1
+        for thread in threads
+        if isinstance(thread, dict)
+        for entry in thread.get("entries", [])
+        if isinstance(entry, dict) and entry.get("body") == body
+    )
 
 
 def payload_free_document_status(status: dict[str, Any]) -> dict[str, Any]:
@@ -476,6 +555,360 @@ def publish_decision(args: argparse.Namespace, bridge: Bridge) -> dict[str, obje
     }
 
 
+def mounted_panel_target(bridge: Bridge) -> dict[str, Any]:
+    status = wait_for(
+        bridge,
+        lambda current: panel(current) is not None
+        and panel(current).get("target", {}).get("sectionId") == SECTION_ID,
+        "the already-mounted comments panel",
+    )
+    target = panel(status).get("target")
+    if not isinstance(target, dict):
+        raise AssertionError("mounted panel lacks its target")
+    return target
+
+
+def prepare_long_panel(args: argparse.Namespace, bridge: Bridge) -> dict[str, object]:
+    status = wait_for(bridge, stable_document, "a mounted Story Start document with stable targets")
+    actions = 0
+    if document(status).get("activeSectionId") != SECTION_ID:
+        bridge.call("selectSection", sectionId=SECTION_ID)
+        actions += 1
+        status = wait_for(
+            bridge,
+            lambda current: document(current) is not None
+            and document(current).get("activeSectionId") == SECTION_ID,
+            "the selected stable section",
+        )
+    if panel(status) is None or panel(status).get("target", {}).get("sectionId") != SECTION_ID:
+        bridge.call("openComments")
+        actions += 1
+        status = wait_for(
+            bridge,
+            lambda current: panel(current) is not None
+            and panel(current).get("target", {}).get("sectionId") == SECTION_ID,
+            "the mounted comments panel",
+        )
+    return {
+        "schemaVersion": "mana.familiar.native-e2e-ui/v1",
+        "status": "passed",
+        "mode": "prepare-long-panel",
+        "inputMode": "flutter-widget-bridge",
+        "uiActionCount": actions,
+        "document": payload_free_document_status(status),
+    }
+
+
+def require_long_composer(status: dict[str, Any], body: str | None = None) -> None:
+    composer = (panel(status) or {}).get("composer", {})
+    if composer.get("author") != LONG_AUTHOR or (
+        body is not None and composer.get("body") != body
+    ):
+        raise AssertionError("desktop-long composer changed before the scheduled action")
+
+
+def long_action(args: argparse.Namespace, bridge: Bridge) -> dict[str, object]:
+    sequence = args.sequence
+    if sequence is None or sequence < 1:
+        raise AssertionError("long action needs a positive sequence")
+    action = args.long_action
+    if action not in {"set-comment", "publish-comment", "set-reply", "publish-reply"}:
+        raise AssertionError("long action is unsupported")
+    target = mounted_panel_target(bridge)
+    comment = long_comment_body(sequence)
+    reply = long_reply_body(sequence)
+    if action == "set-comment":
+        bridge.call("setComposer", author=LONG_AUTHOR, body=comment)
+        status = wait_for(
+            bridge,
+            lambda current: panel(current) is not None
+            and panel(current).get("composer", {}).get("author") == LONG_AUTHOR
+            and panel(current).get("composer", {}).get("body") == comment,
+            f"desktop-long comment composer {sequence}",
+        )
+        thread_id = None
+    elif action == "publish-comment":
+        require_long_composer(bridge.call("status"), comment)
+        bridge.call("publish")
+        status = wait_for(
+            bridge,
+            lambda current: visible_entry(current, body=comment, author=LONG_AUTHOR),
+            f"desktop-long published comment {sequence}",
+        )
+        thread_id = visible_thread_id(status, body=comment, author=LONG_AUTHOR)
+        if thread_id is None:
+            raise AssertionError(f"desktop-long comment {sequence} has no visible thread")
+    else:
+        status = wait_for(
+            bridge,
+            lambda current: visible_thread_id(current, body=comment, author=LONG_AUTHOR)
+            is not None,
+            f"desktop-long parent comment {sequence}",
+        )
+        thread_id = visible_thread_id(status, body=comment, author=LONG_AUTHOR)
+        if thread_id is None:
+            raise AssertionError(f"desktop-long parent {sequence} has no thread identity")
+        require_long_composer(status)
+        if action == "set-reply":
+            bridge.call("setReply", threadId=thread_id, body=reply)
+            status = wait_for(
+                bridge,
+                lambda current: panel(current) is not None
+                and panel(current).get("error") is None,
+                f"desktop-long reply composer {sequence}",
+            )
+        else:
+            bridge.call("publishReply", threadId=thread_id)
+            status = wait_for(
+                bridge,
+                lambda current: visible_entry(current, body=reply, author=LONG_AUTHOR),
+                f"desktop-long published reply {sequence}",
+            )
+    return {
+        "schemaVersion": "mana.familiar.native-e2e-ui/v1",
+        "status": "passed",
+        "mode": "desktop-long-action",
+        "inputMode": "flutter-widget-bridge",
+        "uiActionCount": 1,
+        "longAction": action,
+        "sequence": sequence,
+        "threadId": thread_id,
+        "commentSha256": hashlib.sha256(comment.encode("utf-8")).hexdigest(),
+        "replySha256": hashlib.sha256(reply.encode("utf-8")).hexdigest(),
+        "document": payload_free_document_status(status),
+        "target": {
+            "artifactId": target.get("artifactId"),
+            "artifactRevision": target.get("artifactRevision"),
+            "sectionId": target.get("sectionId"),
+        },
+    }
+
+
+def fault_publish_error(args: argparse.Namespace, bridge: Bridge) -> dict[str, object]:
+    if args.fault_kind not in {"ack-loss", "draft-write-failure"}:
+        raise AssertionError("fault publish error needs ack-loss or draft-write-failure")
+    label = args.fault_label
+    if not label:
+        raise AssertionError("fault publish error needs a label")
+    target = mounted_panel_target(bridge)
+    body = fault_body(args.fault_kind, label)
+    bridge.call("setComposer", author=LONG_AUTHOR, body=body)
+    bridge.call("publish")
+    status = wait_for(
+        bridge,
+        lambda current: panel(current) is not None
+        and panel(current).get("composer", {}).get("body") == body
+        and panel(current).get("error") is not None,
+        f"the visible {args.fault_kind} error {label}",
+    )
+    expected_count = 1 if args.fault_kind == "ack-loss" else 0
+    actual_count = canonical_body_count(args.mana_root, args.project_root, target, body=body)
+    if actual_count != expected_count:
+        raise AssertionError(
+            f"{args.fault_kind} {label} canonical count is {actual_count}, expected {expected_count}"
+        )
+    return {
+        "schemaVersion": "mana.familiar.native-e2e-ui/v1",
+        "status": "passed",
+        "mode": "fault-publish-error",
+        "inputMode": "flutter-widget-bridge",
+        "uiActionCount": 2,
+        "faultKind": args.fault_kind,
+        "faultLabel": label,
+        "bodySha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+        "canonicalCountBeforeRecovery": actual_count,
+        "document": payload_free_document_status(status),
+    }
+
+
+def fault_retry_publish(args: argparse.Namespace, bridge: Bridge) -> dict[str, object]:
+    if args.fault_kind not in {"ack-loss", "draft-write-failure"}:
+        raise AssertionError("fault retry publish needs ack-loss or draft-write-failure")
+    label = args.fault_label
+    if not label:
+        raise AssertionError("fault retry publish needs a label")
+    target = mounted_panel_target(bridge)
+    body = fault_body(args.fault_kind, label)
+    bridge.call("retryFeedback")
+    bridge.call("publish")
+    status = wait_for(
+        bridge,
+        lambda current: panel(current) is not None
+        and panel(current).get("composer", {}).get("body") != body
+        and panel(current).get("error") is None,
+        f"the recovered {args.fault_kind} publish {label}",
+    )
+    actual_count = canonical_body_count(args.mana_root, args.project_root, target, body=body)
+    if actual_count != 1:
+        raise AssertionError(
+            f"recovered {args.fault_kind} {label} canonical count is {actual_count}, expected 1"
+        )
+    return {
+        "schemaVersion": "mana.familiar.native-e2e-ui/v1",
+        "status": "passed",
+        "mode": "fault-retry-publish",
+        "inputMode": "flutter-widget-bridge",
+        "uiActionCount": 2,
+        "faultKind": args.fault_kind,
+        "faultLabel": label,
+        "bodySha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+        "canonicalCountAfterRecovery": actual_count,
+        "document": payload_free_document_status(status),
+    }
+
+
+def fault_read_failure(args: argparse.Namespace, bridge: Bridge) -> dict[str, object]:
+    if not args.fault_label:
+        raise AssertionError("read fault needs a label")
+    bridge.call("retryFeedback")
+    status = wait_for(
+        bridge,
+        lambda current: panel(current) is not None and panel(current).get("error") is not None,
+        f"the visible read failure {args.fault_label}",
+    )
+    return {
+        "schemaVersion": "mana.familiar.native-e2e-ui/v1",
+        "status": "passed",
+        "mode": "fault-read-failure",
+        "inputMode": "flutter-widget-bridge",
+        "uiActionCount": 1,
+        "faultKind": "read-failure",
+        "faultLabel": args.fault_label,
+        "document": payload_free_document_status(status),
+    }
+
+
+def fault_retry_load(args: argparse.Namespace, bridge: Bridge) -> dict[str, object]:
+    if not args.fault_label:
+        raise AssertionError("read recovery needs a label")
+    bridge.call("retryFeedback")
+    status = wait_for(
+        bridge,
+        lambda current: panel(current) is not None and panel(current).get("error") is None,
+        f"the recovered read {args.fault_label}",
+    )
+    return {
+        "schemaVersion": "mana.familiar.native-e2e-ui/v1",
+        "status": "passed",
+        "mode": "fault-retry-load",
+        "inputMode": "flutter-widget-bridge",
+        "uiActionCount": 1,
+        "faultKind": "read-failure",
+        "faultLabel": args.fault_label,
+        "document": payload_free_document_status(status),
+    }
+
+
+def fault_delayed_publish(args: argparse.Namespace, bridge: Bridge) -> dict[str, object]:
+    label = args.fault_label
+    if not label:
+        raise AssertionError("delayed publish needs a label")
+    target = mounted_panel_target(bridge)
+    body = fault_body("delayed-create", label)
+    bridge.call("setComposer", author=LONG_AUTHOR, body=body)
+    started = time.monotonic()
+    bridge.call("publish")
+    elapsed = round((time.monotonic() - started) * 1000)
+    minimum = args.minimum_delay_milliseconds or 1
+    if elapsed < minimum:
+        raise AssertionError(
+            f"delayed create {label} returned in {elapsed} ms, expected at least {minimum} ms"
+        )
+    status = wait_for(
+        bridge,
+        lambda current: visible_entry(current, body=body, author=LONG_AUTHOR)
+        and panel(current).get("error") is None,
+        f"the delayed create {label}",
+    )
+    actual_count = canonical_body_count(args.mana_root, args.project_root, target, body=body)
+    if actual_count != 1:
+        raise AssertionError(f"delayed create {label} did not persist exactly once")
+    return {
+        "schemaVersion": "mana.familiar.native-e2e-ui/v1",
+        "status": "passed",
+        "mode": "fault-delayed-publish",
+        "inputMode": "flutter-widget-bridge",
+        "uiActionCount": 2,
+        "faultKind": "delayed-create",
+        "faultLabel": label,
+        "elapsedMilliseconds": elapsed,
+        "bodySha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+        "canonicalCountAfterRecovery": actual_count,
+        "document": payload_free_document_status(status),
+    }
+
+
+def fault_conflict(args: argparse.Namespace, bridge: Bridge) -> dict[str, object]:
+    if not args.other_port or not args.other_token or not args.fault_label:
+        raise AssertionError("conflict fault needs the other mounted window and a label")
+    other = Bridge(args.other_port, args.other_token)
+    primary_target = mounted_panel_target(bridge)
+    mounted_panel_target(other)
+    status = wait_for(
+        bridge,
+        lambda current: any(
+            isinstance(thread, dict)
+            and isinstance(thread.get("id"), str)
+            for thread in panel(current).get("threads", [])
+        ),
+        "a visible thread for the conflict fault",
+    )
+    thread_id = next(
+        thread["id"]
+        for thread in panel(status).get("threads", [])
+        if isinstance(thread, dict)
+        and isinstance(thread.get("id"), str)
+    )
+    first_body = fault_body("conflict-primary", args.fault_label)
+    second_body = fault_body("conflict-secondary", args.fault_label)
+    bridge.call("setReply", threadId=thread_id, body=first_body)
+    other.call("setReply", threadId=thread_id, body=second_body)
+    other.call("publishReply", threadId=thread_id)
+    wait_for(
+        other,
+        lambda current: visible_entry(
+            current, body=second_body, author=LONG_AUTHOR,
+            link_states=("valid", "changed"),
+        ),
+        f"the accepted conflicting reply {args.fault_label}",
+    )
+    bridge.call("publishReply", threadId=thread_id)
+    wait_for(
+        bridge,
+        lambda current: panel(current) is not None and panel(current).get("error") is not None,
+        f"the visible conflict {args.fault_label}",
+    )
+    bridge.call("retryFeedback")
+    bridge.call("publishReply", threadId=thread_id)
+    status = wait_for(
+        bridge,
+        lambda current: visible_entry(
+            current, body=first_body, author=LONG_AUTHOR,
+            link_states=("valid", "changed"),
+        )
+        and panel(current).get("error") is None,
+        f"the recovered conflict reply {args.fault_label}",
+    )
+    counts = [
+        canonical_body_count(args.mana_root, args.project_root, primary_target, body=body)
+        for body in (first_body, second_body)
+    ]
+    if counts != [1, 1]:
+        raise AssertionError(f"conflict {args.fault_label} did not recover exactly once: {counts}")
+    return {
+        "schemaVersion": "mana.familiar.native-e2e-ui/v1",
+        "status": "passed",
+        "mode": "fault-conflict",
+        "inputMode": "flutter-widget-bridge",
+        "uiActionCount": 6,
+        "faultKind": "conflict",
+        "faultLabel": args.fault_label,
+        "threadId": thread_id,
+        "canonicalCountsAfterRecovery": counts,
+        "document": payload_free_document_status(status),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, required=True)
@@ -490,17 +923,45 @@ def main() -> int:
             "observe-comment-draft",
             "publish-decision",
             "observe-generation",
+            "prepare-long-panel",
+            "desktop-long-action",
+            "fault-publish-error",
+            "fault-retry-publish",
+            "fault-read-failure",
+            "fault-retry-load",
+            "fault-delayed-publish",
+            "fault-conflict",
         ),
         required=True,
     )
     parser.add_argument("--draft-label", choices=("A", "B"))
     parser.add_argument("--expected-revision")
+    parser.add_argument(
+        "--long-action",
+        choices=("set-comment", "publish-comment", "set-reply", "publish-reply"),
+    )
+    parser.add_argument("--sequence", type=int)
+    parser.add_argument(
+        "--fault-kind", choices=("ack-loss", "draft-write-failure")
+    )
+    parser.add_argument("--fault-label")
+    parser.add_argument("--other-port", type=int)
+    parser.add_argument("--other-token")
+    parser.add_argument("--minimum-delay-milliseconds", type=int)
     parser.add_argument("--evidence", type=Path, required=True)
     args = parser.parse_args()
     if args.mode == "observe-generation" and not args.expected_revision:
         parser.error("--expected-revision is required for observe-generation")
     if args.mode in ("prepare-comment-draft", "observe-comment-draft") and not args.draft_label:
         parser.error("draft modes require --draft-label")
+    if args.mode == "desktop-long-action" and (
+        args.long_action is None or args.sequence is None
+    ):
+        parser.error("desktop-long-action requires --long-action and --sequence")
+    if args.mode in ("fault-publish-error", "fault-retry-publish") and (
+        args.fault_kind is None or args.fault_label is None
+    ):
+        parser.error("publish fault modes require --fault-kind and --fault-label")
     try:
         bridge = Bridge(args.port, args.token)
         result = (
@@ -513,6 +974,22 @@ def main() -> int:
             else publish_decision(args, bridge)
             if args.mode == "publish-decision"
             else observe_generation(args, bridge)
+            if args.mode == "observe-generation"
+            else prepare_long_panel(args, bridge)
+            if args.mode == "prepare-long-panel"
+            else long_action(args, bridge)
+            if args.mode == "desktop-long-action"
+            else fault_publish_error(args, bridge)
+            if args.mode == "fault-publish-error"
+            else fault_retry_publish(args, bridge)
+            if args.mode == "fault-retry-publish"
+            else fault_read_failure(args, bridge)
+            if args.mode == "fault-read-failure"
+            else fault_retry_load(args, bridge)
+            if args.mode == "fault-retry-load"
+            else fault_delayed_publish(args, bridge)
+            if args.mode == "fault-delayed-publish"
+            else fault_conflict(args, bridge)
         )
         write_json(args.evidence, result)
         return 0

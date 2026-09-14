@@ -27,7 +27,14 @@ void main() {
   test(
     'dispatches only registered widget callbacks on the loopback bridge',
     () async {
-      final bridge = NativeE2EBridge(port: 0, token: 'test-token');
+      var settledFrames = 0;
+      final bridge = NativeE2EBridge(
+        port: 0,
+        token: 'test-token',
+        settleFrame: () async {
+          settledFrames++;
+        },
+      );
       await bridge.start();
       addTearDown(bridge.dispose);
       String? selected;
@@ -38,6 +45,7 @@ void main() {
       String? replyThread;
       String? replyBody;
       var replyPublished = 0;
+      var retried = 0;
       var decisionOpened = false;
       String? decisionId;
       String? optionId;
@@ -70,6 +78,7 @@ void main() {
             expect(threadId, replyThread);
             replyPublished++;
           },
+          retry: () async => retried++,
         ),
       );
       bridge.registerArtifact(
@@ -95,6 +104,7 @@ void main() {
         'action': 'status',
       });
       expect(status.statusCode, HttpStatus.ok);
+      expect(settledFrames, 1);
       expect(status.body['document'], isNotNull);
       expect(status.body['panel'], isNotNull);
 
@@ -122,6 +132,7 @@ void main() {
         'action': 'publishReply',
         'threadId': 'thread-1',
       });
+      await request(bridge, {'token': 'test-token', 'action': 'retryFeedback'});
       await request(bridge, {'token': 'test-token', 'action': 'openDecision'});
       await request(bridge, {
         'token': 'test-token',
@@ -144,6 +155,7 @@ void main() {
       expect(replyThread, 'thread-1');
       expect(replyBody, 'Confirmed');
       expect(replyPublished, 1);
+      expect(retried, 1);
       expect(decisionOpened, isTrue);
       expect(decisionId, 'decision-1');
       expect(optionId, 'option-a');
