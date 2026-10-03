@@ -88,6 +88,8 @@ class M08PerformanceProbe {
     if (_disposed) return;
     _decodes.add({
       'response_bytes': trace.responseBytes,
+      if (trace.pipelineElapsed != null)
+        'pipeline_elapsed_us': trace.pipelineElapsed!.inMicroseconds,
       'offloaded': trace.offloaded,
       'elapsed_us': trace.elapsed.inMicroseconds,
     });
@@ -98,6 +100,8 @@ class M08PerformanceProbe {
     if (_disposed) return;
     _projections.add({
       'schema': trace.schema,
+      if (trace.failureCode != null) 'failure_code': trace.failureCode,
+      'offloaded': trace.offloaded,
       'elapsed_us': trace.elapsed.inMicroseconds,
     });
     _publish();

@@ -61,6 +61,7 @@ void main() {
     });
     expect((report['typed_projection'] as List).single, {
       'schema': inspectSemanticSnapshotSchema,
+      'offloaded': false,
       'elapsed_us': 200,
     });
     expect(raw, isNot(contains(directory.path)));

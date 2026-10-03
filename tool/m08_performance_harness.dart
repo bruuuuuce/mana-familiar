@@ -111,12 +111,19 @@ Future<void> main(List<String> arguments) async {
         {
           'response_bytes': trace.responseBytes,
           'offloaded': trace.offloaded,
+          if (trace.pipelineElapsed != null)
+            'pipeline_elapsed_us': trace.pipelineElapsed!.inMicroseconds,
           'elapsed_us': trace.elapsed.inMicroseconds,
         },
     ],
     'typed_projection': [
       for (final trace in projections)
-        {'schema': trace.schema, 'elapsed_us': trace.elapsed.inMicroseconds},
+        {
+          'schema': trace.schema,
+          if (trace.failureCode != null) 'failure_code': trace.failureCode,
+          'offloaded': trace.offloaded,
+          'elapsed_us': trace.elapsed.inMicroseconds,
+        },
     ],
     'privacy': {
       'source_content': false,

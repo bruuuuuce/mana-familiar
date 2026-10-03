@@ -111,3 +111,12 @@ record in `<output-stem>.diagnostics` beside the requested report. Failure
 records retain lifecycle milestones, operation timing/exit metadata, frame
 counters, and RSS before temporary fixtures are removed. A timeout or a failed
 budget remains a failed run; partial evidence does not close the native gate.
+
+
+Large responses now parse JSON and validate the typed model in the same
+isolate. Both decode and projection records explicitly identify worker work;
+`pipeline_elapsed_us` retains the total decode/projection latency including
+isolate startup and transfer. The 16 ms UI budget applies to work performed on
+the UI isolate. Worker durations remain visible, while Overview latency and
+native frame budgets continue to cover end-to-end behavior. Historical reports
+without a projection offload flag retain their original classification.

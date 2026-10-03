@@ -890,10 +890,12 @@ class ManaInspectDecodeTrace {
     required this.responseBytes,
     required this.offloaded,
     required this.elapsed,
+    this.pipelineElapsed,
   });
   final int responseBytes;
   final bool offloaded;
   final Duration elapsed;
+  final Duration? pipelineElapsed;
 }
 
 typedef ManaInspectDecodeTraceCallback =
@@ -920,10 +922,14 @@ class ManaInspectProjectionTrace {
   const ManaInspectProjectionTrace({
     required this.schema,
     required this.elapsed,
+    this.offloaded = false,
+    this.failureCode,
   });
 
   final String schema;
   final Duration elapsed;
+  final bool offloaded;
+  final String? failureCode;
 }
 
 typedef ManaInspectProjectionTraceCallback =
@@ -1130,23 +1136,64 @@ class ManaInspectClient {
     String? target,
     List<String> options = const [],
   }) async {
-    final response = await _response(
-      operation,
-      target: target,
-      options: options,
-    );
-    final stopwatch = Stopwatch()..start();
+    final raw = await _response(operation, target: target, options: options);
+    final bytes = utf8.encode(raw).length;
+    final offloaded = bytes >= decodeOffloadThresholdBytes;
+    final snapshotSchema = snapshotPath == null ? null : schema;
+    final pipeline = Stopwatch()..start();
     try {
-      return decode(response);
-    } finally {
-      stopwatch.stop();
+      // Transfer only the raw string into the worker. Returning the completed
+      // typed model avoids decoding a large Map and validating it on the UI.
+      final result = offloaded
+          ? await Isolate.run(
+              () => _decodeAndProject(raw, decode, snapshotSchema),
+            )
+          : _decodeAndProject(raw, decode, snapshotSchema);
+      onDecodeTrace?.call(
+        ManaInspectDecodeTrace(
+          responseBytes: bytes,
+          offloaded: offloaded,
+          elapsed: result.decodeElapsed,
+          pipelineElapsed: pipeline.elapsed,
+        ),
+      );
       onProjectionTrace?.call(
-        ManaInspectProjectionTrace(schema: schema, elapsed: stopwatch.elapsed),
+        ManaInspectProjectionTrace(
+          schema: schema,
+          elapsed: result.projectionElapsed,
+          offloaded: offloaded,
+        ),
+      );
+      return result.value;
+    } on ManaInspectException catch (error) {
+      onProjectionTrace?.call(
+        ManaInspectProjectionTrace(
+          schema: schema,
+          elapsed: pipeline.elapsed,
+          offloaded: offloaded,
+          failureCode: switch (error.message) {
+            'Semantic snapshot revision is malformed.' =>
+              'invalid_snapshot_revision',
+            'Semantic snapshot inventory metrics are malformed.' =>
+              'invalid_snapshot_inventory',
+            'Semantic snapshot work items are unavailable.' =>
+              'missing_work_items',
+            'Semantic snapshot eagerly returned the raw catalog.' =>
+              'unexpected_catalog',
+            _ => error.kind.name,
+          },
+        ),
+      );
+      rethrow;
+    } on FormatException catch (error) {
+      throw ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        error.message,
       );
     }
   }
 
-  Future<Map<String, dynamic>> _response(
+  Future<String> _response(
     String operation, {
     String? target,
     List<String> options = const [],
@@ -1199,10 +1246,10 @@ class ManaInspectClient {
         'Exit ${result.exitCode}: ${_safeProcessDiagnostic(result.stderr, projectRoot)}',
       );
     }
-    return _decodeResponse(raw);
+    return raw;
   }
 
-  Future<Map<String, dynamic>> _readSnapshot(String operation) async {
+  Future<String> _readSnapshot(String operation) async {
     try {
       final file = await SafePathPolicy.resolveDirectFile(snapshotPath!);
       if (file == null) {
@@ -1211,51 +1258,9 @@ class ManaInspectClient {
           'Inspect snapshot does not exist.',
         );
       }
-      final decoded = await _decodeResponse(await file.readAsString());
-      final expected = switch (operation) {
-        'project' => inspectProjectSchema,
-        'artifacts' => inspectArtifactsSchema,
-        'artifact' => inspectArtifactSchema,
-        'source' => inspectSourceSchema,
-        'work-items' => inspectWorkItemsSchema,
-        'work-item' => inspectWorkItemSchema,
-        'project-context' => inspectProjectContextSchema,
-        'activity' => inspectActivitySchema,
-        'semantic-snapshot' => inspectSemanticSnapshotSchema,
-        _ => null,
-      };
-      if (decoded['schema'] == expected) return decoded;
-      throw ManaInspectException(
-        ManaInspectFailure.partialCatalog,
-        'Snapshot contains ${decoded['schema']}, not the requested $operation response.',
-      );
+      return file.readAsString();
     } on SafePathException catch (error) {
       throw ManaInspectException(ManaInspectFailure.transport, error.message);
-    }
-  }
-
-  Future<Map<String, dynamic>> _decodeResponse(String raw) async {
-    final stopwatch = Stopwatch()..start();
-    final bytes = utf8.encode(raw).length;
-    final offloaded = bytes >= decodeOffloadThresholdBytes;
-    try {
-      return offloaded
-          ? await Isolate.run(() => _decodePayload(raw))
-          : _decode(raw);
-    } on FormatException catch (error) {
-      throw ManaInspectException(
-        ManaInspectFailure.malformedJson,
-        error.message,
-      );
-    } finally {
-      stopwatch.stop();
-      onDecodeTrace?.call(
-        ManaInspectDecodeTrace(
-          responseBytes: bytes,
-          offloaded: offloaded,
-          elapsed: stopwatch.elapsed,
-        ),
-      );
     }
   }
 }
@@ -1654,14 +1659,28 @@ void _requireSchema(Map<String, dynamic> json, String supported) {
   }
 }
 
-Map<String, dynamic> _decode(String raw) {
-  try {
-    final value = jsonDecode(raw);
-    if (value is Map<String, dynamic>) return value;
-    throw const FormatException('response is not an object');
-  } on FormatException catch (error) {
-    throw ManaInspectException(ManaInspectFailure.malformedJson, error.message);
+({T value, Duration decodeElapsed, Duration projectionElapsed})
+_decodeAndProject<T>(
+  String raw,
+  T Function(Map<String, dynamic>) project,
+  String? snapshotSchema,
+) {
+  final stopwatch = Stopwatch()..start();
+  final json = _decodePayload(raw);
+  final decodeElapsed = stopwatch.elapsed;
+  if (snapshotSchema != null && json['schema'] != snapshotSchema) {
+    throw ManaInspectException(
+      ManaInspectFailure.partialCatalog,
+      'Snapshot contains ${json['schema']}, not the requested $snapshotSchema response.',
+    );
   }
+  stopwatch.reset();
+  final value = project(json);
+  return (
+    value: value,
+    decodeElapsed: decodeElapsed,
+    projectionElapsed: stopwatch.elapsed,
+  );
 }
 
 Map<String, dynamic> _decodePayload(String raw) {
