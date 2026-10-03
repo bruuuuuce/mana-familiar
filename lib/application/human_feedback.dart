@@ -765,7 +765,7 @@ Future<HumanFeedbackCommandResult> _runProcess(
   try {
     exitCode = await process.exitCode.timeout(timeout);
   } on TimeoutException {
-    process.kill();
+    await terminateManaProcess(process);
     try {
       await Future.wait<Object>([
         process.exitCode,
@@ -773,7 +773,7 @@ Future<HumanFeedbackCommandResult> _runProcess(
         stderr,
       ]).timeout(const Duration(seconds: 2));
     } on TimeoutException {
-      process.kill(ProcessSignal.sigkill);
+      await terminateManaProcess(process, force: true);
     }
     throw TimeoutException(
       'Mana human-feedback did not respond within ${timeout.inSeconds} seconds.',
