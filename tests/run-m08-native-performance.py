@@ -165,9 +165,14 @@ def run_once(
                 "milestones_us": current.get("milestones_us", {}),
                 "operations": [
                     {key: value for key, value in item.items() if key in {
-                        "operation", "start_us", "completed_us", "elapsed_us", "exit_code"
+                        "operation", "start_us", "completed_us", "elapsed_us", "exit_code", "response_bytes"
                     }}
                     for item in current.get("processes", [])
+                ],
+                "typed_projection": [
+                    {key: value for key, value in item.items() if key in {
+                        "schema", "elapsed_us", "offloaded", "failure_code"
+                    }} for item in current.get("typed_projection", [])
                 ],
                 "frames": current.get("frames", {}),
                 "rss_bytes": current.get("rss_bytes", {}),
@@ -225,7 +230,8 @@ def run_once(
             (item["elapsed_us"] for item in decode if item["offloaded"]),
             default=0,
         ),
-        "max_typed_projection_us": max((item["elapsed_us"] for item in projections), default=0),
+        "max_typed_projection_us": max((item["elapsed_us"] for item in projections if not item.get("offloaded", False)), default=0),
+        "max_offloaded_projection_us": max((item["elapsed_us"] for item in projections if item.get("offloaded", False)), default=0),
     }
 
 

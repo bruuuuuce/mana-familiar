@@ -13,6 +13,34 @@ Map<String, dynamic> fixture(String name) =>
         as Map<String, dynamic>;
 
 void main() {
+  test('offloaded projection still rejects unsafe artifact paths', () async {
+    final root = await Directory.systemTemp.createTemp('semantic-worker-');
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}/mana').writeAsString('');
+    final unsafe = fixture('work-items.json');
+    (((unsafe['work_items'] as List).first as Map)['artifacts'] as List)
+            .first['path'] =
+        '.mana/features/PROJ-24342/../secret';
+    final client = ManaInspectClient(
+      projectRoot: root.path,
+      decodeOffloadThresholdBytes: 1,
+      run: (_, _, {workingDirectory}) async =>
+          ProcessResult(0, 0, jsonEncode(unsafe), ''),
+    );
+    await expectLater(
+      client.workItems(
+        capabilities: ManaInspectProject.fromJson(_projectWithSemantic),
+      ),
+      throwsA(
+        isA<ManaInspectException>().having(
+          (error) => error.kind,
+          'kind',
+          ManaInspectFailure.malformedJson,
+        ),
+      ),
+    );
+  });
+
   test('offloads JSON decode above the measured payload threshold', () async {
     final root = await Directory.systemTemp.createTemp('semantic-decode-');
     addTearDown(() => root.delete(recursive: true));
@@ -36,6 +64,7 @@ void main() {
     expect(traces.single.responseBytes, greaterThan(4096));
     expect(traces.single.elapsed, isNot(Duration.zero));
     expect(projections.single.schema, inspectProjectSchema);
+    expect(projections.single.offloaded, isTrue);
     expect(projections.single.elapsed, isNot(Duration.zero));
     expect(processes.single.operation, 'project');
     expect(processes.single.responseBytes, greaterThan(4096));

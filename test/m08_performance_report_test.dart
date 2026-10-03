@@ -92,8 +92,29 @@ void main() {
         for (final run
             in (fixture[phase] as List).cast<Map<String, dynamic>>()) {
           final decode = (run['decode'] as List).cast<Map<String, dynamic>>();
+          final projections = (run['typed_projection'] as List)
+              .cast<Map<String, dynamic>>();
           expect(
-            decode.map((trace) => trace['elapsed_us'] as int),
+            projections.map((trace) => trace['failure_code']),
+            everyElement(isNull),
+          );
+          expect(
+            projections
+                .where((trace) => trace['offloaded'] != true)
+                .map((trace) => trace['elapsed_us'] as int),
+            everyElement(lessThanOrEqualTo(16000)),
+          );
+          if (Platform.environment.containsKey('M08_PERFORMANCE_REPORT') ||
+              projections.any((trace) => trace.containsKey('offloaded'))) {
+            expect(
+              projections.map((trace) => trace['offloaded']),
+              decode.map((trace) => trace['offloaded']),
+            );
+          }
+          expect(
+            decode
+                .where((trace) => trace['offloaded'] != true)
+                .map((trace) => trace['elapsed_us'] as int),
             everyElement(lessThanOrEqualTo(16000)),
           );
         }
