@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -13,6 +14,27 @@ Map<String, dynamic> fixture(String name) =>
         as Map<String, dynamic>;
 
 void main() {
+  test('offload does not capture observer timers or client state', () async {
+    final root = await Directory.systemTemp.createTemp('semantic-observer-');
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}/mana').writeAsString('');
+    final timer = Timer.periodic(const Duration(minutes: 1), (_) {});
+    addTearDown(timer.cancel);
+    var observed = false;
+    final client = ManaInspectClient(
+      projectRoot: root.path,
+      decodeOffloadThresholdBytes: 1,
+      onDecodeTrace: (_) => observed = timer.isActive,
+      run: (_, _, {workingDirectory}) async =>
+          ProcessResult(0, 0, jsonEncode(_projectWithSemantic), ''),
+    );
+    expect(
+      (await client.project()).projectId,
+      _projectWithSemantic['project_id'],
+    );
+    expect(observed, isTrue);
+  });
+
   test('offloaded projection still rejects unsafe artifact paths', () async {
     final root = await Directory.systemTemp.createTemp('semantic-worker-');
     addTearDown(() => root.delete(recursive: true));

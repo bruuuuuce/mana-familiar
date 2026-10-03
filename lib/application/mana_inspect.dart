@@ -1147,9 +1147,7 @@ class ManaInspectClient {
       // Transfer only the raw string into the worker. Returning the completed
       // typed model avoids decoding a large Map and validating it on the UI.
       final result = offloaded
-          ? await Isolate.run(
-              () => _decodeAndProject(raw, decode, snapshotSchema),
-            )
+          ? await _offloadProjection(raw, decode, snapshotSchema)
           : _decodeAndProject(raw, decode, snapshotSchema);
       onDecodeTrace?.call(
         ManaInspectDecodeTrace(
@@ -1669,6 +1667,15 @@ void _requireSchema(Map<String, dynamic> json, String supported) {
     );
   }
 }
+
+// Keep the isolate closure in a top-level scope: it must never capture the
+// client, its UI observers, timers, or process handles.
+Future<({T value, Duration decodeElapsed, Duration projectionElapsed})>
+_offloadProjection<T>(
+  String raw,
+  T Function(Map<String, dynamic>) project,
+  String? snapshotSchema,
+) => Isolate.run(() => _decodeAndProject(raw, project, snapshotSchema));
 
 ({T value, Duration decodeElapsed, Duration projectionElapsed})
 _decodeAndProject<T>(
