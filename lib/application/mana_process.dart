@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -77,6 +78,27 @@ Future<ProcessResult> runManaProcess(
     streams[0],
     streams[1],
   );
+}
+
+/// Git Bash may keep a native producer in a separate Windows child process.
+/// Terminate the whole owned tree so a timeout cannot leave it reading files.
+Future<void> terminateManaProcess(Process process, {bool force = false}) async {
+  if (Platform.isWindows) {
+    try {
+      final result = await Process.run('taskkill.exe', [
+        '/PID',
+        '${process.pid}',
+        '/T',
+        '/F',
+      ]).timeout(const Duration(seconds: 2));
+      if (result.exitCode == 0) return;
+    } on ProcessException {
+      // Fall back if the Windows cleanup command is unavailable.
+    } on TimeoutException {
+      // Cleanup must remain bounded even when the OS command stalls.
+    }
+  }
+  process.kill(force ? ProcessSignal.sigkill : ProcessSignal.sigterm);
 }
 
 String _gitBash() {

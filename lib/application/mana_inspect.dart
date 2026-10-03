@@ -1847,7 +1847,7 @@ Future<ProcessResult> _runInspectProcess(
   try {
     exitCode = await process.exitCode.timeout(timeout);
   } on TimeoutException {
-    process.kill(ProcessSignal.sigterm);
+    await terminateManaProcess(process);
     try {
       await Future.wait<Object?>([
         process.exitCode,
@@ -1855,7 +1855,7 @@ Future<ProcessResult> _runInspectProcess(
         stderr,
       ]).timeout(const Duration(seconds: 2));
     } on TimeoutException {
-      process.kill(ProcessSignal.sigkill);
+      await terminateManaProcess(process, force: true);
     }
     throw ProcessException(
       executable,
