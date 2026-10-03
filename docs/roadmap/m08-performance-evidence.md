@@ -96,8 +96,8 @@ optional operation starts.
 Run `python3 tool/check_mana_producer.py --mana-root ../mana` before building
 or measuring. The preflight prints the producer Git revision and rejects a
 checkout missing the M08 generator, semantic schema, Inspect, Knowledge, or
-review-inbox entry points. Hosted jobs use Mana `develop`; the producer PR
-must therefore land before the Familiar consumer jobs can pass.
+review-inbox entry points. Hosted jobs pin the compatible M08/C03 producer revision and print its Git SHA.
+The producer changes remain subject to their own GitHub validation before merge.
 
 Windows requires Git Bash and Python on PATH alongside the Flutter Windows
 build toolchain. Familiar launches shell producers with Git Bash and Python
