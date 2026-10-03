@@ -104,6 +104,33 @@ void main() {
     directory.deleteSync(recursive: true);
   });
 
+  test('retries the last milestone without another observation', () async {
+    final directory = Directory.systemTemp.createTempSync('m08-last-retry-');
+    final probe = M08PerformanceProbe(directory.path);
+    addTearDown(() {
+      probe.dispose();
+      directory.deleteSync(recursive: true);
+    });
+    directory.deleteSync(recursive: true);
+    probe.mark('refresh_visible_route');
+    directory.createSync();
+    final target = File('${directory.path}/flutter-performance.json');
+    final deadline = DateTime.now().add(const Duration(seconds: 2));
+    while (!target.existsSync() && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    final report =
+        jsonDecode(target.readAsStringSync()) as Map<String, dynamic>;
+    expect(
+      (report['milestones_us'] as Map).keys,
+      contains('refresh_visible_route'),
+    );
+    expect(
+      (report['diagnostics'] as Map)['publication_failures'],
+      greaterThanOrEqualTo(1),
+    );
+  });
+
   test(
     'Windows report reader cannot interrupt model observations',
     () async {
@@ -157,7 +184,10 @@ void main() {
         contains('first_meaningful_overview'),
       );
       expect((report['typed_projection'] as List), hasLength(1));
-      expect((report['diagnostics'] as Map)['publication_failures'], 2);
+      expect(
+        (report['diagnostics'] as Map)['publication_failures'],
+        greaterThanOrEqualTo(2),
+      );
     },
     skip: !Platform.isWindows,
   );

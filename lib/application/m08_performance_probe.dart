@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
@@ -46,6 +47,8 @@ class M08PerformanceProbe {
   var _maxTotalUs = 0;
   var _maximumRss = 0;
   var _publicationFailures = 0;
+  var _publicationRetryAttempts = 0;
+  Timer? _publicationRetry;
   var _disposed = false;
 
   void mark(String milestone) {
@@ -147,7 +150,10 @@ class M08PerformanceProbe {
     _publish();
   }
 
-  void _publish() {
+  void _publish({bool retry = false}) {
+    _publicationRetry?.cancel();
+    _publicationRetry = null;
+    if (!retry) _publicationRetryAttempts = 0;
     final loadingShell = _milestones['project_loading_shell'];
     final meaningful = _milestones['first_meaningful_overview'];
     final criticalWindowFrames = loadingShell == null || meaningful == null
@@ -256,6 +262,15 @@ class M08PerformanceProbe {
       // Keep all measurements in memory and retry on the next publication.
       // Observing performance must never turn a successful producer/model
       // operation into a fallback, nor prevent a lifecycle milestone.
+      // The final unchanged-model refresh may request no more frames, so it
+      // must get its own bounded retry rather than wait for another observer.
+      if (_publicationRetryAttempts < 8) {
+        _publicationRetryAttempts++;
+        _publicationRetry = Timer(
+          const Duration(milliseconds: 33),
+          () => _publish(retry: true),
+        );
+      }
     }
   }
 }
