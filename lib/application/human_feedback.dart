@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'mana_process.dart';
+
 /// Producer-owned identity for a document contribution.  A path or heading is
 /// intentionally never used as the identity: both may change on regeneration.
 class HumanFeedbackTarget {
@@ -228,6 +230,9 @@ typedef HumanFeedbackCommandRunner =
       String request,
     );
 
+typedef HumanFeedbackProcessStarter =
+    Future<Process> Function(String executable, List<String> arguments);
+
 /// Calls the explicit Mana command through structured arguments and JSON on
 /// stdin. It never derives paths from a rendered Markdown payload.
 class ManaHumanFeedbackRepository implements HumanFeedbackRepository {
@@ -236,10 +241,16 @@ class ManaHumanFeedbackRepository implements HumanFeedbackRepository {
     this.manaRoot,
     this.commandTimeout = const Duration(seconds: 30),
     HumanFeedbackCommandRunner? run,
+    HumanFeedbackProcessStarter? startProcess,
   }) : _run =
            run ??
-           ((executable, arguments, request) =>
-               _runProcess(executable, arguments, request, commandTimeout));
+           ((executable, arguments, request) => _runProcess(
+             executable,
+             arguments,
+             request,
+             commandTimeout,
+             startProcess: startProcess,
+           ));
 
   final String projectRoot;
   final String? manaRoot;
@@ -738,23 +749,36 @@ Future<HumanFeedbackCommandResult> _runProcess(
   String executable,
   List<String> arguments,
   String request,
-  Duration timeout,
-) async {
-  final process = await Process.start(executable, arguments, runInShell: false);
+  Duration timeout, {
+  HumanFeedbackProcessStarter? startProcess,
+}) async {
+  final process =
+      await (startProcess ??
+          (executable, arguments) =>
+              startManaProcess(executable, arguments))(executable, arguments);
   process.stdin
     ..write(request)
     ..close();
   final stdout = process.stdout.transform(utf8.decoder).join();
   final stderr = process.stderr.transform(utf8.decoder).join();
-  final exitCode = await process.exitCode.timeout(
-    timeout,
-    onTimeout: () {
-      process.kill();
-      throw TimeoutException(
-        'Mana human-feedback did not respond within ${timeout.inSeconds} seconds.',
-      );
-    },
-  );
+  int exitCode;
+  try {
+    exitCode = await process.exitCode.timeout(timeout);
+  } on TimeoutException {
+    process.kill();
+    try {
+      await Future.wait<Object>([
+        process.exitCode,
+        stdout,
+        stderr,
+      ]).timeout(const Duration(seconds: 2));
+    } on TimeoutException {
+      process.kill(ProcessSignal.sigkill);
+    }
+    throw TimeoutException(
+      'Mana human-feedback did not respond within ${timeout.inSeconds} seconds.',
+    );
+  }
   final result = await Future.wait([stdout, stderr]);
   return HumanFeedbackCommandResult(
     stdout: result[0],

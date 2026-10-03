@@ -149,6 +149,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) widget.performanceMilestone?.call(milestone);
     });
+    // An async refresh can complete while the current frame is finishing.
+    // A post-frame callback alone does not request the next frame.
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   @override

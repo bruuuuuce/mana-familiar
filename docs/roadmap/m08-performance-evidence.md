@@ -90,3 +90,24 @@ exceeds Mana's bounded snapshot budget. The report records this as an explicit
 supporting error rather than treating an omitted projection as success. The
 initial Overview remains route-minimal and completes before any fallback or
 optional operation starts.
+
+## Producer prerequisites and Windows transport
+
+Run `python3 tool/check_mana_producer.py --mana-root ../mana` before building
+or measuring. The preflight prints the producer Git revision and rejects a
+checkout missing the M08 generator, semantic schema, Inspect, Knowledge, or
+review-inbox entry points. Hosted jobs use Mana `develop`; the producer PR
+must therefore land before the Familiar consumer jobs can pass.
+
+Windows requires Git Bash and Python on PATH alongside the Flutter Windows
+build toolchain. Familiar launches shell producers with Git Bash and Python
+producers with Python, preserving separate literal arguments and UTF-8 output.
+Relative producer and harness paths are resolved before entering fixture
+working directories. Timeout regression tests use real Dart child processes
+on both platforms and verify their termination.
+
+Native matrix runs retain each completed sample and a payload-free failure
+record in `<output-stem>.diagnostics` beside the requested report. Failure
+records retain lifecycle milestones, operation timing/exit metadata, frame
+counters, and RSS before temporary fixtures are removed. A timeout or a failed
+budget remains a failed run; partial evidence does not close the native gate.
