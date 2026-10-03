@@ -100,6 +100,7 @@ void main() {
       containsAll(['project_loading_shell', 'first_meaningful_overview']),
     );
     expect((report['typed_projection'] as List).single['elapsed_us'], 200);
+    expect((report['diagnostics'] as Map)['publication_failures'], 2);
     directory.deleteSync(recursive: true);
   });
 
@@ -152,6 +153,7 @@ void main() {
         contains('first_meaningful_overview'),
       );
       expect((report['typed_projection'] as List), hasLength(1));
+      expect((report['diagnostics'] as Map)['publication_failures'], 2);
     },
     skip: !Platform.isWindows,
   );

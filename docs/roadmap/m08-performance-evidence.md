@@ -120,3 +120,9 @@ isolate startup and transfer. The 16 ms UI budget applies to work performed on
 the UI isolate. Worker durations remain visible, while Overview latency and
 native frame budgets continue to cover end-to-end behavior. Historical reports
 without a projection offload flag retain their original classification.
+
+Windows readers can temporarily deny replacement of the native probe report.
+The probe retains observations in memory and retries on the next publication;
+`diagnostics.publication_failures` records those failures. Diagnostic I/O cannot
+turn a successful model load into a fallback. The native collection deadline
+and every performance budget remain enforced.

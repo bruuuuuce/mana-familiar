@@ -174,6 +174,7 @@ def run_once(
                         "schema", "elapsed_us", "offloaded", "failure_code"
                     }} for item in current.get("typed_projection", [])
                 ],
+                "probe_publication_failures": current.get("diagnostics", {}).get("publication_failures", 0),
                 "frames": current.get("frames", {}),
                 "rss_bytes": current.get("rss_bytes", {}),
                 "process_to_window_presented_us": window.get("process_to_window_presented_us"),
@@ -220,6 +221,7 @@ def run_once(
             "max_total_us": frames["max_total_us"],
         },
         "maximum_observed_rss_bytes": flutter["rss_bytes"]["maximum_observed"],
+        "probe_publication_failures": flutter.get("diagnostics", {}).get("publication_failures", 0),
         "processes": processes,
         "refresh_processes": processes[initial_process_count:],
         "max_ui_isolate_decode_us": max(
