@@ -14,6 +14,7 @@ required = (
     'scripts/mana-inspect.sh',
     'scripts/mana-knowledge.py',
     'scripts/mana-review-inbox.py',
+    'scripts/mana-human-feedback.sh',
     'contracts/mana-inspect/v1/schemas/semantic-snapshot.schema.json',
 )
 missing = [name for name in required if not (root / name).is_file()]
@@ -22,6 +23,6 @@ print(json.dumps({'schema': 'mana-familiar.m08.producer-prerequisites/v1',
                   'revision': revision.stdout.strip() if revision.returncode == 0 else None,
                   'missing': missing}))
 if missing:
-    raise SystemExit('M08 producer prerequisites missing: integrate the Mana producer PR into develop before rerunning client CI.')
+    raise SystemExit('M08/C03 producer prerequisites missing: integrate the Mana producer PRs into develop before rerunning client CI.')
 if revision.returncode:
     raise SystemExit('Cannot identify the checked-out Mana producer revision.')

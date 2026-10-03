@@ -907,12 +907,14 @@ class ManaInspectProcessTrace {
     required this.elapsed,
     required this.responseBytes,
     required this.exitCode,
+    this.transportErrorCode,
   });
 
   final String operation;
   final Duration elapsed;
   final int responseBytes;
   final int exitCode;
+  final int? transportErrorCode;
 }
 
 typedef ManaInspectProcessTraceCallback =
@@ -1227,6 +1229,15 @@ class ManaInspectClient {
     try {
       result = await _run(executable, arguments, workingDirectory: projectRoot);
     } on ProcessException catch (error) {
+      onProcessTrace?.call(
+        ManaInspectProcessTrace(
+          operation: operation,
+          elapsed: stopwatch.elapsed,
+          responseBytes: 0,
+          exitCode: -1,
+          transportErrorCode: error.errorCode,
+        ),
+      );
       throw ManaInspectException(ManaInspectFailure.transport, error.message);
     } finally {
       stopwatch.stop();
@@ -1821,6 +1832,10 @@ Future<ProcessResult> _runInspectProcess(
   );
   final stdout = _collectBounded(process.stdout, 16 * 1024 * 1024);
   final stderr = _collectBounded(process.stderr, 8 * 1024);
+  // Inspect receives its request in argv and never consumes stdin. Close the
+  // unused pipe promptly, including on Windows where open pipe handles can
+  // outlive the child. Exit status/output still report producer failures.
+  unawaited(process.stdin.close().catchError((Object _) {}));
   int exitCode;
   try {
     exitCode = await process.exitCode.timeout(timeout);

@@ -165,7 +165,7 @@ def run_once(
                 "milestones_us": current.get("milestones_us", {}),
                 "operations": [
                     {key: value for key, value in item.items() if key in {
-                        "operation", "start_us", "completed_us", "elapsed_us", "exit_code", "response_bytes"
+                        "operation", "start_us", "completed_us", "elapsed_us", "exit_code", "response_bytes", "transport_error_code"
                     }}
                     for item in current.get("processes", [])
                 ],
