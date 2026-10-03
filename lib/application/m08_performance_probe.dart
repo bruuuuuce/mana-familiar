@@ -45,6 +45,7 @@ class M08PerformanceProbe {
   var _maxRasterUs = 0;
   var _maxTotalUs = 0;
   var _maximumRss = 0;
+  var _publicationFailures = 0;
   var _disposed = false;
 
   void mark(String milestone) {
@@ -226,6 +227,7 @@ class M08PerformanceProbe {
       'processes': _processes,
       'decode': _decodes,
       'typed_projection': _projections,
+      'diagnostics': {'publication_failures': _publicationFailures},
       'privacy': {
         'source_content': false,
         'absolute_paths': false,
@@ -249,6 +251,7 @@ class M08PerformanceProbe {
         temporary.renameSync(target.path);
       }
     } on FileSystemException {
+      _publicationFailures++;
       // A Windows reader can briefly deny replacement/deletion of the report.
       // Keep all measurements in memory and retry on the next publication.
       // Observing performance must never turn a successful producer/model
