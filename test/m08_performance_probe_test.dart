@@ -110,15 +110,19 @@ void main() {
       final directory = Directory.systemTemp.createTempSync('m08-lock-');
       final probe = M08PerformanceProbe(directory.path);
       final target = File('${directory.path}/flutter-performance.json');
+      final release = File('${directory.path}/release-lock');
       final locker = await Process.start(
         'powershell.exe',
         [
           '-NoProfile',
           '-NonInteractive',
           '-Command',
-          r"$file=[IO.File]::Open($env:M08_LOCK_FILE,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read); [Console]::WriteLine('ready'); [Console]::ReadLine() | Out-Null; $file.Dispose()",
+          r"$file=[IO.File]::Open($env:M08_LOCK_FILE,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read); [Console]::WriteLine('ready'); while (![IO.File]::Exists($env:M08_RELEASE_FILE)) { Start-Sleep -Milliseconds 20 }; $file.Dispose()",
         ],
-        environment: {'M08_LOCK_FILE': target.path},
+        environment: {
+          'M08_LOCK_FILE': target.path,
+          'M08_RELEASE_FILE': release.path,
+        },
       );
       addTearDown(() async {
         locker.kill();
@@ -142,9 +146,9 @@ void main() {
         ),
         returnsNormally,
       );
-      locker.stdin.writeln('release');
+      await release.writeAsString('release');
       await locker.stdin.close();
-      expect(await locker.exitCode, 0);
+      expect(await locker.exitCode.timeout(const Duration(seconds: 2)), 0);
       probe.mark('optional_surfaces_settled');
       final report =
           jsonDecode(target.readAsStringSync()) as Map<String, dynamic>;
