@@ -1,0 +1,118 @@
+name: M08 Performance
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 4 * * 3'
+
+jobs:
+  producer-large:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: mana-familiar
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mana-familiar
+      - uses: actions/checkout@v4
+        with:
+          repository: bruuuuuce/mana
+          # Compatible M08 + C03 producer; reproducible across both platforms.
+          ref: 779aa8d9ff16ea5861fccbe7b6295d26c0ec6b46
+          path: mana
+      - name: Verify M08 producer prerequisites
+        run: python3 tool/check_mana_producer.py --mana-root ../mana
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build release harnesses
+        run: |
+          mkdir -p build/m08-performance
+          dart compile exe tool/m08_performance_harness.dart -o build/m08-performance/harness
+          dart compile exe tool/run_m08_performance_matrix.dart -o build/m08-performance/matrix
+      - name: Run large and hostile-large producer matrix
+        run: |
+          build/m08-performance/matrix \
+            --mana-root ../mana \
+            --harness build/m08-performance/harness \
+            --output build/m08-performance/large-report.json \
+            --classes large,hostile-large \
+            --cold-runs 5 \
+            --warm-runs 5
+      - name: Validate producer budgets
+        env:
+          M08_PERFORMANCE_REPORT: build/m08-performance/large-report.json
+          M08_PERFORMANCE_CLASSES: large,hostile-large
+        run: >-
+          flutter test test/m08_performance_report_test.dart
+          --plain-name 'release performance matrix preserves C04 evidence and budgets'
+      - name: Upload producer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m08-large-producer-performance
+          path: mana-familiar/build/m08-performance/large-report.json
+          if-no-files-found: error
+
+  native-large:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: macos
+            app: build/macos/Build/Products/Release/Mana Familiar.app/Contents/MacOS/Mana Familiar
+            artifact: macos
+          - os: windows-2022
+            platform: windows
+            app: build/windows/x64/runner/Release/mana_familiar.exe
+            artifact: windows
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: mana-familiar
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mana-familiar
+      - uses: actions/checkout@v4
+        with:
+          repository: bruuuuuce/mana
+          # Compatible M08 + C03 producer; reproducible across both platforms.
+          ref: 779aa8d9ff16ea5861fccbe7b6295d26c0ec6b46
+          path: mana
+      - name: Verify M08 producer prerequisites
+        run: python3 tool/check_mana_producer.py --mana-root ../mana
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build ${{ matrix.platform }} --release
+      - name: Run native large matrix
+        run: >-
+          python3 tests/run-m08-native-performance.py
+          --app "${{ matrix.app }}"
+          --mana-root ../mana
+          --output build/m08-native-${{ matrix.artifact }}.json
+          --fixture-class large
+          --cold-runs 5
+          --warm-runs 5
+      - name: Validate native budgets
+        env:
+          M08_NATIVE_PERFORMANCE_REPORT: build/m08-native-${{ matrix.artifact }}.json
+        run: >-
+          flutter test test/m08_performance_report_test.dart
+          --plain-name 'native release matrix proves frame and memory budgets'
+      - name: Upload native evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m08-native-${{ matrix.artifact }}-performance
+          path: mana-familiar/build/m08-native-${{ matrix.artifact }}.json
+          if-no-files-found: error

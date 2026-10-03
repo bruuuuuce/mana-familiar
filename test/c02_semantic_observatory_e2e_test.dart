@@ -22,9 +22,11 @@ void main() {
         manaRoot: manaRoot!,
       );
       final repository = ManaSemanticRepository(client);
-      final model = await repository.refresh();
+      var model = await repository.refresh();
 
       expect(model.mode, ManaSemanticMode.fullSemantic);
+      expect(model.catalog, isNull);
+      model = await repository.loadCatalog();
       expect(model.catalog, isNotNull);
       expect(
         model.workItems!.workItems.map((item) => item.type),

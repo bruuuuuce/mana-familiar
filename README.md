@@ -59,6 +59,15 @@ identifies a compatible Mana producer; it need not be a sibling checkout.
 Supplying both flags is the portable invocation. Familiar negotiates the exact
 inspect schemas before loading optional surfaces.
 
+### Human Feedback su artefatti pubblicati
+
+Quando Mana dichiara la capability `human-feedback`, Familiar può inviare
+commenti, risposte e decisioni Story Start con richieste JSON strutturate. Il
+client conserva soltanto bozze locali: non scrive Markdown generato né file
+`.mana` direttamente. Mana convalida identità, revisione e alternative prima
+di pubblicare il contributo canonico. Una decisione registrata richiede una
+successiva ripianificazione; non approva né avvia un provider.
+
 ### Open a saved Mana inspect response
 
 For standalone demos or testing of the project read model, open a saved
@@ -98,6 +107,14 @@ flutter test
 flutter build macos --debug
 ```
 
+For synthetic task screenshots and optional agentic visual evaluation of
+readability, information hierarchy, and misleading states, see
+[UX evaluation](docs/agentic-ux-testing.md).
+
+The optional UX evaluator is informational only. Its local synthetic captures do
+not open projects, call a model unless explicitly requested, or turn an agent
+judgment into a CI gate.
+
 ### Cross-repository zero-token harness
 
 With a compatible local Mana checkout, C01 creates a temporary project,
@@ -126,6 +143,92 @@ Run the producer/consumer contract gate from the Mana checkout with:
 scripts/verify-inspect-consumer-compatibility.sh \
   --familiar-root /path/to/mana-familiar
 ```
+
+### C03 Human Feedback
+
+C03 esercita il producer reale su progetti temporanei, con replay idempotente,
+reply concorrenti sulla stessa revisione, conflitti e letture canoniche. Non
+usa provider o rete. Il report, la trace e le revisioni dei due checkout sono
+salvati in `build/feedback-audit/run-*`.
+
+```sh
+python3 tests/run-c03-human-feedback-harness.py \
+  --mana-root /path/to/mana --profile smoke
+```
+
+Il profilo `stress` è intenzionalmente separato (5 seed × 2.000 azioni) e ha
+un workflow schedulato/manuale. I profili `desktop-long` (300 mutazioni
+distribuite su 20 minuti) e `soak` (1.000 su 60 minuti) hanno gate producer
+dedicati e reportano esplicitamente il proprio scope. Nessuno dei tre
+sostituisce l'E2E nativo desktop: finestre, riavvii, rigenerazioni e metriche
+UI richiedono prove native dedicate.
+
+Su macOS il gate nativo delle finestre e del lifecycle è:
+
+```sh
+flutter build macos --debug
+tests/run-macos-native-window-e2e.sh
+```
+
+Avvia due processi Runner reali, verifica il focus in entrambe le direzioni,
+poi esercita Close e Quit tramite menu nativi per PID. Richiede il permesso Accessibility per il
+terminale che esegue il comando; conserva l'evidenza in `build/native-e2e/`.
+Familiar non avvia un provider dalla UI. Le rigenerazioni restano esterne e
+il gate nativo verifica che finestre, focus e lifecycle rimangano corretti
+mentre Mana pubblica nuove versioni; l'asserzione semantica sui collegamenti
+dei target resta nel contratto Mana/Familiar.
+
+Con il checkout Mana compatibile, lo smoke nativo pubblica V0/R1–R5 con la
+pipeline Story Start v2 e conserva un manifest completo. In debug usa un
+bridge loopback limitato ai widget montati per selezionare un target stabile,
+pubblicare un commento e una risposta e verificarne il thread nella UI e in
+Mana; non è un input Accessibility. Focus e lifecycle restano azioni macOS
+reali. Dopo ogni rigenerazione il gate attende la revisione esatta esposta dal
+documento UI:
+
+```sh
+python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana
+```
+
+La registrazione di una decisione ha uno smoke separato, perché la scelta
+impone una ripianificazione governata: la fixture deterministica R1–R5 non
+proietta ancora la scelta nel successivo decision register. Il profilo verifica
+la scelta nella form UI e nello stato canonico Mana, oltre a focus e lifecycle,
+senza presentare una rigenerazione successiva come prova valida:
+
+```sh
+python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile decision-smoke
+```
+
+Le bozze hanno a loro volta uno smoke separato su due Runner e sullo stesso
+target: crea testi distinti, invia Close e Quit entro il debounce di 350 ms,
+poi ne verifica il ripristino locale senza scritture canoniche involontarie.
+
+```sh
+python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile draft-smoke
+```
+
+Il profilo nativo `desktop-long` distribuisce 300 azioni dei widget montati
+su almeno 20 minuti, alternando commenti e risposte tra due finestre reali.
+Intercala cinque rigenerazioni Story Start, tre restart nativi con nuovi PID
+e dieci episodi recuperabili: due conflitti, due ACK persi, due letture
+fallite, due scritture bozza fallite e due risposte ritardate. Le evidenze
+verificano errori e recuperi dalla UI e i conteggi canonici Mana; sondaggi e
+attese non sono contati come azioni. I fault usano un wrapper nel solo
+progetto sintetico e lo storage delle bozze resta temporaneo.
+
+```sh
+python3 tests/run-native-feedback-e2e.py --mana-root /path/to/mana --profile desktop-long
+```
+
+Il report finale richiede tutte le 300 azioni, R1–R5, tre restart e dieci
+recuperi; evidenza incompleta produce failure. Il bridge resta
+`flutter-widget-bridge`, con focus e Close/Quit macOS reali tramite i menu
+File e applicazione indirizzati per PID, senza tasti globali. Questa prova
+legge i widget dopo un frame di build/layout richiesto dal bridge anche nelle
+finestre occluse; non certifica la consegna dei pixel a schermo. La build
+debug non certifica le soglie prestazionali delle build profile, il gate
+Windows, il soak o la decisione seguita da ripianificazione governata.
 
 ## Contract
 

@@ -19,14 +19,18 @@ class ManaDirectoryWatcher implements ManaWorkspaceWatcher {
   ManaDirectoryWatcher({
     required this.projectRoot,
     this.debounce = const Duration(milliseconds: 750),
+    this.ignoredRelativePrefixes = const ['.cache', '.derived', '.indexes'],
   });
 
   final String projectRoot;
   final Duration debounce;
+  final List<String> ignoredRelativePrefixes;
   final StreamController<ManaWorkspaceWatchEvent> _events =
       StreamController.broadcast();
   StreamSubscription<FileSystemEvent>? _subscription;
   Timer? _debounceTimer;
+  Timer? _rootEventTimer;
+  DateTime? _lastIgnoredEvent;
   var _started = false;
   var _disposed = false;
 
@@ -60,10 +64,39 @@ class ManaDirectoryWatcher implements ManaWorkspaceWatcher {
   void _onFileSystemEvent(FileSystemEvent event) {
     final manaPath = _manaDirectory.absolute.path;
     final eventPath = event.path;
-    if (eventPath != manaPath &&
-        !eventPath.startsWith('$manaPath${Platform.pathSeparator}')) {
+    if (eventPath == manaPath) {
+      final ignoredAt = _lastIgnoredEvent;
+      if (ignoredAt != null &&
+          DateTime.now().difference(ignoredAt) <
+              const Duration(milliseconds: 100)) {
+        return;
+      }
+      // FSEvents may report an atomic rename only at the watched root, while
+      // a derived write may report both root and descendant. Delay the
+      // ambiguous event briefly so a precise ignored descendant can suppress
+      // it without losing a root-only canonical publication.
+      _rootEventTimer?.cancel();
+      _rootEventTimer = Timer(const Duration(milliseconds: 100), _schedule);
       return;
     }
+    if (!eventPath.startsWith('$manaPath${Platform.pathSeparator}')) {
+      return;
+    }
+    final relative = eventPath
+        .substring(manaPath.length + 1)
+        .replaceAll(Platform.pathSeparator, '/');
+    if (ignoredRelativePrefixes.any(
+      (prefix) => relative == prefix || relative.startsWith('$prefix/'),
+    )) {
+      _lastIgnoredEvent = DateTime.now();
+      _rootEventTimer?.cancel();
+      return;
+    }
+    _rootEventTimer?.cancel();
+    _schedule();
+  }
+
+  void _schedule() {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(debounce, () {
       if (!_disposed) _events.add(ManaWorkspaceWatchEvent.changed);
@@ -78,6 +111,7 @@ class ManaDirectoryWatcher implements ManaWorkspaceWatcher {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    _rootEventTimer?.cancel();
     _debounceTimer?.cancel();
     await _subscription?.cancel();
     await _events.close();

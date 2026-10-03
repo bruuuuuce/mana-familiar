@@ -1,8 +1,17 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../application/explorer_config.dart';
 import '../application/mana_inspect.dart';
+import '../application/mana_knowledge.dart';
+import '../application/m08_performance_probe.dart';
+import '../application/mana_review_scheduler.dart';
+import '../application/human_feedback.dart';
+import '../application/semantic_navigation.dart';
 import '../native_project_window.dart';
+import '../native_e2e_bridge.dart';
 import '../presentation/explorer_page.dart';
 import '../presentation/project_observatory_page.dart';
 import '../presentation/project_welcome_page.dart';
@@ -13,10 +22,12 @@ class ManaFamiliarApp extends StatefulWidget {
     super.key,
     required this.config,
     required this.preferences,
+    this.performanceProbe,
   });
 
   final ExplorerConfig config;
   final ExplorerPreferences preferences;
+  final M08PerformanceProbe? performanceProbe;
 
   @override
   State<ManaFamiliarApp> createState() => _ManaFamiliarAppState();
@@ -25,6 +36,18 @@ class ManaFamiliarApp extends StatefulWidget {
 class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
   late String _projectRoot = widget.config.projectRoot;
   late bool _hasOpenProject = widget.config.hasExplicitProjectRoot;
+  late final HumanFeedbackDraftStore _feedbackDrafts = HumanFeedbackDraftStore(
+    Directory(
+      '${widget.preferences.storageRoot.path}${Platform.pathSeparator}human-feedback-drafts',
+    ),
+    sessionId: widget.config.windowSessionId ?? 'default',
+  );
+  late final NativeE2EBridge? _nativeE2E = widget.config.hasNativeE2EBridge
+      ? NativeE2EBridge(
+          port: widget.config.nativeE2EPort!,
+          token: widget.config.nativeE2EToken!,
+        )
+      : null;
 
   Future<void> _openProject(String projectRoot) async {
     await widget.preferences.rememberProjectRoot(projectRoot);
@@ -43,12 +66,35 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
     if (mounted) setState(() {});
   }
 
+  ObservatoryRoute? _initialRoute() {
+    final artifactId = widget.config.initialArtifactId;
+    if (artifactId == null || artifactId.isEmpty) return null;
+    return ObservatoryRoute(
+      destination: ObservatoryDestination.advanced,
+      advancedSection: AdvancedSection.artifacts,
+      artifactId: artifactId,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
+    NativeProjectWindow.installClosePreparation(_feedbackDrafts.flushAll);
+    final bridge = _nativeE2E;
+    if (bridge != null) unawaited(bridge.start());
     if (widget.config.hasExplicitProjectRoot) {
       NativeProjectWindow.presentProject(_projectRoot);
     }
+  }
+
+  @override
+  void dispose() {
+    // Persist pending local drafts before the app tree releases its panels.
+    _feedbackDrafts.dispose();
+    final bridge = _nativeE2E;
+    if (bridge != null) unawaited(bridge.dispose());
+    widget.performanceProbe?.dispose();
+    super.dispose();
   }
 
   @override
@@ -81,7 +127,34 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
                 projectRoot: _projectRoot,
                 manaRoot: widget.config.manaRoot,
                 snapshotPath: widget.config.inspectSnapshotPath,
+                onProcessTrace: widget.performanceProbe?.recordProcess,
+                onDecodeTrace: widget.performanceProbe?.recordDecode,
+                onProjectionTrace: widget.performanceProbe?.recordProjection,
               ),
+              performanceMilestone: widget.performanceProbe?.mark,
+              initialRoute: _initialRoute(),
+              feedback: widget.config.inspectSnapshotPath == null
+                  ? ManaHumanFeedbackRepository(
+                      projectRoot: _projectRoot,
+                      manaRoot: widget.config.manaRoot,
+                    )
+                  : null,
+              feedbackDrafts: widget.config.inspectSnapshotPath == null
+                  ? _feedbackDrafts
+                  : null,
+              nativeE2E: _nativeE2E,
+              knowledgeClient: widget.config.inspectSnapshotPath == null
+                  ? ManaKnowledgeClient(
+                      projectRoot: _projectRoot,
+                      manaRoot: widget.config.manaRoot,
+                    )
+                  : null,
+              reviewSchedulerClient: widget.config.inspectSnapshotPath == null
+                  ? ManaReviewSchedulerClient(
+                      projectRoot: _projectRoot,
+                      manaRoot: widget.config.manaRoot,
+                    )
+                  : null,
               knowledge: ExplorerPage(
                 store: JourneyStore(
                   widget.config.withProjectRoot(_projectRoot),

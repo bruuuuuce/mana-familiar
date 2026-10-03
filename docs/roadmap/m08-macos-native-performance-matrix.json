@@ -1,0 +1,936 @@
+{
+  "background_load_policy": "route-minimal initial semantic snapshot; supporting context and activity after first meaningful model; raw catalog route-only",
+  "cache_policy": {
+    "cold": "isolated empty MANA_CACHE_HOME per run",
+    "warm": "one priming run followed by repeated shared-cache runs"
+  },
+  "environment": {
+    "familiar_dirty": true,
+    "familiar_revision": "8e67f292a34610ad7bf3e1d9ad78259bf7fe1413",
+    "flutter": "3.44.8 (stable)",
+    "machine": "arm64",
+    "mana_dirty": true,
+    "mana_revision": "ac8531e7dd4b80f65b64c0f49543549d38429a4e",
+    "os": "macOS-26.6.2-arm64-arm-64bit",
+    "python": "3.10.9"
+  },
+  "fixture": {
+    "class": "large",
+    "digest": "sha256:4c866858b4f7be032b7f94d7a23246f711546a14420b0563bc2207ce2adea3b5",
+    "logical_counts": {
+      "artifacts": 10000,
+      "knowledge_documents": 2000,
+      "runtime_events": 50000,
+      "work_items": 500
+    }
+  },
+  "medians_us": {
+    "cold": {
+      "binding_to_first_frame_us": 23261,
+      "loading_shell_to_meaningful_overview_us": 1279614,
+      "max_offloaded_decode_us": 3486,
+      "max_typed_projection_us": 1390,
+      "max_ui_isolate_decode_us": 15,
+      "maximum_observed_rss_bytes": 161595392,
+      "native_window_us": 125345,
+      "optional_surfaces_settled_us": 2845269,
+      "project_to_loading_shell_us": 23602,
+      "workspace_refresh_us": 1603899
+    },
+    "warm": {
+      "binding_to_first_frame_us": 16474,
+      "loading_shell_to_meaningful_overview_us": 1226687,
+      "max_offloaded_decode_us": 3250,
+      "max_typed_projection_us": 1148,
+      "max_ui_isolate_decode_us": 14,
+      "maximum_observed_rss_bytes": 161021952,
+      "native_window_us": 106616,
+      "optional_surfaces_settled_us": 2692086,
+      "project_to_loading_shell_us": 16777,
+      "workspace_refresh_us": 1524820
+    }
+  },
+  "privacy": {
+    "absolute_paths": false,
+    "credentials": false,
+    "responses": false,
+    "source_content": false
+  },
+  "runs": {
+    "cold": [
+      {
+        "binding_to_first_frame_us": 23261,
+        "build_mode": "release",
+        "frames": {
+          "count": 159,
+          "critical_interval": {
+            "count": 1,
+            "max_total_us": 421,
+            "over_50ms": 0,
+            "producer_io_excluded_count": 152,
+            "raw_count": 153,
+            "raw_max_total_us": 16254
+          },
+          "max_total_us": 20580
+        },
+        "loading_shell_to_meaningful_overview_us": 1284435,
+        "max_offloaded_decode_us": 3841,
+        "max_typed_projection_us": 1670,
+        "max_ui_isolate_decode_us": 12,
+        "maximum_observed_rss_bytes": 161595392,
+        "native_window_us": 245956,
+        "optional_surfaces_settled_us": 2888436,
+        "processes": [
+          {
+            "completed_us": 74630,
+            "elapsed_us": 57557,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 17073
+          },
+          {
+            "completed_us": 1292380,
+            "elapsed_us": 1216397,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 411887,
+            "start_us": 75983
+          },
+          {
+            "completed_us": 2873538,
+            "elapsed_us": 1563855,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 1309683
+          },
+          {
+            "completed_us": 3784033,
+            "elapsed_us": 46040,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3737993
+          },
+          {
+            "completed_us": 5317608,
+            "elapsed_us": 1530385,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3787223
+          }
+        ],
+        "project_to_loading_shell_us": 23602,
+        "refresh_model_replaced": false,
+        "refresh_processes": [
+          {
+            "completed_us": 3784033,
+            "elapsed_us": 46040,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3737993
+          },
+          {
+            "completed_us": 5317608,
+            "elapsed_us": 1530385,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3787223
+          }
+        ],
+        "visible_route_populated_us": 1308714,
+        "workspace_refresh_us": 1585185
+      },
+      {
+        "binding_to_first_frame_us": 15991,
+        "build_mode": "release",
+        "frames": {
+          "count": 154,
+          "critical_interval": {
+            "count": 1,
+            "max_total_us": 403,
+            "over_50ms": 0,
+            "producer_io_excluded_count": 147,
+            "raw_count": 148,
+            "raw_max_total_us": 16897
+          },
+          "max_total_us": 17965
+        },
+        "loading_shell_to_meaningful_overview_us": 1238754,
+        "max_offloaded_decode_us": 3486,
+        "max_typed_projection_us": 1469,
+        "max_ui_isolate_decode_us": 15,
+        "maximum_observed_rss_bytes": 161218560,
+        "native_window_us": 106287,
+        "optional_surfaces_settled_us": 2777754,
+        "processes": [
+          {
+            "completed_us": 64252,
+            "elapsed_us": 52144,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 12108
+          },
+          {
+            "completed_us": 1240836,
+            "elapsed_us": 1175112,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 411887,
+            "start_us": 65724
+          },
+          {
+            "completed_us": 2768092,
+            "elapsed_us": 1511182,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 1256910
+          },
+          {
+            "completed_us": 3744499,
+            "elapsed_us": 109846,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3634653
+          },
+          {
+            "completed_us": 5298491,
+            "elapsed_us": 1550834,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3747657
+          }
+        ],
+        "project_to_loading_shell_us": 16307,
+        "refresh_model_replaced": false,
+        "refresh_processes": [
+          {
+            "completed_us": 3744499,
+            "elapsed_us": 109846,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3634653
+          },
+          {
+            "completed_us": 5298491,
+            "elapsed_us": 1550834,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3747657
+          }
+        ],
+        "visible_route_populated_us": 1255547,
+        "workspace_refresh_us": 1671291
+      },
+      {
+        "binding_to_first_frame_us": 25559,
+        "build_mode": "release",
+        "frames": {
+          "count": 59,
+          "critical_interval": {
+            "count": 0,
+            "max_total_us": 0,
+            "over_50ms": 0,
+            "producer_io_excluded_count": 55,
+            "raw_count": 55,
+            "raw_max_total_us": 51493
+          },
+          "max_total_us": 51493
+        },
+        "loading_shell_to_meaningful_overview_us": 31124522,
+        "max_offloaded_decode_us": 3172,
+        "max_typed_projection_us": 1390,
+        "max_ui_isolate_decode_us": 14,
+        "maximum_observed_rss_bytes": 161906688,
+        "native_window_us": 125345,
+        "optional_surfaces_settled_us": 34026631,
+        "processes": [
+          {
+            "completed_us": 73956,
+            "elapsed_us": 52505,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 21451
+          },
+          {
+            "completed_us": 1281202,
+            "elapsed_us": 1205794,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 411887,
+            "start_us": 75408
+          },
+          {
+            "completed_us": 32837628,
+            "elapsed_us": 1684136,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 31153492
+          },
+          {
+            "completed_us": 35019247,
+            "elapsed_us": 65599,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 34953648
+          },
+          {
+            "completed_us": 36551386,
+            "elapsed_us": 1529285,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 35022101
+          }
+        ],
+        "project_to_loading_shell_us": 25901,
+        "refresh_model_replaced": false,
+        "refresh_processes": [
+          {
+            "completed_us": 35019247,
+            "elapsed_us": 65599,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 34953648
+          },
+          {
+            "completed_us": 36551386,
+            "elapsed_us": 1529285,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 35022101
+          }
+        ],
+        "visible_route_populated_us": 31151864,
+        "workspace_refresh_us": 1603899
+      },
+      {
+        "binding_to_first_frame_us": 26239,
+        "build_mode": "release",
+        "frames": {
+          "count": 157,
+          "critical_interval": {
+            "count": 1,
+            "max_total_us": 1539,
+            "over_50ms": 0,
+            "producer_io_excluded_count": 151,
+            "raw_count": 152,
+            "raw_max_total_us": 11199
+          },
+          "max_total_us": 18268
+        },
+        "loading_shell_to_meaningful_overview_us": 1279614,
+        "max_offloaded_decode_us": 4205,
+        "max_typed_projection_us": 690,
+        "max_ui_isolate_decode_us": 15,
+        "maximum_observed_rss_bytes": 160399360,
+        "native_window_us": 130477,
+        "optional_surfaces_settled_us": 2845269,
+        "processes": [
+          {
+            "completed_us": 76286,
+            "elapsed_us": 54861,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 21425
+          },
+          {
+            "completed_us": 1292350,
+            "elapsed_us": 1214499,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 411887,
+            "start_us": 77851
+          },
+          {
+            "completed_us": 2829847,
+            "elapsed_us": 1521960,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 1307887
+          },
+          {
+            "completed_us": 3817592,
+            "elapsed_us": 87228,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3730364
+          },
+          {
+            "completed_us": 5329266,
+            "elapsed_us": 1508683,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3820583
+          }
+        ],
+        "project_to_loading_shell_us": 26658,
+        "refresh_model_replaced": false,
+        "refresh_processes": [
+          {
+            "completed_us": 3817592,
+            "elapsed_us": 87228,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3730364
+          },
+          {
+            "completed_us": 5329266,
+            "elapsed_us": 1508683,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3820583
+          }
+        ],
+        "visible_route_populated_us": 1306881,
+        "workspace_refresh_us": 1605568
+      },
+      {
+        "binding_to_first_frame_us": 16961,
+        "build_mode": "release",
+        "frames": {
+          "count": 154,
+          "critical_interval": {
+            "count": 0,
+            "max_total_us": 0,
+            "over_50ms": 0,
+            "producer_io_excluded_count": 148,
+            "raw_count": 148,
+            "raw_max_total_us": 15369
+          },
+          "max_total_us": 18069
+        },
+        "loading_shell_to_meaningful_overview_us": 1240565,
+        "max_offloaded_decode_us": 3379,
+        "max_typed_projection_us": 998,
+        "max_ui_isolate_decode_us": 16,
+        "maximum_observed_rss_bytes": 164888576,
+        "native_window_us": 106434,
+        "optional_surfaces_settled_us": 2722210,
+        "processes": [
+          {
+            "completed_us": 65596,
+            "elapsed_us": 52902,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 12694
+          },
+          {
+            "completed_us": 1249226,
+            "elapsed_us": 1182045,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 411887,
+            "start_us": 67181
+          },
+          {
+            "completed_us": 2709174,
+            "elapsed_us": 1449843,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 1259331
+          },
+          {
+            "completed_us": 3673201,
+            "elapsed_us": 67392,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3605809
+          },
+          {
+            "completed_us": 5132879,
+            "elapsed_us": 1457545,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3675334
+          }
+        ],
+        "project_to_loading_shell_us": 17340,
+        "refresh_model_replaced": false,
+        "refresh_processes": [
+          {
+            "completed_us": 3673201,
+            "elapsed_us": 67392,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3605809
+          },
+          {
+            "completed_us": 5132879,
+            "elapsed_us": 1457545,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3675334
+          }
+        ],
+        "visible_route_populated_us": 1258330,
+        "workspace_refresh_us": 1535086
+      }
+    ],
+    "warm": [
+      {
+        "binding_to_first_frame_us": 16474,
+        "build_mode": "release",
+        "frames": {
+          "count": 152,
+          "critical_interval": {
+            "count": 1,
+            "max_total_us": 1064,
+            "over_50ms": 0,
+            "producer_io_excluded_count": 145,
+            "raw_count": 146,
+            "raw_max_total_us": 14444
+          },
+          "max_total_us": 17099
+        },
+        "loading_shell_to_meaningful_overview_us": 1223443,
+        "max_offloaded_decode_us": 3023,
+        "max_typed_projection_us": 1539,
+        "max_ui_isolate_decode_us": 14,
+        "maximum_observed_rss_bytes": 156712960,
+        "native_window_us": 109618,
+        "optional_surfaces_settled_us": 2688002,
+        "processes": [
+          {
+            "completed_us": 61684,
+            "elapsed_us": 49256,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 12428
+          },
+          {
+            "completed_us": 1227002,
+            "elapsed_us": 1163569,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 411887,
+            "start_us": 63433
+          },
+          {
+            "completed_us": 2679505,
+            "elapsed_us": 1437839,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 1241666
+          },
+          {
+            "completed_us": 3640820,
+            "elapsed_us": 82429,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3558391
+          },
+          {
+            "completed_us": 5068699,
+            "elapsed_us": 1425123,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3643576
+          }
+        ],
+        "project_to_loading_shell_us": 16777,
+        "refresh_model_replaced": false,
+        "refresh_processes": [
+          {
+            "completed_us": 3640820,
+            "elapsed_us": 82429,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3558391
+          },
+          {
+            "completed_us": 5068699,
+            "elapsed_us": 1425123,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3643576
+          }
+        ],
+        "visible_route_populated_us": 1240706,
+        "workspace_refresh_us": 1518196
+      },
+      {
+        "binding_to_first_frame_us": 16288,
+        "build_mode": "release",
+        "frames": {
+          "count": 151,
+          "critical_interval": {
+            "count": 1,
+            "max_total_us": 2824,
+            "over_50ms": 0,
+            "producer_io_excluded_count": 144,
+            "raw_count": 145,
+            "raw_max_total_us": 10054
+          },
+          "max_total_us": 16963
+        },
+        "loading_shell_to_meaningful_overview_us": 1218386,
+        "max_offloaded_decode_us": 3250,
+        "max_typed_projection_us": 677,
+        "max_ui_isolate_decode_us": 14,
+        "maximum_observed_rss_bytes": 161021952,
+        "native_window_us": 93984,
+        "optional_surfaces_settled_us": 2692086,
+        "processes": [
+          {
+            "completed_us": 60450,
+            "elapsed_us": 48129,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 12321
+          },
+          {
+            "completed_us": 1224418,
+            "elapsed_us": 1162593,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 411887,
+            "start_us": 61825
+          },
+          {
+            "completed_us": 2680381,
+            "elapsed_us": 1443952,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 1236429
+          },
+          {
+            "completed_us": 3676361,
+            "elapsed_us": 92608,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3583753
+          },
+          {
+            "completed_us": 5127562,
+            "elapsed_us": 1448303,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3679259
+          }
+        ],
+        "project_to_loading_shell_us": 16620,
+        "refresh_model_replaced": false,
+        "refresh_processes": [
+          {
+            "completed_us": 3676361,
+            "elapsed_us": 92608,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3583753
+          },
+          {
+            "completed_us": 5127562,
+            "elapsed_us": 1448303,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3679259
+          }
+        ],
+        "visible_route_populated_us": 1235452,
+        "workspace_refresh_us": 1551248
+      },
+      {
+        "binding_to_first_frame_us": 22218,
+        "build_mode": "release",
+        "frames": {
+          "count": 157,
+          "critical_interval": {
+            "count": 0,
+            "max_total_us": 0,
+            "over_50ms": 0,
+            "producer_io_excluded_count": 151,
+            "raw_count": 151,
+            "raw_max_total_us": 10221
+          },
+          "max_total_us": 17175
+        },
+        "loading_shell_to_meaningful_overview_us": 1268510,
+        "max_offloaded_decode_us": 3441,
+        "max_typed_projection_us": 1495,
+        "max_ui_isolate_decode_us": 15,
+        "maximum_observed_rss_bytes": 166182912,
+        "native_window_us": 113376,
+        "optional_surfaces_settled_us": 2773147,
+        "processes": [
+          {
+            "completed_us": 71336,
+            "elapsed_us": 53198,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 18138
+          },
+          {
+            "completed_us": 1281629,
+            "elapsed_us": 1208501,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 411887,
+            "start_us": 73128
+          },
+          {
+            "completed_us": 2760404,
+            "elapsed_us": 1467856,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 1292548
+          },
+          {
+            "completed_us": 3760718,
+            "elapsed_us": 86975,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3673743
+          },
+          {
+            "completed_us": 5190378,
+            "elapsed_us": 1426106,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3764272
+          }
+        ],
+        "project_to_loading_shell_us": 22562,
+        "refresh_model_replaced": false,
+        "refresh_processes": [
+          {
+            "completed_us": 3760718,
+            "elapsed_us": 86975,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3673743
+          },
+          {
+            "completed_us": 5190378,
+            "elapsed_us": 1426106,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3764272
+          }
+        ],
+        "visible_route_populated_us": 1291515,
+        "workspace_refresh_us": 1524820
+      },
+      {
+        "binding_to_first_frame_us": 15626,
+        "build_mode": "release",
+        "frames": {
+          "count": 152,
+          "critical_interval": {
+            "count": 1,
+            "max_total_us": 2738,
+            "over_50ms": 0,
+            "producer_io_excluded_count": 145,
+            "raw_count": 146,
+            "raw_max_total_us": 11526
+          },
+          "max_total_us": 17256
+        },
+        "loading_shell_to_meaningful_overview_us": 1226687,
+        "max_offloaded_decode_us": 3068,
+        "max_typed_projection_us": 1148,
+        "max_ui_isolate_decode_us": 18,
+        "maximum_observed_rss_bytes": 160661504,
+        "native_window_us": 97860,
+        "optional_surfaces_settled_us": 2690296,
+        "processes": [
+          {
+            "completed_us": 60584,
+            "elapsed_us": 49020,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 11564
+          },
+          {
+            "completed_us": 1230960,
+            "elapsed_us": 1169017,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 411887,
+            "start_us": 61943
+          },
+          {
+            "completed_us": 2677467,
+            "elapsed_us": 1433347,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 1244120
+          },
+          {
+            "completed_us": 3651696,
+            "elapsed_us": 93900,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3557796
+          },
+          {
+            "completed_us": 5093720,
+            "elapsed_us": 1438428,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3655292
+          }
+        ],
+        "project_to_loading_shell_us": 15982,
+        "refresh_model_replaced": false,
+        "refresh_processes": [
+          {
+            "completed_us": 3651696,
+            "elapsed_us": 93900,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3557796
+          },
+          {
+            "completed_us": 5093720,
+            "elapsed_us": 1438428,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3655292
+          }
+        ],
+        "visible_route_populated_us": 1243173,
+        "workspace_refresh_us": 1543463
+      },
+      {
+        "binding_to_first_frame_us": 19460,
+        "build_mode": "release",
+        "frames": {
+          "count": 155,
+          "critical_interval": {
+            "count": 1,
+            "max_total_us": 462,
+            "over_50ms": 0,
+            "producer_io_excluded_count": 148,
+            "raw_count": 149,
+            "raw_max_total_us": 10219
+          },
+          "max_total_us": 15598
+        },
+        "loading_shell_to_meaningful_overview_us": 1250630,
+        "max_offloaded_decode_us": 3417,
+        "max_typed_projection_us": 1105,
+        "max_ui_isolate_decode_us": 13,
+        "maximum_observed_rss_bytes": 164265984,
+        "native_window_us": 106616,
+        "optional_surfaces_settled_us": 2761059,
+        "processes": [
+          {
+            "completed_us": 65459,
+            "elapsed_us": 50130,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 15329
+          },
+          {
+            "completed_us": 1256308,
+            "elapsed_us": 1189326,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 411887,
+            "start_us": 66982
+          },
+          {
+            "completed_us": 2745270,
+            "elapsed_us": 1473304,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 1271966
+          },
+          {
+            "completed_us": 3698140,
+            "elapsed_us": 59705,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3638435
+          },
+          {
+            "completed_us": 5145793,
+            "elapsed_us": 1445558,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3700235
+          }
+        ],
+        "project_to_loading_shell_us": 19768,
+        "refresh_model_replaced": false,
+        "refresh_processes": [
+          {
+            "completed_us": 3698140,
+            "elapsed_us": 59705,
+            "exit_code": 0,
+            "operation": "project",
+            "response_bytes": 1140,
+            "start_us": 3638435
+          },
+          {
+            "completed_us": 5145793,
+            "elapsed_us": 1445558,
+            "exit_code": 0,
+            "operation": "semantic-snapshot",
+            "response_bytes": 412890,
+            "start_us": 3700235
+          }
+        ],
+        "visible_route_populated_us": 1270911,
+        "workspace_refresh_us": 1515243
+      }
+    ]
+  },
+  "schema": "mana-familiar.c04.native-performance-matrix/v1"
+}

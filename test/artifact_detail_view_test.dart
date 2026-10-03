@@ -1,9 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mana_familiar/application/human_feedback.dart';
 import 'package:mana_familiar/mana_inspect.dart';
 import 'package:mana_familiar/presentation/artifact_detail_view.dart';
 
 void main() {
+  testWidgets('mounts the bounded reader below technical metadata after load', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 180));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final summary = ManaInspectArtifactSummary.fromJson({
+      ..._summaryJson('markdown'),
+      'path': '.mana/note.md',
+      'content_type': 'text/markdown',
+    });
+    Widget view({ManaInspectArtifactDetail? detail, bool loading = false}) =>
+        MaterialApp(
+          home: ArtifactDetailView(
+            artifact: summary,
+            detail: detail,
+            loading: loading,
+          ),
+        );
+    await tester.pumpWidget(view(loading: true));
+    await tester.pump();
+    await tester.pumpWidget(
+      view(
+        detail: ManaInspectArtifactDetail.fromJson({
+          'schema': inspectArtifactSchema,
+          'artifact': summary.raw,
+          'payload': {
+            'included': true,
+            'kind': 'text',
+            'value': '# Note\n\nBody',
+          },
+          'relations': [],
+          'diagnostics': List.generate(
+            30,
+            (index) => 'Producer diagnostic $index',
+          ),
+        }),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(MarkdownNoteView, skipOffstage: false), findsOneWidget);
+  });
+
   testWidgets('shows verification facts without calling it approval', (
     tester,
   ) async {
@@ -210,6 +253,42 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'offers the producer-backed decision form from the declared artifact type',
+    (tester) async {
+      final summary = {
+        ..._summaryJson('implementation-plan'),
+        'artifact_id':
+            'file:.mana/features/P/planning/story-start-implementation-plan-v2.json',
+        'path':
+            '.mana/features/P/planning/story-start-implementation-plan-v2.json',
+        'schema': '/vmana.story-start.implementation-plan/v2',
+      };
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ArtifactDetailView(
+            artifact: ManaInspectArtifactSummary.fromJson(summary),
+            feedback: ManaHumanFeedbackRepository(projectRoot: '/project'),
+            detail: ManaInspectArtifactDetail.fromJson({
+              'schema': inspectArtifactSchema,
+              'artifact': summary,
+              // Inspect deliberately withholds the full plan. The summary
+              // type is still producer-declared and the panel will negotiate
+              // its actual choices before it writes anything.
+              'payload': {'schema': 'unknown', 'included': false},
+              'relations': [],
+            }),
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('record-story-start-decision')),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 ManaInspectArtifactSummary _summary(String kind) =>

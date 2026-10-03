@@ -1,10 +1,17 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../application/artifact_renderer.dart';
 import '../application/mana_inspect.dart';
 import '../application/operational_model.dart';
 import '../application/governance_model.dart';
+import '../application/human_feedback.dart';
+import '../native_e2e_bridge.dart';
 import '../source_workspace.dart';
+import 'human_feedback_panel.dart';
 import 'markdown_diagram.dart';
 import 'source_reference_view.dart';
 
@@ -24,6 +31,11 @@ class ArtifactDetailView extends StatelessWidget {
     this.projectRoot,
     this.documentPresentation = false,
     this.contextualTitle,
+    this.feedback,
+    this.feedbackDrafts,
+    this.feedbackProjectId,
+    this.feedbackRefresh,
+    this.nativeE2E,
   });
 
   final ManaInspectArtifactSummary artifact;
@@ -40,6 +52,11 @@ class ArtifactDetailView extends StatelessWidget {
   /// the reading experience.
   final bool documentPresentation;
   final String? contextualTitle;
+  final HumanFeedbackRepository? feedback;
+  final HumanFeedbackDraftStore? feedbackDrafts;
+  final String? feedbackProjectId;
+  final ValueListenable<int>? feedbackRefresh;
+  final NativeE2EBridge? nativeE2E;
 
   @override
   Widget build(BuildContext context) {
@@ -68,49 +85,108 @@ class ArtifactDetailView extends StatelessWidget {
         loadedDetail != null) {
       return _documentWorkspace(context, plan!, loadedDetail);
     }
-    return ListView(
+    // Payloads are bounded by the renderer. Keep their reader mounted even
+    // when technical metadata pushes it below the viewport, so reloads and
+    // native window restoration do not discard its state or controls.
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(32, 18, 32, 40),
-      children: [
-        Text(
-          documentPresentation
-              ? (contextualTitle ?? 'Document')
-              : 'Artifact detail',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        const SizedBox(height: 6),
-        _summary(context),
-        if (loading)
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator()),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            documentPresentation
+                ? (contextualTitle ?? 'Document')
+                : 'Artifact detail',
+            style: Theme.of(context).textTheme.headlineSmall,
           ),
-        if (error != null)
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('Artifact details are unavailable'),
-              subtitle: Text('$error'),
-            ),
-          ),
-        if (plan != null) ...[
-          _warnings(loadedDetail!),
-          _payload(context, plan, loadedDetail),
-          if (!documentPresentation) _rawPayload(rawPayload),
-          _relations(relations),
-          _sourceAnchors(loadedDetail),
-          _provenance(loadedDetail),
-        ],
-        if (!loading && plan == null && error == null)
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.info_outline),
-              title: Text('Artifact payload was not requested'),
-              subtitle: Text(
-                'The summary remains available without interpreting raw paths.',
+          const SizedBox(height: 6),
+          _summary(context),
+          if (_supportsDecisionRecording(loadedDetail))
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _NativeE2EDecisionAction(
+                  bridge: nativeE2E,
+                  artifactId: artifact.id,
+                  onOpen: () => _openDecision(context),
+                ),
               ),
             ),
-          ),
-      ],
+          if (loading && loadedDetail == null)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          if (error != null)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('Artifact details are unavailable'),
+                subtitle: Text('$error'),
+              ),
+            ),
+          if (plan != null) ...[
+            _warnings(loadedDetail!),
+            _payload(context, plan, loadedDetail),
+            if (!documentPresentation) _rawPayload(rawPayload),
+            _relations(relations),
+            _sourceAnchors(loadedDetail),
+            _provenance(loadedDetail),
+          ],
+          if (!loading && plan == null && error == null)
+            const Card(
+              child: ListTile(
+                leading: Icon(Icons.info_outline),
+                title: Text('Artifact payload was not requested'),
+                subtitle: Text(
+                  'The summary remains available without interpreting raw paths.',
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  bool _supportsDecisionRecording(ManaInspectArtifactDetail? loadedDetail) {
+    if (feedback is! ManaHumanFeedbackRepository) {
+      return false;
+    }
+    // Newer inspect producers may intentionally withhold the complete plan
+    // payload, while retaining the producer-declared artifact schema in the
+    // summary. The decision form still asks Mana for the current choices and
+    // validates them before a write; this check merely controls whether the
+    // user can open that producer-backed form.
+    final declaredSchema = artifact.raw['schema'];
+    if (declaredSchema is String &&
+        declaredSchema.endsWith('mana.story-start.implementation-plan/v2')) {
+      return true;
+    }
+    if (loadedDetail?.payload is! Map) return false;
+    final payload = loadedDetail!.payload as Map;
+    return payload['schemaVersion'] ==
+            'mana.story-start.implementation-plan/v2' &&
+        payload['decisionRegister'] is List;
+  }
+
+  Future<void> _openDecision(BuildContext context) async {
+    final repository = feedback;
+    if (repository is! ManaHumanFeedbackRepository) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => HumanDecisionPanel(
+        repository: repository,
+        sourcePath: artifact.path,
+        target: HumanFeedbackTarget(
+          projectId: feedbackProjectId ?? '',
+          artifactId: artifact.id,
+          artifactRevision: artifact.raw['revision_id'] as String? ?? '',
+        ),
+        drafts: feedbackDrafts,
+        nativeE2E: nativeE2E,
+      ),
     );
   }
 
@@ -147,10 +223,15 @@ class ArtifactDetailView extends StatelessWidget {
           child: MarkdownNoteView(
             markdown: plan.text ?? '',
             source: plan.sourceText,
-            artifact: artifact,
+            artifact: detail.artifact,
             detail: detail,
             onOpenRelatedArtifact: onOpenRelatedArtifact,
             documentPresentation: true,
+            feedback: feedback,
+            feedbackDrafts: feedbackDrafts,
+            feedbackProjectId: feedbackProjectId,
+            feedbackRefresh: feedbackRefresh,
+            nativeE2E: nativeE2E,
           ),
         ),
       ),
@@ -243,10 +324,15 @@ class ArtifactDetailView extends StatelessWidget {
           ArtifactPayloadView.markdown => MarkdownNoteView(
             markdown: plan.text ?? '',
             source: plan.sourceText,
-            artifact: artifact,
+            artifact: detail.artifact,
             detail: detail,
             onOpenRelatedArtifact: onOpenRelatedArtifact,
             documentPresentation: documentPresentation,
+            feedback: feedback,
+            feedbackDrafts: feedbackDrafts,
+            feedbackProjectId: feedbackProjectId,
+            feedbackRefresh: feedbackRefresh,
+            nativeE2E: nativeE2E,
           ),
           ArtifactPayloadView.metadata => const Text(
             'Metadata only; payload content is not displayed.',
@@ -492,6 +578,74 @@ class ArtifactDetailView extends StatelessWidget {
   }
 }
 
+/// Keeps the optional debug driver bound to the same decision button a person
+/// uses, without giving that transport access to a repository.
+class _NativeE2EDecisionAction extends StatefulWidget {
+  const _NativeE2EDecisionAction({
+    required this.bridge,
+    required this.artifactId,
+    required this.onOpen,
+  });
+
+  final NativeE2EBridge? bridge;
+  final String artifactId;
+  final Future<void> Function() onOpen;
+
+  @override
+  State<_NativeE2EDecisionAction> createState() =>
+      _NativeE2EDecisionActionState();
+}
+
+class _NativeE2EDecisionActionState extends State<_NativeE2EDecisionAction> {
+  NativeE2EArtifactBindings? _bindings;
+
+  @override
+  void initState() {
+    super.initState();
+    _register();
+  }
+
+  @override
+  void didUpdateWidget(covariant _NativeE2EDecisionAction oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bridge != widget.bridge) {
+      final bindings = _bindings;
+      if (bindings != null) oldWidget.bridge?.unregisterArtifact(bindings);
+      _bindings = null;
+    }
+    _register();
+  }
+
+  void _register() {
+    final bridge = widget.bridge;
+    if (bridge == null) return;
+    final bindings = NativeE2EArtifactBindings(
+      status: () => {
+        'artifactId': widget.artifactId,
+        'canRecordDecision': true,
+      },
+      openDecision: widget.onOpen,
+    );
+    _bindings = bindings;
+    bridge.registerArtifact(bindings);
+  }
+
+  @override
+  void dispose() {
+    final bindings = _bindings;
+    if (bindings != null) widget.bridge?.unregisterArtifact(bindings);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton.icon(
+    key: const Key('record-story-start-decision'),
+    onPressed: () => unawaited(widget.onOpen()),
+    icon: const Icon(Icons.account_tree_outlined),
+    label: const Text('Record decision'),
+  );
+}
+
 /// Registry entry for Journey artifacts. Direct Journey exploration remains
 /// isolated in the legacy compatibility experience.
 class _JourneyArtifactModule extends StatelessWidget {
@@ -507,6 +661,10 @@ class _JourneyArtifactModule extends StatelessWidget {
 /// notes. Links, images, and HTML have already been removed by the renderer.
 enum MarkdownReaderMode { reader, source, metadata }
 
+class _OpenDocumentCommentsIntent extends Intent {
+  const _OpenDocumentCommentsIntent();
+}
+
 class MarkdownNoteView extends StatefulWidget {
   const MarkdownNoteView({
     super.key,
@@ -516,6 +674,11 @@ class MarkdownNoteView extends StatefulWidget {
     this.detail,
     this.onOpenRelatedArtifact,
     this.documentPresentation = false,
+    this.feedback,
+    this.feedbackDrafts,
+    this.feedbackProjectId,
+    this.feedbackRefresh,
+    this.nativeE2E,
   });
 
   final String markdown;
@@ -524,6 +687,11 @@ class MarkdownNoteView extends StatefulWidget {
   final ManaInspectArtifactDetail? detail;
   final ValueChanged<String>? onOpenRelatedArtifact;
   final bool documentPresentation;
+  final HumanFeedbackRepository? feedback;
+  final HumanFeedbackDraftStore? feedbackDrafts;
+  final String? feedbackProjectId;
+  final ValueListenable<int>? feedbackRefresh;
+  final NativeE2EBridge? nativeE2E;
 
   @override
   State<MarkdownNoteView> createState() => _MarkdownNoteViewState();
@@ -535,20 +703,40 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _scrollViewportKey = GlobalKey();
   final Map<String, GlobalKey> _headingKeys = {};
+  Map<String, String> _stableFeedbackSections = const {};
   String? _activeAnchor;
+  String? _selectedFeedbackSectionId;
   var _trackingScheduled = false;
+  var _feedbackTargetRequest = 0;
+  NativeE2EDocumentBindings? _nativeE2EDocument;
 
   @override
   void initState() {
     super.initState();
     _prepareDocument();
     _scrollController.addListener(_scheduleActiveHeadingUpdate);
+    _loadStableFeedbackTargets();
+    _registerNativeE2EDocument();
   }
 
   @override
   void didUpdateWidget(covariant MarkdownNoteView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.nativeE2E != widget.nativeE2E) {
+      final oldBindings = _nativeE2EDocument;
+      if (oldBindings != null) {
+        oldWidget.nativeE2E?.unregisterDocument(oldBindings);
+      }
+      _nativeE2EDocument = null;
+    }
     if (oldWidget.markdown != widget.markdown) _prepareDocument();
+    if (oldWidget.markdown != widget.markdown ||
+        oldWidget.artifact?.raw['revision_id'] !=
+            widget.artifact?.raw['revision_id'] ||
+        oldWidget.feedback != widget.feedback) {
+      _loadStableFeedbackTargets();
+    }
+    _registerNativeE2EDocument();
   }
 
   void _prepareDocument() {
@@ -563,10 +751,107 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
     _activeAnchor = _document.headings.isEmpty
         ? null
         : _document.headings.first.anchor;
+    _registerNativeE2EDocument();
+  }
+
+  HumanFeedbackTarget? get _feedbackDocumentTarget {
+    final artifact = widget.artifact;
+    final projectId = widget.feedbackProjectId;
+    final revision = artifact?.raw['revision_id'];
+    if (artifact == null ||
+        projectId == null ||
+        revision is! String ||
+        revision.isEmpty) {
+      return null;
+    }
+    return HumanFeedbackTarget(
+      projectId: projectId,
+      artifactId: artifact.id,
+      artifactRevision: revision,
+    );
+  }
+
+  Future<void> _loadStableFeedbackTargets() async {
+    final target = _feedbackDocumentTarget;
+    final repository = widget.feedback;
+    final request = ++_feedbackTargetRequest;
+    if (target == null || repository is! ManaHumanFeedbackRepository) {
+      if (mounted) {
+        setState(() => _stableFeedbackSections = const {});
+        _registerNativeE2EDocument();
+      }
+      return;
+    }
+    final producerTargets = await repository.targets(target);
+    if (!mounted || request != _feedbackTargetRequest) return;
+    final ids = <String, int>{};
+    for (final section in producerTargets.sections) {
+      ids.update(section.id, (count) => count + 1, ifAbsent: () => 1);
+    }
+    final mapped = <String, String>{};
+    if (producerTargets.stableSections) {
+      for (final section in producerTargets.sections) {
+        if (ids[section.id] != 1 ||
+            section.headingIndex > _document.headings.length) {
+          continue;
+        }
+        mapped[_document.headings[section.headingIndex - 1].anchor] =
+            section.id;
+      }
+    }
+    setState(() {
+      _stableFeedbackSections = mapped;
+      if (!_stableFeedbackSections.containsValue(_selectedFeedbackSectionId)) {
+        _selectedFeedbackSectionId = null;
+      }
+    });
+    _registerNativeE2EDocument();
+  }
+
+  void _registerNativeE2EDocument() {
+    final bridge = widget.nativeE2E;
+    if (bridge == null || _feedbackDocumentTarget == null) return;
+    final bindings = NativeE2EDocumentBindings(
+      status: () => {
+        'artifactId': widget.artifact?.id,
+        'artifactRevision': _feedbackDocumentTarget?.artifactRevision,
+        'activeSectionId':
+            _selectedFeedbackSectionId ??
+            _stableFeedbackSections[_activeAnchor],
+        'stableSectionAnchors': {
+          for (final entry in _stableFeedbackSections.entries)
+            entry.value: entry.key,
+        },
+      },
+      selectSection: (sectionId) async {
+        String? anchor;
+        for (final entry in _stableFeedbackSections.entries) {
+          if (entry.value == sectionId) {
+            anchor = entry.key;
+            break;
+          }
+        }
+        if (anchor == null) {
+          throw StateError('stable section is not available: $sectionId');
+        }
+        if (mounted) {
+          setState(() => _selectedFeedbackSectionId = sectionId);
+        }
+        // Scrolling is a visual consequence of selecting the UI target. It
+        // must not hold the local test transport open while macOS temporarily
+        // pauses background-window animation frames.
+        unawaited(_showHeading(anchor));
+      },
+      openComments: _openComments,
+    );
+    _nativeE2EDocument = bindings;
+    bridge.registerDocument(bindings);
   }
 
   @override
   void dispose() {
+    final bindings = _nativeE2EDocument;
+    if (bindings != null) widget.nativeE2E?.unregisterDocument(bindings);
     _scrollController
       ..removeListener(_scheduleActiveHeadingUpdate)
       ..dispose();
@@ -613,54 +898,117 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
     _scheduleActiveHeadingUpdate();
   }
 
+  HumanFeedbackTarget? get _feedbackTarget {
+    final document = _feedbackDocumentTarget;
+    if (document == null) return null;
+    return HumanFeedbackTarget(
+      projectId: document.projectId,
+      artifactId: document.artifactId,
+      artifactRevision: document.artifactRevision,
+      sectionId:
+          _selectedFeedbackSectionId ?? _stableFeedbackSections[_activeAnchor],
+    );
+  }
+
+  Future<void> _openComments() async {
+    final repository = widget.feedback;
+    final target = _feedbackTarget;
+    if (repository == null || target == null) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => HumanFeedbackPanel(
+        repository: repository,
+        target: target,
+        drafts: widget.feedbackDrafts,
+        refreshSignal: widget.feedbackRefresh,
+        nativeE2E: widget.nativeE2E,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final controls = Align(
       alignment: Alignment.centerLeft,
-      child: SegmentedButton<MarkdownReaderMode>(
-        segments: MarkdownReaderMode.values
-            .map(
-              (mode) => ButtonSegment(
-                value: mode,
-                label: Text(switch (mode) {
-                  MarkdownReaderMode.reader => 'Reader',
-                  MarkdownReaderMode.source => 'Source',
-                  MarkdownReaderMode.metadata => 'Metadata',
-                }),
-              ),
-            )
-            .toList(),
-        selected: {_mode},
-        showSelectedIcon: false,
-        onSelectionChanged: (modes) => setState(() => _mode = modes.first),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SegmentedButton<MarkdownReaderMode>(
+            segments: MarkdownReaderMode.values
+                .map(
+                  (mode) => ButtonSegment(
+                    value: mode,
+                    label: Text(switch (mode) {
+                      MarkdownReaderMode.reader => 'Reader',
+                      MarkdownReaderMode.source => 'Source',
+                      MarkdownReaderMode.metadata => 'Metadata',
+                    }),
+                  ),
+                )
+                .toList(),
+            selected: {_mode},
+            showSelectedIcon: false,
+            onSelectionChanged: (modes) => setState(() => _mode = modes.first),
+          ),
+          if (widget.feedback != null && _feedbackTarget != null)
+            OutlinedButton.icon(
+              key: const Key('document-comments'),
+              onPressed: _openComments,
+              icon: const Icon(Icons.forum_outlined),
+              label: const Text('Comments'),
+            ),
+        ],
       ),
     );
-    if (widget.documentPresentation) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          controls,
-          const SizedBox(height: 10),
-          Expanded(child: _workspaceBody()),
-        ],
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        controls,
-        const SizedBox(height: 20),
-        if (_mode == MarkdownReaderMode.source)
-          SelectableText(
-            widget.source ?? widget.markdown,
-            key: const Key('markdown-source'),
-            style: const TextStyle(fontFamily: 'monospace'),
+    final content = widget.documentPresentation
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              controls,
+              const SizedBox(height: 10),
+              Expanded(child: _workspaceBody()),
+            ],
           )
-        else if (_mode == MarkdownReaderMode.metadata)
-          _metadata()
-        else
-          _documentColumn(),
-      ],
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              controls,
+              const SizedBox(height: 20),
+              if (_mode == MarkdownReaderMode.source)
+                SelectableText(
+                  widget.source ?? widget.markdown,
+                  key: const Key('markdown-source'),
+                  style: const TextStyle(fontFamily: 'monospace'),
+                )
+              else if (_mode == MarkdownReaderMode.metadata)
+                _metadata()
+              else
+                _documentColumn(),
+            ],
+          );
+    return Focus(
+      autofocus: true,
+      child: Shortcuts(
+        shortcuts: const {
+          SingleActivator(LogicalKeyboardKey.keyC, meta: true, shift: true):
+              _OpenDocumentCommentsIntent(),
+        },
+        child: Actions(
+          actions: {
+            _OpenDocumentCommentsIntent:
+                CallbackAction<_OpenDocumentCommentsIntent>(
+                  onInvoke: (_) {
+                    _openComments();
+                    return null;
+                  },
+                ),
+          },
+          child: content,
+        ),
+      ),
     );
   }
 
