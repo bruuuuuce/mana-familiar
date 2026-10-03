@@ -626,6 +626,36 @@ void main() {
     }
   });
 
+  test(
+    'closes unused Inspect stdin before waiting for producer output',
+    () async {
+      final root = await Directory.systemTemp.createTemp('semantic-eof-');
+      addTearDown(() => root.delete(recursive: true));
+      await File('${root.path}/mana').writeAsString('');
+      final fixture = File('${root.path}/eof.dart');
+      await fixture.writeAsString(
+        "import 'dart:io';\n"
+        'Future<void> main() async { await stdin.drain<void>(); '
+        'stdout.write(${jsonEncode(jsonEncode(_projectWithSemantic))}); }\n',
+      );
+      Process? producer;
+      addTearDown(() => producer?.kill());
+      final client = ManaInspectClient(
+        projectRoot: root.path,
+        processTimeout: const Duration(seconds: 2),
+        startProcess: (_, _, {workingDirectory}) async {
+          producer = await Process.start(_dartExecutable(), [fixture.path]);
+          return producer!;
+        },
+      );
+      expect(
+        (await client.project()).projectId,
+        _projectWithSemantic['project_id'],
+      );
+      expect(await producer!.exitCode, 0);
+    },
+  );
+
   test('times out and terminates an unresponsive inspect process', () async {
     final root = await Directory.systemTemp.createTemp('semantic-timeout-');
     addTearDown(() => root.delete(recursive: true));

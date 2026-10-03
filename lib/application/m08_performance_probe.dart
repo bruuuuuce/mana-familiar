@@ -80,6 +80,8 @@ class M08PerformanceProbe {
       'elapsed_us': trace.elapsed.inMicroseconds,
       'response_bytes': trace.responseBytes,
       'exit_code': trace.exitCode,
+      if (trace.transportErrorCode != null)
+        'transport_error_code': trace.transportErrorCode,
     });
     _publish();
   }
