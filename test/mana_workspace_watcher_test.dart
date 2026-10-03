@@ -46,6 +46,28 @@ void main() {
     },
   );
 
+  test('retains a root-only atomic publication event', () async {
+    final target = File(
+      '${root.path}${Platform.pathSeparator}.mana${Platform.pathSeparator}state.json',
+    )..writeAsStringSync('{"version":1}');
+    final watcher = ManaDirectoryWatcher(
+      projectRoot: root.path,
+      debounce: const Duration(milliseconds: 30),
+    );
+    final events = <ManaWorkspaceWatchEvent>[];
+    final subscription = watcher.events.listen(events.add);
+    await watcher.start();
+
+    final temporary = File('${target.path}.tmp')
+      ..writeAsStringSync('{"version":2}');
+    temporary.renameSync(target.path);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    expect(events, [ManaWorkspaceWatchEvent.changed]);
+    await subscription.cancel();
+    await watcher.dispose();
+  });
+
   test('does not observe changes outside .mana', () async {
     final watcher = ManaDirectoryWatcher(
       projectRoot: root.path,
@@ -56,13 +78,45 @@ void main() {
     await watcher.start();
     // macOS may deliver the directory creation from setup after registration.
     // It is not part of the root-level write this test is exercising.
-    await Future<void>.delayed(const Duration(milliseconds: 150));
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     events.clear();
 
     await File(
       '${root.path}${Platform.pathSeparator}unrelated.txt',
     ).writeAsString('ignored');
     await Future<void>.delayed(const Duration(milliseconds: 150));
+
+    expect(events, isEmpty);
+    await subscription.cancel();
+    await watcher.dispose();
+  });
+
+  test('ignores derived cache and index publication paths', () async {
+    for (final directory in ['.cache', '.derived', '.indexes']) {
+      await Directory(
+        '${root.path}${Platform.pathSeparator}.mana${Platform.pathSeparator}$directory',
+      ).create();
+    }
+    final watcher = ManaDirectoryWatcher(
+      projectRoot: root.path,
+      debounce: const Duration(milliseconds: 30),
+    );
+    final events = <ManaWorkspaceWatchEvent>[];
+    final subscription = watcher.events.listen(events.add);
+    await watcher.start();
+
+    for (final relative in [
+      '.cache/catalog.sqlite',
+      '.derived/semantic-snapshot.json',
+      '.indexes/knowledge.sqlite',
+    ]) {
+      final file = File(
+        '${root.path}${Platform.pathSeparator}.mana${Platform.pathSeparator}${relative.replaceAll('/', Platform.pathSeparator)}',
+      );
+      await file.parent.create(recursive: true);
+      await file.writeAsString('derived');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 200));
 
     expect(events, isEmpty);
     await subscription.cancel();

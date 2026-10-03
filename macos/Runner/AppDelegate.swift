@@ -3,6 +3,7 @@ import FlutterMacOS
 
 @main
 class AppDelegate: FlutterAppDelegate {
+  let performanceProcessStartedAt = ProcessInfo.processInfo.systemUptime
   private let projectMenuController = ProjectMenuController()
   private weak var closeCoordinator: NativeWindowCloseCoordinator?
 

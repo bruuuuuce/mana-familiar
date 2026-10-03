@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/services.dart';
 
 /// Keeps the macOS window chrome in step with the project shown by Flutter.
@@ -43,13 +44,24 @@ class NativeProjectWindow {
   }
 
   /// Lets a Flutter empty state use the same native folder chooser as File.
-  static Future<String?> chooseProject() async {
-    if (!Platform.isMacOS) return null;
-    try {
-      return await _channel.invokeMethod<String>('chooseProject');
-    } on MissingPluginException {
-      return null;
+  static Future<String?> chooseProject({
+    Future<String?> Function()? directoryPicker,
+  }) async {
+    if (Platform.isMacOS) {
+      try {
+        return await _channel.invokeMethod<String>('chooseProject');
+      } on MissingPluginException {
+        return null;
+      }
     }
+
+    // The macOS native bridge owns the File menu and its folder panel. Other
+    // desktop platforms use the Flutter team's native file-selector plugin;
+    // returning null here made the welcome-page button silently do nothing on
+    // Windows.
+    return (directoryPicker ??
+            () => getDirectoryPath(confirmButtonText: 'Open'))
+        .call();
   }
 
   static Future<void> clearRecentProjects() async {

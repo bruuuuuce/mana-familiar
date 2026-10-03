@@ -1,0 +1,3792 @@
+{
+  "schema": "mana-familiar.c04.performance-matrix/v1",
+  "build_mode": "release",
+  "environment": {
+    "os": "macos",
+    "os_version": "Version 26.6.2 (Build 25G83)",
+    "dart": "3.12.2",
+    "machine": "arm64",
+    "flutter": "3.44.8 (stable)",
+    "mana_revision": "ac8531e7dd4b80f65b64c0f49543549d38429a4e",
+    "mana_dirty": true,
+    "familiar_revision": "8e67f292a34610ad7bf3e1d9ad78259bf7fe1413",
+    "familiar_dirty": true
+  },
+  "runs_per_fixture": {
+    "cold": 5,
+    "warm": 5
+  },
+  "background_load_policy": "route-minimal initial semantic snapshot; supporting context and activity after first meaningful model; raw catalog route-only",
+  "cache_policy": {
+    "cold": "isolated empty MANA_CACHE_HOME per run",
+    "warm": "one priming run followed by repeated shared-cache runs"
+  },
+  "fixtures": [
+    {
+      "class": "small",
+      "manifest_digest": "sha256:e0aba36238a147177b88796e48ad5f166fee0e889cab734f209aca3d1bc41fbf",
+      "logical_counts": {
+        "artifacts": 100,
+        "knowledge_documents": 20,
+        "runtime_events": 100,
+        "work_items": 10
+      },
+      "cold": [
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "small",
+            "manifest_digest": "sha256:e0aba36238a147177b88796e48ad5f166fee0e889cab734f209aca3d1bc41fbf"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 348025,
+            "optional_surfaces_settled": 909161
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 10,
+            "semantic_revision": "sha256:d24d2cebb3b50de9c86eb42ddc790864871af7ca352698d45d3e4ed4991d3b51",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 154,
+              "first_byte_us": 39091,
+              "last_byte_us": 39380,
+              "elapsed_us": 39226,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 39483,
+              "first_byte_us": 347092,
+              "last_byte_us": 347398,
+              "elapsed_us": 307915,
+              "response_bytes": 10173,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 348053,
+              "first_byte_us": 908107,
+              "last_byte_us": 908537,
+              "elapsed_us": 560484,
+              "response_bytes": 102388,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 21
+            },
+            {
+              "response_bytes": 10173,
+              "offloaded": false,
+              "elapsed_us": 59
+            },
+            {
+              "response_bytes": 102388,
+              "offloaded": false,
+              "elapsed_us": 441
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 15
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 547
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 118
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "small",
+            "manifest_digest": "sha256:e0aba36238a147177b88796e48ad5f166fee0e889cab734f209aca3d1bc41fbf"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 337233,
+            "optional_surfaces_settled": 911079
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 10,
+            "semantic_revision": "sha256:d24d2cebb3b50de9c86eb42ddc790864871af7ca352698d45d3e4ed4991d3b51",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 43,
+              "first_byte_us": 35367,
+              "last_byte_us": 35668,
+              "elapsed_us": 35625,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 35744,
+              "first_byte_us": 336745,
+              "last_byte_us": 337020,
+              "elapsed_us": 301276,
+              "response_bytes": 10173,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 337255,
+              "first_byte_us": 910039,
+              "last_byte_us": 910448,
+              "elapsed_us": 573193,
+              "response_bytes": 102388,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 18
+            },
+            {
+              "response_bytes": 10173,
+              "offloaded": false,
+              "elapsed_us": 64
+            },
+            {
+              "response_bytes": 102388,
+              "offloaded": false,
+              "elapsed_us": 436
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 15
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 120
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 130
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "small",
+            "manifest_digest": "sha256:e0aba36238a147177b88796e48ad5f166fee0e889cab734f209aca3d1bc41fbf"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 340810,
+            "optional_surfaces_settled": 911509
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 10,
+            "semantic_revision": "sha256:d24d2cebb3b50de9c86eb42ddc790864871af7ca352698d45d3e4ed4991d3b51",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 32,
+              "first_byte_us": 35509,
+              "last_byte_us": 35801,
+              "elapsed_us": 35769,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 35898,
+              "first_byte_us": 340330,
+              "last_byte_us": 340633,
+              "elapsed_us": 304735,
+              "response_bytes": 10173,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 340832,
+              "first_byte_us": 910222,
+              "last_byte_us": 910861,
+              "elapsed_us": 570029,
+              "response_bytes": 102388,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 22
+            },
+            {
+              "response_bytes": 10173,
+              "offloaded": false,
+              "elapsed_us": 57
+            },
+            {
+              "response_bytes": 102388,
+              "offloaded": false,
+              "elapsed_us": 443
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 17
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 97
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 138
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "small",
+            "manifest_digest": "sha256:e0aba36238a147177b88796e48ad5f166fee0e889cab734f209aca3d1bc41fbf"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 370858,
+            "optional_surfaces_settled": 987746
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 10,
+            "semantic_revision": "sha256:d24d2cebb3b50de9c86eb42ddc790864871af7ca352698d45d3e4ed4991d3b51",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 46,
+              "first_byte_us": 37334,
+              "last_byte_us": 37684,
+              "elapsed_us": 37638,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 37773,
+              "first_byte_us": 370306,
+              "last_byte_us": 370679,
+              "elapsed_us": 332906,
+              "response_bytes": 10173,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 370882,
+              "first_byte_us": 986629,
+              "last_byte_us": 987083,
+              "elapsed_us": 616201,
+              "response_bytes": 102388,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 22
+            },
+            {
+              "response_bytes": 10173,
+              "offloaded": false,
+              "elapsed_us": 58
+            },
+            {
+              "response_bytes": 102388,
+              "offloaded": false,
+              "elapsed_us": 462
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 16
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 99
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 137
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "small",
+            "manifest_digest": "sha256:e0aba36238a147177b88796e48ad5f166fee0e889cab734f209aca3d1bc41fbf"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 368653,
+            "optional_surfaces_settled": 975734
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 10,
+            "semantic_revision": "sha256:d24d2cebb3b50de9c86eb42ddc790864871af7ca352698d45d3e4ed4991d3b51",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 46,
+              "first_byte_us": 38575,
+              "last_byte_us": 38980,
+              "elapsed_us": 38934,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 39068,
+              "first_byte_us": 368106,
+              "last_byte_us": 368461,
+              "elapsed_us": 329393,
+              "response_bytes": 10173,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 368679,
+              "first_byte_us": 974583,
+              "last_byte_us": 975055,
+              "elapsed_us": 606376,
+              "response_bytes": 102388,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 24
+            },
+            {
+              "response_bytes": 10173,
+              "offloaded": false,
+              "elapsed_us": 58
+            },
+            {
+              "response_bytes": 102388,
+              "offloaded": false,
+              "elapsed_us": 474
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 16
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 111
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 138
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        }
+      ],
+      "warm": [
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "small",
+            "manifest_digest": "sha256:e0aba36238a147177b88796e48ad5f166fee0e889cab734f209aca3d1bc41fbf"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 368884,
+            "optional_surfaces_settled": 939598
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 10,
+            "semantic_revision": "sha256:d24d2cebb3b50de9c86eb42ddc790864871af7ca352698d45d3e4ed4991d3b51",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 40,
+              "first_byte_us": 38059,
+              "last_byte_us": 38495,
+              "elapsed_us": 38455,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 38608,
+              "first_byte_us": 368372,
+              "last_byte_us": 368695,
+              "elapsed_us": 330087,
+              "response_bytes": 10173,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 368909,
+              "first_byte_us": 938508,
+              "last_byte_us": 938944,
+              "elapsed_us": 570035,
+              "response_bytes": 102388,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 26
+            },
+            {
+              "response_bytes": 10173,
+              "offloaded": false,
+              "elapsed_us": 59
+            },
+            {
+              "response_bytes": 102388,
+              "offloaded": false,
+              "elapsed_us": 463
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 18
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 105
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 127
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "small",
+            "manifest_digest": "sha256:e0aba36238a147177b88796e48ad5f166fee0e889cab734f209aca3d1bc41fbf"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 359567,
+            "optional_surfaces_settled": 948957
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 10,
+            "semantic_revision": "sha256:d24d2cebb3b50de9c86eb42ddc790864871af7ca352698d45d3e4ed4991d3b51",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 41,
+              "first_byte_us": 40013,
+              "last_byte_us": 40305,
+              "elapsed_us": 40264,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 40405,
+              "first_byte_us": 359063,
+              "last_byte_us": 359400,
+              "elapsed_us": 318995,
+              "response_bytes": 10173,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 359590,
+              "first_byte_us": 947894,
+              "last_byte_us": 948309,
+              "elapsed_us": 588719,
+              "response_bytes": 102388,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 25
+            },
+            {
+              "response_bytes": 10173,
+              "offloaded": false,
+              "elapsed_us": 57
+            },
+            {
+              "response_bytes": 102388,
+              "offloaded": false,
+              "elapsed_us": 449
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 18
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 91
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 133
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "small",
+            "manifest_digest": "sha256:e0aba36238a147177b88796e48ad5f166fee0e889cab734f209aca3d1bc41fbf"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 360378,
+            "optional_surfaces_settled": 913647
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 10,
+            "semantic_revision": "sha256:d24d2cebb3b50de9c86eb42ddc790864871af7ca352698d45d3e4ed4991d3b51",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 35,
+              "first_byte_us": 36631,
+              "last_byte_us": 36898,
+              "elapsed_us": 36863,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 36977,
+              "first_byte_us": 359849,
+              "last_byte_us": 360201,
+              "elapsed_us": 323224,
+              "response_bytes": 10173,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 360406,
+              "first_byte_us": 912556,
+              "last_byte_us": 912992,
+              "elapsed_us": 552586,
+              "response_bytes": 102388,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 18
+            },
+            {
+              "response_bytes": 10173,
+              "offloaded": false,
+              "elapsed_us": 59
+            },
+            {
+              "response_bytes": 102388,
+              "offloaded": false,
+              "elapsed_us": 458
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 16
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 98
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 132
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "small",
+            "manifest_digest": "sha256:e0aba36238a147177b88796e48ad5f166fee0e889cab734f209aca3d1bc41fbf"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 336199,
+            "optional_surfaces_settled": 901448
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 10,
+            "semantic_revision": "sha256:d24d2cebb3b50de9c86eb42ddc790864871af7ca352698d45d3e4ed4991d3b51",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 36,
+              "first_byte_us": 36216,
+              "last_byte_us": 36522,
+              "elapsed_us": 36486,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 36605,
+              "first_byte_us": 335655,
+              "last_byte_us": 336025,
+              "elapsed_us": 299420,
+              "response_bytes": 10173,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 336221,
+              "first_byte_us": 900288,
+              "last_byte_us": 900777,
+              "elapsed_us": 564556,
+              "response_bytes": 102388,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 19
+            },
+            {
+              "response_bytes": 10173,
+              "offloaded": false,
+              "elapsed_us": 56
+            },
+            {
+              "response_bytes": 102388,
+              "offloaded": false,
+              "elapsed_us": 459
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 16
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 98
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 141
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "small",
+            "manifest_digest": "sha256:e0aba36238a147177b88796e48ad5f166fee0e889cab734f209aca3d1bc41fbf"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 339615,
+            "optional_surfaces_settled": 902533
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 10,
+            "semantic_revision": "sha256:d24d2cebb3b50de9c86eb42ddc790864871af7ca352698d45d3e4ed4991d3b51",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 38,
+              "first_byte_us": 36023,
+              "last_byte_us": 36297,
+              "elapsed_us": 36259,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 36378,
+              "first_byte_us": 339074,
+              "last_byte_us": 339437,
+              "elapsed_us": 303059,
+              "response_bytes": 10173,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 339644,
+              "first_byte_us": 901472,
+              "last_byte_us": 901895,
+              "elapsed_us": 562251,
+              "response_bytes": 102388,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 20
+            },
+            {
+              "response_bytes": 10173,
+              "offloaded": false,
+              "elapsed_us": 59
+            },
+            {
+              "response_bytes": 102388,
+              "offloaded": false,
+              "elapsed_us": 441
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 15
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 98
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 133
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        }
+      ],
+      "median_us": {
+        "cold_first_meaningful_overview": 348025,
+        "warm_first_meaningful_overview": 359567,
+        "cold_optional_surfaces_settled": 911509,
+        "warm_optional_surfaces_settled": 913647
+      }
+    },
+    {
+      "class": "medium",
+      "manifest_digest": "sha256:75ff9dd45dc76cd5e8bdb5fe49f2525df6f34784024e7ca6bb8347a6e702a1d8",
+      "logical_counts": {
+        "artifacts": 1000,
+        "knowledge_documents": 200,
+        "runtime_events": 5000,
+        "work_items": 100
+      },
+      "cold": [
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "medium",
+            "manifest_digest": "sha256:75ff9dd45dc76cd5e8bdb5fe49f2525df6f34784024e7ca6bb8347a6e702a1d8"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 453262,
+            "optional_surfaces_settled": 1469146
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 100,
+            "semantic_revision": "sha256:408b33c4bec3920a15139134a4cdb4568aba2da51390ccf2d75750cf649b26f6",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 39,
+              "first_byte_us": 35569,
+              "last_byte_us": 35832,
+              "elapsed_us": 35793,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 35946,
+              "first_byte_us": 452190,
+              "last_byte_us": 452606,
+              "elapsed_us": 416660,
+              "response_bytes": 83885,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 453288,
+              "first_byte_us": 1447532,
+              "last_byte_us": 1450791,
+              "elapsed_us": 997503,
+              "response_bytes": 2751520,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 22
+            },
+            {
+              "response_bytes": 83885,
+              "offloaded": false,
+              "elapsed_us": 400
+            },
+            {
+              "response_bytes": 2751520,
+              "offloaded": true,
+              "elapsed_us": 14595
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 23
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 205
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 2509
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "medium",
+            "manifest_digest": "sha256:75ff9dd45dc76cd5e8bdb5fe49f2525df6f34784024e7ca6bb8347a6e702a1d8"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 463556,
+            "optional_surfaces_settled": 1464767
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 100,
+            "semantic_revision": "sha256:408b33c4bec3920a15139134a4cdb4568aba2da51390ccf2d75750cf649b26f6",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 52,
+              "first_byte_us": 41275,
+              "last_byte_us": 41583,
+              "elapsed_us": 41531,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 41675,
+              "first_byte_us": 462396,
+              "last_byte_us": 462838,
+              "elapsed_us": 421163,
+              "response_bytes": 83885,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 463584,
+              "first_byte_us": 1443807,
+              "last_byte_us": 1446814,
+              "elapsed_us": 983230,
+              "response_bytes": 2751520,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 21
+            },
+            {
+              "response_bytes": 83885,
+              "offloaded": false,
+              "elapsed_us": 406
+            },
+            {
+              "response_bytes": 2751520,
+              "offloaded": true,
+              "elapsed_us": 14153
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 16
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 251
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 2655
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "medium",
+            "manifest_digest": "sha256:75ff9dd45dc76cd5e8bdb5fe49f2525df6f34784024e7ca6bb8347a6e702a1d8"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 452967,
+            "optional_surfaces_settled": 1446746
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 100,
+            "semantic_revision": "sha256:408b33c4bec3920a15139134a4cdb4568aba2da51390ccf2d75750cf649b26f6",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 36,
+              "first_byte_us": 39110,
+              "last_byte_us": 39398,
+              "elapsed_us": 39362,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 39502,
+              "first_byte_us": 451843,
+              "last_byte_us": 452275,
+              "elapsed_us": 412773,
+              "response_bytes": 83885,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 452993,
+              "first_byte_us": 1422057,
+              "last_byte_us": 1427563,
+              "elapsed_us": 974570,
+              "response_bytes": 2751520,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 22
+            },
+            {
+              "response_bytes": 83885,
+              "offloaded": false,
+              "elapsed_us": 401
+            },
+            {
+              "response_bytes": 2751520,
+              "offloaded": true,
+              "elapsed_us": 15000
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 16
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 220
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 2857
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "medium",
+            "manifest_digest": "sha256:75ff9dd45dc76cd5e8bdb5fe49f2525df6f34784024e7ca6bb8347a6e702a1d8"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 484270,
+            "optional_surfaces_settled": 1527435
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 100,
+            "semantic_revision": "sha256:408b33c4bec3920a15139134a4cdb4568aba2da51390ccf2d75750cf649b26f6",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 57,
+              "first_byte_us": 40897,
+              "last_byte_us": 41274,
+              "elapsed_us": 41217,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 41370,
+              "first_byte_us": 483142,
+              "last_byte_us": 483611,
+              "elapsed_us": 442241,
+              "response_bytes": 83885,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 484308,
+              "first_byte_us": 1505421,
+              "last_byte_us": 1508731,
+              "elapsed_us": 1024423,
+              "response_bytes": 2751520,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 22
+            },
+            {
+              "response_bytes": 83885,
+              "offloaded": false,
+              "elapsed_us": 406
+            },
+            {
+              "response_bytes": 2751520,
+              "offloaded": true,
+              "elapsed_us": 14864
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 17
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 197
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 2613
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "medium",
+            "manifest_digest": "sha256:75ff9dd45dc76cd5e8bdb5fe49f2525df6f34784024e7ca6bb8347a6e702a1d8"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 487267,
+            "optional_surfaces_settled": 1531472
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 100,
+            "semantic_revision": "sha256:408b33c4bec3920a15139134a4cdb4568aba2da51390ccf2d75750cf649b26f6",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 52,
+              "first_byte_us": 44339,
+              "last_byte_us": 44642,
+              "elapsed_us": 44590,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 44747,
+              "first_byte_us": 486151,
+              "last_byte_us": 486593,
+              "elapsed_us": 441846,
+              "response_bytes": 83885,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 487298,
+              "first_byte_us": 1511379,
+              "last_byte_us": 1514315,
+              "elapsed_us": 1027017,
+              "response_bytes": 2751520,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 21
+            },
+            {
+              "response_bytes": 83885,
+              "offloaded": false,
+              "elapsed_us": 410
+            },
+            {
+              "response_bytes": 2751520,
+              "offloaded": true,
+              "elapsed_us": 13744
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 16
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 209
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 2231
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        }
+      ],
+      "warm": [
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "medium",
+            "manifest_digest": "sha256:75ff9dd45dc76cd5e8bdb5fe49f2525df6f34784024e7ca6bb8347a6e702a1d8"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 511754,
+            "optional_surfaces_settled": 1593888
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 100,
+            "semantic_revision": "sha256:408b33c4bec3920a15139134a4cdb4568aba2da51390ccf2d75750cf649b26f6",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 59,
+              "first_byte_us": 45754,
+              "last_byte_us": 46119,
+              "elapsed_us": 46060,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 46215,
+              "first_byte_us": 510497,
+              "last_byte_us": 511072,
+              "elapsed_us": 464857,
+              "response_bytes": 83885,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 511791,
+              "first_byte_us": 1572878,
+              "last_byte_us": 1576037,
+              "elapsed_us": 1064246,
+              "response_bytes": 2751520,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 20
+            },
+            {
+              "response_bytes": 83885,
+              "offloaded": false,
+              "elapsed_us": 415
+            },
+            {
+              "response_bytes": 2751520,
+              "offloaded": true,
+              "elapsed_us": 14142
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 14
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 208
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 2539
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "medium",
+            "manifest_digest": "sha256:75ff9dd45dc76cd5e8bdb5fe49f2525df6f34784024e7ca6bb8347a6e702a1d8"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 496174,
+            "optional_surfaces_settled": 1532438
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 100,
+            "semantic_revision": "sha256:408b33c4bec3920a15139134a4cdb4568aba2da51390ccf2d75750cf649b26f6",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 49,
+              "first_byte_us": 38261,
+              "last_byte_us": 38564,
+              "elapsed_us": 38515,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 38649,
+              "first_byte_us": 495070,
+              "last_byte_us": 495496,
+              "elapsed_us": 456847,
+              "response_bytes": 83885,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 496202,
+              "first_byte_us": 1511725,
+              "last_byte_us": 1514909,
+              "elapsed_us": 1018707,
+              "response_bytes": 2751520,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 20
+            },
+            {
+              "response_bytes": 83885,
+              "offloaded": false,
+              "elapsed_us": 419
+            },
+            {
+              "response_bytes": 2751520,
+              "offloaded": true,
+              "elapsed_us": 14071
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 16
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 204
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 2300
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "medium",
+            "manifest_digest": "sha256:75ff9dd45dc76cd5e8bdb5fe49f2525df6f34784024e7ca6bb8347a6e702a1d8"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 464312,
+            "optional_surfaces_settled": 1500085
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 100,
+            "semantic_revision": "sha256:408b33c4bec3920a15139134a4cdb4568aba2da51390ccf2d75750cf649b26f6",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 37,
+              "first_byte_us": 37216,
+              "last_byte_us": 37538,
+              "elapsed_us": 37501,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 37635,
+              "first_byte_us": 463142,
+              "last_byte_us": 463600,
+              "elapsed_us": 425965,
+              "response_bytes": 83885,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 464352,
+              "first_byte_us": 1478568,
+              "last_byte_us": 1481980,
+              "elapsed_us": 1017628,
+              "response_bytes": 2751520,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 24
+            },
+            {
+              "response_bytes": 83885,
+              "offloaded": false,
+              "elapsed_us": 431
+            },
+            {
+              "response_bytes": 2751520,
+              "offloaded": true,
+              "elapsed_us": 14362
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 15
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 223
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 2433
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "medium",
+            "manifest_digest": "sha256:75ff9dd45dc76cd5e8bdb5fe49f2525df6f34784024e7ca6bb8347a6e702a1d8"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 491205,
+            "optional_surfaces_settled": 1510727
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 100,
+            "semantic_revision": "sha256:408b33c4bec3920a15139134a4cdb4568aba2da51390ccf2d75750cf649b26f6",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 56,
+              "first_byte_us": 49010,
+              "last_byte_us": 49341,
+              "elapsed_us": 49285,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 49476,
+              "first_byte_us": 490094,
+              "last_byte_us": 490524,
+              "elapsed_us": 441048,
+              "response_bytes": 83885,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 491241,
+              "first_byte_us": 1490400,
+              "last_byte_us": 1493455,
+              "elapsed_us": 1002214,
+              "response_bytes": 2751520,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 25
+            },
+            {
+              "response_bytes": 83885,
+              "offloaded": false,
+              "elapsed_us": 413
+            },
+            {
+              "response_bytes": 2751520,
+              "offloaded": true,
+              "elapsed_us": 13766
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 21
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 218
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 2343
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "medium",
+            "manifest_digest": "sha256:75ff9dd45dc76cd5e8bdb5fe49f2525df6f34784024e7ca6bb8347a6e702a1d8"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 489554,
+            "optional_surfaces_settled": 1578487
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 100,
+            "semantic_revision": "sha256:408b33c4bec3920a15139134a4cdb4568aba2da51390ccf2d75750cf649b26f6",
+            "supporting_project_context": true,
+            "supporting_activity": true,
+            "supporting_error": null
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 45,
+              "first_byte_us": 37809,
+              "last_byte_us": 38145,
+              "elapsed_us": 38100,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 38261,
+              "first_byte_us": 488435,
+              "last_byte_us": 488895,
+              "elapsed_us": 450634,
+              "response_bytes": 83885,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 489584,
+              "first_byte_us": 1557059,
+              "last_byte_us": 1560231,
+              "elapsed_us": 1070647,
+              "response_bytes": 2751520,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 31
+            },
+            {
+              "response_bytes": 83885,
+              "offloaded": false,
+              "elapsed_us": 398
+            },
+            {
+              "response_bytes": 2751520,
+              "offloaded": true,
+              "elapsed_us": 14480
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 17
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 212
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 2569
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        }
+      ],
+      "median_us": {
+        "cold_first_meaningful_overview": 463556,
+        "warm_first_meaningful_overview": 491205,
+        "cold_optional_surfaces_settled": 1469146,
+        "warm_optional_surfaces_settled": 1532438
+      }
+    },
+    {
+      "class": "large",
+      "manifest_digest": "sha256:4c866858b4f7be032b7f94d7a23246f711546a14420b0563bc2207ce2adea3b5",
+      "logical_counts": {
+        "artifacts": 10000,
+        "knowledge_documents": 2000,
+        "runtime_events": 50000,
+        "work_items": 500
+      },
+      "cold": [
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "large",
+            "manifest_digest": "sha256:4c866858b4f7be032b7f94d7a23246f711546a14420b0563bc2207ce2adea3b5"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1604613,
+            "optional_surfaces_settled": 3616410
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:e8e4f829f57e549b86888de4cd90ae08e6234d15624fafdcca9ed422646aad69",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 63,
+              "first_byte_us": 49388,
+              "last_byte_us": 49769,
+              "elapsed_us": 49706,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 49892,
+              "first_byte_us": 1599131,
+              "last_byte_us": 1600573,
+              "elapsed_us": 1550681,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1604663,
+              "first_byte_us": 3611549,
+              "last_byte_us": 3612974,
+              "elapsed_us": 2008311,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 24
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 3210
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2570
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 17
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 605
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 649
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "large",
+            "manifest_digest": "sha256:4c866858b4f7be032b7f94d7a23246f711546a14420b0563bc2207ce2adea3b5"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1577342,
+            "optional_surfaces_settled": 3667122
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:e8e4f829f57e549b86888de4cd90ae08e6234d15624fafdcca9ed422646aad69",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 53,
+              "first_byte_us": 45483,
+              "last_byte_us": 45791,
+              "elapsed_us": 45738,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 45880,
+              "first_byte_us": 1572046,
+              "last_byte_us": 1573467,
+              "elapsed_us": 1527587,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1577374,
+              "first_byte_us": 3662715,
+              "last_byte_us": 3663877,
+              "elapsed_us": 2086503,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 20
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 2975
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2438
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 17
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 625
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 607
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "large",
+            "manifest_digest": "sha256:4c866858b4f7be032b7f94d7a23246f711546a14420b0563bc2207ce2adea3b5"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1526287,
+            "optional_surfaces_settled": 3545735
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:e8e4f829f57e549b86888de4cd90ae08e6234d15624fafdcca9ed422646aad69",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 42,
+              "first_byte_us": 39758,
+              "last_byte_us": 40049,
+              "elapsed_us": 40007,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 40155,
+              "first_byte_us": 1521180,
+              "last_byte_us": 1522455,
+              "elapsed_us": 1482300,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1526334,
+              "first_byte_us": 3541450,
+              "last_byte_us": 3542518,
+              "elapsed_us": 2016184,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 25
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 2981
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2369
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 18
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 634
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 644
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "large",
+            "manifest_digest": "sha256:4c866858b4f7be032b7f94d7a23246f711546a14420b0563bc2207ce2adea3b5"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1426510,
+            "optional_surfaces_settled": 3366652
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:e8e4f829f57e549b86888de4cd90ae08e6234d15624fafdcca9ed422646aad69",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 41,
+              "first_byte_us": 37866,
+              "last_byte_us": 38170,
+              "elapsed_us": 38129,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 38252,
+              "first_byte_us": 1421346,
+              "last_byte_us": 1422579,
+              "elapsed_us": 1384327,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1426562,
+              "first_byte_us": 3362092,
+              "last_byte_us": 3363365,
+              "elapsed_us": 1936803,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 19
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 3070
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2400
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 15
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 663
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 626
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "large",
+            "manifest_digest": "sha256:4c866858b4f7be032b7f94d7a23246f711546a14420b0563bc2207ce2adea3b5"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1571458,
+            "optional_surfaces_settled": 3563371
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:e8e4f829f57e549b86888de4cd90ae08e6234d15624fafdcca9ed422646aad69",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 55,
+              "first_byte_us": 41716,
+              "last_byte_us": 42025,
+              "elapsed_us": 41970,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 42136,
+              "first_byte_us": 1566578,
+              "last_byte_us": 1567713,
+              "elapsed_us": 1525577,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1571483,
+              "first_byte_us": 3558529,
+              "last_byte_us": 3559779,
+              "elapsed_us": 1988296,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 24
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 2928
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2721
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 19
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 600
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 665
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        }
+      ],
+      "warm": [
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "large",
+            "manifest_digest": "sha256:4c866858b4f7be032b7f94d7a23246f711546a14420b0563bc2207ce2adea3b5"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1480309,
+            "optional_surfaces_settled": 3557468
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:e8e4f829f57e549b86888de4cd90ae08e6234d15624fafdcca9ed422646aad69",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 41,
+              "first_byte_us": 41901,
+              "last_byte_us": 42250,
+              "elapsed_us": 42209,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 42335,
+              "first_byte_us": 1475332,
+              "last_byte_us": 1476563,
+              "elapsed_us": 1434228,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1480349,
+              "first_byte_us": 3551791,
+              "last_byte_us": 3553250,
+              "elapsed_us": 2072901,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 19
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 2919
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 3376
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 16
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 619
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 629
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "large",
+            "manifest_digest": "sha256:4c866858b4f7be032b7f94d7a23246f711546a14420b0563bc2207ce2adea3b5"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1574902,
+            "optional_surfaces_settled": 3568174
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:e8e4f829f57e549b86888de4cd90ae08e6234d15624fafdcca9ed422646aad69",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 45,
+              "first_byte_us": 44113,
+              "last_byte_us": 44513,
+              "elapsed_us": 44468,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 44612,
+              "first_byte_us": 1569772,
+              "last_byte_us": 1571005,
+              "elapsed_us": 1526393,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1574946,
+              "first_byte_us": 3563960,
+              "last_byte_us": 3565030,
+              "elapsed_us": 1990084,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 24
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 3050
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2344
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 17
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 619
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 603
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "large",
+            "manifest_digest": "sha256:4c866858b4f7be032b7f94d7a23246f711546a14420b0563bc2207ce2adea3b5"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1418274,
+            "optional_surfaces_settled": 3359756
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:e8e4f829f57e549b86888de4cd90ae08e6234d15624fafdcca9ed422646aad69",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 39,
+              "first_byte_us": 36234,
+              "last_byte_us": 36578,
+              "elapsed_us": 36539,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 36664,
+              "first_byte_us": 1413595,
+              "last_byte_us": 1414662,
+              "elapsed_us": 1377998,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1418302,
+              "first_byte_us": 3354078,
+              "last_byte_us": 3356401,
+              "elapsed_us": 1938099,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 24
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 2833
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2517
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 15
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 584
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 624
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "large",
+            "manifest_digest": "sha256:4c866858b4f7be032b7f94d7a23246f711546a14420b0563bc2207ce2adea3b5"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1486135,
+            "optional_surfaces_settled": 3444548
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:e8e4f829f57e549b86888de4cd90ae08e6234d15624fafdcca9ed422646aad69",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 41,
+              "first_byte_us": 36903,
+              "last_byte_us": 37263,
+              "elapsed_us": 37222,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 37364,
+              "first_byte_us": 1481208,
+              "last_byte_us": 1482408,
+              "elapsed_us": 1445044,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1486170,
+              "first_byte_us": 3439576,
+              "last_byte_us": 3441251,
+              "elapsed_us": 1955081,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 25
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 2859
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2492
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 15
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 598
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 600
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "large",
+            "manifest_digest": "sha256:4c866858b4f7be032b7f94d7a23246f711546a14420b0563bc2207ce2adea3b5"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1543543,
+            "optional_surfaces_settled": 3609974
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:e8e4f829f57e549b86888de4cd90ae08e6234d15624fafdcca9ed422646aad69",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 50,
+              "first_byte_us": 40477,
+              "last_byte_us": 40840,
+              "elapsed_us": 40790,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 40944,
+              "first_byte_us": 1538048,
+              "last_byte_us": 1539341,
+              "elapsed_us": 1498397,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1543587,
+              "first_byte_us": 3605256,
+              "last_byte_us": 3606639,
+              "elapsed_us": 2063052,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 25
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 3315
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2514
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 15
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 669
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 603
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        }
+      ],
+      "median_us": {
+        "cold_first_meaningful_overview": 1571458,
+        "warm_first_meaningful_overview": 1486135,
+        "cold_optional_surfaces_settled": 3563371,
+        "warm_optional_surfaces_settled": 3557468
+      }
+    },
+    {
+      "class": "hostile-large",
+      "manifest_digest": "sha256:1f82fb5b8be0f96dca3ec3418ae74573ea08c908622684a755488739b043624f",
+      "logical_counts": {
+        "artifacts": 10000,
+        "knowledge_documents": 2000,
+        "runtime_events": 50000,
+        "work_items": 500
+      },
+      "cold": [
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "hostile-large",
+            "manifest_digest": "sha256:1f82fb5b8be0f96dca3ec3418ae74573ea08c908622684a755488739b043624f"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1627069,
+            "optional_surfaces_settled": 3595929
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:68277cac9ee7bb6df245afedb4fa67d6fce6098df2740c5f2f178c4393b64dc9",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 47,
+              "first_byte_us": 40290,
+              "last_byte_us": 40639,
+              "elapsed_us": 40592,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 40729,
+              "first_byte_us": 1622092,
+              "last_byte_us": 1623234,
+              "elapsed_us": 1582505,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1627108,
+              "first_byte_us": 3591711,
+              "last_byte_us": 3592859,
+              "elapsed_us": 1965751,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 24
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 2953
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2293
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 14
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 631
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 590
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "hostile-large",
+            "manifest_digest": "sha256:1f82fb5b8be0f96dca3ec3418ae74573ea08c908622684a755488739b043624f"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1574565,
+            "optional_surfaces_settled": 3532222
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:68277cac9ee7bb6df245afedb4fa67d6fce6098df2740c5f2f178c4393b64dc9",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 46,
+              "first_byte_us": 37421,
+              "last_byte_us": 37740,
+              "elapsed_us": 37694,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 37848,
+              "first_byte_us": 1569507,
+              "last_byte_us": 1570706,
+              "elapsed_us": 1532858,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1574598,
+              "first_byte_us": 3528019,
+              "last_byte_us": 3529135,
+              "elapsed_us": 1954537,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 23
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 2893
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2276
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 20
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 597
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 609
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "hostile-large",
+            "manifest_digest": "sha256:1f82fb5b8be0f96dca3ec3418ae74573ea08c908622684a755488739b043624f"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1497291,
+            "optional_surfaces_settled": 3541368
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:68277cac9ee7bb6df245afedb4fa67d6fce6098df2740c5f2f178c4393b64dc9",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 38,
+              "first_byte_us": 38219,
+              "last_byte_us": 38507,
+              "elapsed_us": 38469,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 38594,
+              "first_byte_us": 1492343,
+              "last_byte_us": 1493548,
+              "elapsed_us": 1454954,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1497324,
+              "first_byte_us": 3536642,
+              "last_byte_us": 3538046,
+              "elapsed_us": 2040722,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 21
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 2885
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2466
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 16
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 612
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 646
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "hostile-large",
+            "manifest_digest": "sha256:1f82fb5b8be0f96dca3ec3418ae74573ea08c908622684a755488739b043624f"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1651442,
+            "optional_surfaces_settled": 3952078
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:68277cac9ee7bb6df245afedb4fa67d6fce6098df2740c5f2f178c4393b64dc9",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 54,
+              "first_byte_us": 57260,
+              "last_byte_us": 57623,
+              "elapsed_us": 57569,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 57715,
+              "first_byte_us": 1646214,
+              "last_byte_us": 1647498,
+              "elapsed_us": 1589783,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1651482,
+              "first_byte_us": 3947195,
+              "last_byte_us": 3948752,
+              "elapsed_us": 2297270,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 21
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 3104
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2483
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 17
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 614
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 644
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "hostile-large",
+            "manifest_digest": "sha256:1f82fb5b8be0f96dca3ec3418ae74573ea08c908622684a755488739b043624f"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1638015,
+            "optional_surfaces_settled": 3758936
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:68277cac9ee7bb6df245afedb4fa67d6fce6098df2740c5f2f178c4393b64dc9",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 78,
+              "first_byte_us": 45663,
+              "last_byte_us": 46030,
+              "elapsed_us": 45952,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 46136,
+              "first_byte_us": 1632380,
+              "last_byte_us": 1633823,
+              "elapsed_us": 1587687,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1638056,
+              "first_byte_us": 3754150,
+              "last_byte_us": 3755509,
+              "elapsed_us": 2117453,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 23
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 3103
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2595
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 18
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 827
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 627
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        }
+      ],
+      "warm": [
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "hostile-large",
+            "manifest_digest": "sha256:1f82fb5b8be0f96dca3ec3418ae74573ea08c908622684a755488739b043624f"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1526638,
+            "optional_surfaces_settled": 3580034
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:68277cac9ee7bb6df245afedb4fa67d6fce6098df2740c5f2f178c4393b64dc9",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 44,
+              "first_byte_us": 42176,
+              "last_byte_us": 42509,
+              "elapsed_us": 42465,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 42599,
+              "first_byte_us": 1521287,
+              "last_byte_us": 1522753,
+              "elapsed_us": 1480154,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1526675,
+              "first_byte_us": 3575302,
+              "last_byte_us": 3576584,
+              "elapsed_us": 2049909,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 25
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 3054
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2533
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 14
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 603
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 706
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "hostile-large",
+            "manifest_digest": "sha256:1f82fb5b8be0f96dca3ec3418ae74573ea08c908622684a755488739b043624f"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1535606,
+            "optional_surfaces_settled": 3485962
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:68277cac9ee7bb6df245afedb4fa67d6fce6098df2740c5f2f178c4393b64dc9",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 45,
+              "first_byte_us": 48700,
+              "last_byte_us": 49102,
+              "elapsed_us": 49057,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 49210,
+              "first_byte_us": 1530268,
+              "last_byte_us": 1531516,
+              "elapsed_us": 1482306,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1535667,
+              "first_byte_us": 3481730,
+              "last_byte_us": 3482846,
+              "elapsed_us": 1947179,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 24
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 3072
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2318
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 17
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 750
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 597
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "hostile-large",
+            "manifest_digest": "sha256:1f82fb5b8be0f96dca3ec3418ae74573ea08c908622684a755488739b043624f"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1571958,
+            "optional_surfaces_settled": 3602566
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:68277cac9ee7bb6df245afedb4fa67d6fce6098df2740c5f2f178c4393b64dc9",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 40,
+              "first_byte_us": 38982,
+              "last_byte_us": 39275,
+              "elapsed_us": 39235,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 39365,
+              "first_byte_us": 1566782,
+              "last_byte_us": 1568015,
+              "elapsed_us": 1528650,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1571997,
+              "first_byte_us": 3597727,
+              "last_byte_us": 3599256,
+              "elapsed_us": 2027259,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 21
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 3079
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2431
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 16
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 642
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 650
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "hostile-large",
+            "manifest_digest": "sha256:1f82fb5b8be0f96dca3ec3418ae74573ea08c908622684a755488739b043624f"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 1606506,
+            "optional_surfaces_settled": 3578415
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:68277cac9ee7bb6df245afedb4fa67d6fce6098df2740c5f2f178c4393b64dc9",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 51,
+              "first_byte_us": 61839,
+              "last_byte_us": 62224,
+              "elapsed_us": 62173,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 62319,
+              "first_byte_us": 1600545,
+              "last_byte_us": 1602314,
+              "elapsed_us": 1539995,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 1606545,
+              "first_byte_us": 3573874,
+              "last_byte_us": 3575126,
+              "elapsed_us": 1968581,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 21
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 3349
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2410
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 18
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 606
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 626
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        },
+        {
+          "schema": "mana-familiar.c04.performance/v1",
+          "build_mode": "release",
+          "environment": {
+            "os": "macos",
+            "os_version": "Version 26.6.2 (Build 25G83)",
+            "dart": "3.12.2"
+          },
+          "fixture": {
+            "class": "hostile-large",
+            "manifest_digest": "sha256:1f82fb5b8be0f96dca3ec3418ae74573ea08c908622684a755488739b043624f"
+          },
+          "milestones_us": {
+            "project_selected": 0,
+            "first_meaningful_overview": 2504474,
+            "optional_surfaces_settled": 4893421
+          },
+          "model": {
+            "mode": "fullSemantic",
+            "work_items": 500,
+            "semantic_revision": "sha256:68277cac9ee7bb6df245afedb4fa67d6fce6098df2740c5f2f178c4393b64dc9",
+            "supporting_project_context": true,
+            "supporting_activity": false,
+            "supporting_error": "ManaInspectException"
+          },
+          "processes": [
+            {
+              "operation": "project",
+              "start_us": 55,
+              "first_byte_us": 51588,
+              "last_byte_us": 51947,
+              "elapsed_us": 51892,
+              "response_bytes": 1140,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 52047,
+              "first_byte_us": 2497407,
+              "last_byte_us": 2499629,
+              "elapsed_us": 2447582,
+              "response_bytes": 411887,
+              "exit_code": 0
+            },
+            {
+              "operation": "semantic-snapshot",
+              "start_us": 2504521,
+              "first_byte_us": 4888792,
+              "last_byte_us": 4890068,
+              "elapsed_us": 2385547,
+              "response_bytes": 412890,
+              "exit_code": 0
+            }
+          ],
+          "decode": [
+            {
+              "response_bytes": 1140,
+              "offloaded": false,
+              "elapsed_us": 22
+            },
+            {
+              "response_bytes": 411887,
+              "offloaded": true,
+              "elapsed_us": 4019
+            },
+            {
+              "response_bytes": 412890,
+              "offloaded": true,
+              "elapsed_us": 2479
+            }
+          ],
+          "typed_projection": [
+            {
+              "schema": "mana.inspect.project/v1",
+              "elapsed_us": 16
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 605
+            },
+            {
+              "schema": "mana.inspect.semantic-snapshot/v1",
+              "elapsed_us": 662
+            }
+          ],
+          "privacy": {
+            "source_content": false,
+            "absolute_paths": false,
+            "credentials": false,
+            "responses": false
+          }
+        }
+      ],
+      "median_us": {
+        "cold_first_meaningful_overview": 1627069,
+        "warm_first_meaningful_overview": 1571958,
+        "cold_optional_surfaces_settled": 3595929,
+        "warm_optional_surfaces_settled": 3580034
+      }
+    }
+  ],
+  "privacy": {
+    "source_content": false,
+    "absolute_paths": false,
+    "credentials": false,
+    "responses": false
+  }
+}

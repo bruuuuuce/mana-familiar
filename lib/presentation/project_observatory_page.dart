@@ -5,12 +5,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../application/mana_inspect.dart';
+import '../application/mana_knowledge.dart';
+import '../application/mana_review_scheduler.dart';
 import '../application/human_feedback.dart';
 import '../application/semantic_navigation.dart';
 import '../application/mana_workspace_watcher.dart';
 import '../native_e2e_bridge.dart';
 import 'artifact_detail_view.dart';
+import 'knowledge_center_page.dart';
 import 'review_inbox_page.dart';
+import 'scheduled_review_inbox_page.dart';
 
 /// Semantic navigation shell for the project observatory. Routes retain typed
 /// work, context, activity, and document ownership through the presentation.
@@ -33,6 +37,9 @@ class ProjectObservatoryPage extends StatefulWidget {
     this.feedback,
     this.feedbackDrafts,
     this.nativeE2E,
+    this.knowledgeClient,
+    this.reviewSchedulerClient,
+    this.performanceMilestone,
   });
   final ManaInspectClient client;
   final Widget knowledge;
@@ -52,6 +59,9 @@ class ProjectObservatoryPage extends StatefulWidget {
   final HumanFeedbackRepository? feedback;
   final HumanFeedbackDraftStore? feedbackDrafts;
   final NativeE2EBridge? nativeE2E;
+  final ManaKnowledgeClient? knowledgeClient;
+  final ManaReviewSchedulerClient? reviewSchedulerClient;
+  final void Function(String milestone)? performanceMilestone;
   @override
   State<ProjectObservatoryPage> createState() => _ProjectObservatoryPageState();
 }
@@ -94,9 +104,13 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   StreamSubscription<ManaWorkspaceWatchEvent>? _watchSubscription;
   var _refreshPending = false;
   var _refreshInFlight = false;
+  var _semanticRequest = 0;
   final ValueNotifier<int> _feedbackRefresh = ValueNotifier(0);
   var _watchUnavailable = false;
   var _catalogLoading = false;
+  var _supportingLoading = false;
+  var _producerInitialLoadComplete = false;
+  var _scheduledReviews = false;
   Object? _catalogError;
   NativeE2EObservatoryBindings? _nativeE2EObservatory;
 
@@ -105,6 +119,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     super.initState();
     _model = widget.initialReadModel ?? _legacyModel();
     _loading = _model == null;
+    if (_loading) _recordAfterFrame('project_loading_shell');
     _registerNativeE2EObservatory();
     if (_loading) _load();
     _watchSubscription = _watcher.events.listen((event) {
@@ -113,6 +128,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         switch (event) {
           case ManaWorkspaceWatchEvent.changed:
             _refreshPending = true;
+            widget.performanceMilestone?.call('workspace_event');
           case ManaWorkspaceWatchEvent.unavailable:
             _watchUnavailable = true;
         }
@@ -126,6 +142,12 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       if (!mounted) return;
       _loadWorkDetailIfNeeded();
       _loadDetailIfNeeded();
+    });
+  }
+
+  void _recordAfterFrame(String milestone) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.performanceMilestone?.call(milestone);
     });
   }
 
@@ -163,18 +185,21 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     });
     try {
       final model = await _repository.initialLoad();
+      _producerInitialLoadComplete = true;
       if (mounted)
         setState(() {
           _model = model;
           _loading = false;
         });
+      _recordAfterFrame('first_meaningful_overview');
+      _recordAfterFrame('visible_route_populated');
       // The post-frame request may have run before the initial inspect model
       // arrived. Re-evaluate an explicit startup artifact route now that its
       // producer-backed summary is available.
       _loadDetailIfNeeded();
       _loadWorkDetailIfNeeded();
       _loadCatalogIfNeeded();
-      unawaited(_loadSupportingSurfaces());
+      _loadSupportingIfNeeded();
     } catch (e) {
       if (mounted)
         setState(() {
@@ -184,9 +209,50 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     }
   }
 
+  void _loadSupportingIfNeeded() {
+    final model = _model;
+    final destination = _navigation.current.destination;
+    final supportingComplete =
+        model != null &&
+        (!model.project.supportsProjectContext ||
+            model.projectContext != null) &&
+        (!model.project.supportsActivity || model.activity != null);
+    if (model == null ||
+        !_producerInitialLoadComplete ||
+        _supportingLoading ||
+        (destination != ObservatoryDestination.overview &&
+            destination != ObservatoryDestination.activity) ||
+        model.refreshError != null ||
+        supportingComplete) {
+      return;
+    }
+    final request = _semanticRequest;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          request != _semanticRequest ||
+          _supportingLoading ||
+          (destination != _navigation.current.destination)) {
+        return;
+      }
+      _supportingLoading = true;
+      unawaited(_loadSupportingSurfaces());
+    });
+  }
+
   Future<void> _loadSupportingSurfaces() async {
-    final model = await _repository.loadSupportingSurfaces();
-    if (mounted) setState(() => _model = model);
+    final request = _semanticRequest;
+    try {
+      final model = await _repository.loadSupportingSurfaces();
+      if (mounted && request == _semanticRequest && !identical(_model, model)) {
+        setState(() => _model = model);
+      }
+      if (mounted && request == _semanticRequest) {
+        _recordAfterFrame('optional_surfaces_settled');
+      }
+    } finally {
+      _supportingLoading = false;
+      if (mounted) _loadSupportingIfNeeded();
+    }
   }
 
   void _scheduleWorkspaceRefresh() {
@@ -197,6 +263,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   Future<void> _refresh({bool fromWorkspaceWatch = false}) async {
     if (_refreshInFlight) return;
     _refreshInFlight = true;
+    final request = ++_semanticRequest;
     setState(() {
       _refreshPending = false;
       _detailCache.clear();
@@ -220,12 +287,34 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         _loadDetailIfNeeded();
         return;
       }
-      // Unlike initial load, a user-requested refresh must fetch every
-      // semantic surface again. Reusing initialLoad would retain previously
-      // loaded project context and activity in the repository.
-      final model = await _repository.refresh();
-      if (!mounted) return;
-      setState(() => _model = model);
+      // Unlike initial load, a refresh reloads supporting semantic surfaces.
+      // The raw catalog remains route-driven and is requested only while its
+      // Advanced surface is visible.
+      final route = _navigation.current;
+      final includeCatalog =
+          route.destination == ObservatoryDestination.advanced &&
+          (route.advancedSection ?? AdvancedSection.artifacts) ==
+              AdvancedSection.artifacts;
+      final model = await _repository.refresh(includeCatalog: includeCatalog);
+      if (!mounted || request != _semanticRequest) {
+        _refreshPending = mounted;
+        return;
+      }
+      final modelReplaced = !identical(_model, model);
+      if (modelReplaced) {
+        setState(() => _model = model);
+        widget.performanceMilestone?.call('refresh_model_replaced');
+      }
+      if (fromWorkspaceWatch) {
+        if (modelReplaced) {
+          _recordAfterFrame('refresh_visible_route');
+        } else {
+          // The visible route never became stale, and no state change requests
+          // another frame. Waiting on a post-frame callback here would measure
+          // an unrelated future frame rather than refresh completion.
+          widget.performanceMilestone?.call('refresh_visible_route');
+        }
+      }
       _feedbackRefresh.value++;
       _loadDetailIfNeeded();
     } catch (error) {
@@ -261,12 +350,15 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     route = _normalizeDossierRoute(route);
     if (_navigation.navigate(route))
       setState(() {
+        _semanticRequest++;
+        if (_refreshInFlight) _refreshPending = true;
         _detail = null;
         _detailError = null;
       });
     _loadDetailIfNeeded();
     _loadWorkDetailIfNeeded();
     _loadCatalogIfNeeded();
+    _loadSupportingIfNeeded();
   }
 
   void _loadCatalogIfNeeded() {
@@ -496,8 +588,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading)
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_loading) return _loadingState();
     if (_error != null || _model == null) return _errorState();
     final model = _model!;
     final route = _navigation.current;
@@ -711,6 +802,77 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       ),
     );
   }
+
+  Widget _loadingState() => Scaffold(
+    key: const Key('project-loading-shell'),
+    appBar: AppBar(
+      title: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Mana Familiar'),
+          Text('Opening project', style: TextStyle(fontSize: 12)),
+        ],
+      ),
+    ),
+    body: Row(
+      children: [
+        NavigationRail(
+          selectedIndex: 0,
+          labelType: NavigationRailLabelType.all,
+          destinations: const [
+            NavigationRailDestination(
+              icon: Icon(Icons.home_outlined),
+              label: Text('Overview'),
+            ),
+            NavigationRailDestination(
+              icon: Icon(Icons.work_outline),
+              label: Text('Work'),
+            ),
+            NavigationRailDestination(
+              icon: Icon(Icons.rate_review_outlined),
+              label: Text('Reviews'),
+            ),
+            NavigationRailDestination(
+              icon: Icon(Icons.school_outlined),
+              label: Text('Knowledge'),
+            ),
+            NavigationRailDestination(
+              icon: Icon(Icons.bolt_outlined),
+              label: Text('Activity'),
+            ),
+            NavigationRailDestination(
+              icon: Icon(Icons.tune_outlined),
+              label: Text('Advanced'),
+            ),
+          ],
+        ),
+        const VerticalDivider(width: 1),
+        Expanded(
+          child: Column(
+            children: [
+              const LinearProgressIndicator(),
+              Expanded(
+                child: Center(
+                  child: Semantics(
+                    liveRegion: true,
+                    label: 'Loading project overview',
+                    child: const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('Loading project overview…'),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _breadcrumbs(
     ManaSemanticReadModel model,
@@ -1938,6 +2100,40 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   );
 
   Widget _reviews(ManaSemanticReadModel model) {
+    final scheduler = widget.reviewSchedulerClient;
+    if (scheduler == null) return _semanticReviews(model);
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+          child: SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(
+                value: false,
+                label: Text('Project reviews'),
+                icon: Icon(Icons.rate_review_outlined),
+              ),
+              ButtonSegment(
+                value: true,
+                label: Text('PR Inbox'),
+                icon: Icon(Icons.inbox_outlined),
+              ),
+            ],
+            selected: {_scheduledReviews},
+            onSelectionChanged: (values) =>
+                setState(() => _scheduledReviews = values.single),
+          ),
+        ),
+        Expanded(
+          child: _scheduledReviews
+              ? ScheduledReviewInboxPage(client: scheduler)
+              : _semanticReviews(model),
+        ),
+      ],
+    );
+  }
+
+  Widget _semanticReviews(ManaSemanticReadModel model) {
     if (model.mode == ManaSemanticMode.legacyCatalog) {
       return ReviewInboxPage(
         artifacts: model.catalog?.artifacts ?? const [],
@@ -2052,6 +2248,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   }
 
   Widget _knowledge(ManaSemanticReadModel model) {
+    if (widget.knowledgeClient case final client?) {
+      return KnowledgeCenterPage(client: client);
+    }
     if (model.mode == ManaSemanticMode.legacyCatalog) {
       return ListView(
         padding: const EdgeInsets.all(24),
@@ -2502,6 +2701,9 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   Widget _advanced(ManaSemanticReadModel model) {
     final section =
         _navigation.current.advancedSection ?? AdvancedSection.artifacts;
+    if (section == AdvancedSection.artifacts) {
+      return _advancedArtifactCatalog(model);
+    }
     return ListView(
       padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
       children: [
@@ -2516,10 +2718,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         const SizedBox(height: 16),
         _advancedNavigation(section),
         const SizedBox(height: 20),
-        switch (section) {
-          AdvancedSection.artifacts => _advancedArtifactCatalog(model),
-          AdvancedSection.diagnostics => _advancedDiagnostics(model),
-        },
+        _advancedDiagnostics(model),
       ],
     );
   }
@@ -2547,27 +2746,43 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
 
   Widget _advancedArtifactCatalog(ManaSemanticReadModel model) {
     if (_catalogLoading) {
-      return const _ObservatoryEmptyState(
-        icon: Icons.inventory_2_outlined,
-        title: 'Loading artifact catalog',
-        message: 'Loading the raw catalog only when it is opened.',
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
+        children: const [
+          _ObservatoryEmptyState(
+            icon: Icons.inventory_2_outlined,
+            title: 'Loading artifact catalog',
+            message: 'Loading the raw catalog only when it is opened.',
+          ),
+        ],
       );
     }
     if (_catalogError != null) {
-      return const _ObservatoryEmptyState(
-        icon: Icons.error_outline,
-        title: 'Artifact catalog unavailable',
-        message: 'Mana could not load the artifact catalog for this project.',
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
+        children: const [
+          _ObservatoryEmptyState(
+            icon: Icons.error_outline,
+            title: 'Artifact catalog unavailable',
+            message:
+                'Mana could not load the artifact catalog for this project.',
+          ),
+        ],
       );
     }
     final artifacts =
         model.catalog?.artifacts ?? const <ManaInspectArtifactSummary>[];
     if (artifacts.isEmpty) {
-      return const _ObservatoryEmptyState(
-        icon: Icons.inventory_2_outlined,
-        title: 'Artifact catalog unavailable',
-        message:
-            'Mana has not made a catalog available for this project capability mode.',
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
+        children: const [
+          _ObservatoryEmptyState(
+            icon: Icons.inventory_2_outlined,
+            title: 'Artifact catalog unavailable',
+            message:
+                'Mana has not made a catalog available for this project capability mode.',
+          ),
+        ],
       );
     }
     final families = artifacts
@@ -2590,56 +2805,87 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
                   artifact.status == _advancedStatusFilter),
         )
         .toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Artifact catalog', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 4),
-        Text(
-          'Raw catalog identity and paths are intentionally kept in Advanced.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(32, 18, 32, 0),
+          sliver: SliverList.list(
+            children: [
+              Text(
+                'Advanced',
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Technical inspect data, compatibility, and diagnostics.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _advancedNavigation(AdvancedSection.artifacts),
+              const SizedBox(height: 20),
+              Text(
+                'Artifact catalog',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Raw catalog identity and paths are intentionally kept in Advanced.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  _advancedFilter(
+                    value: _advancedFamilyFilter,
+                    label: 'All families',
+                    values: families,
+                    onChanged: (value) =>
+                        setState(() => _advancedFamilyFilter = value),
+                  ),
+                  _advancedFilter(
+                    value: _advancedKindFilter,
+                    label: 'All kinds',
+                    values: kinds,
+                    onChanged: (value) =>
+                        setState(() => _advancedKindFilter = value),
+                  ),
+                  _advancedFilter(
+                    value: _advancedStatusFilter,
+                    label: 'All states',
+                    values: statuses,
+                    onChanged: (value) =>
+                        setState(() => _advancedStatusFilter = value),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (visible.isEmpty)
+                const Text('No catalog artifacts match these controls.'),
+            ],
           ),
         ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 10,
-          runSpacing: 8,
-          children: [
-            _advancedFilter(
-              value: _advancedFamilyFilter,
-              label: 'All families',
-              values: families,
-              onChanged: (value) =>
-                  setState(() => _advancedFamilyFilter = value),
-            ),
-            _advancedFilter(
-              value: _advancedKindFilter,
-              label: 'All kinds',
-              values: kinds,
-              onChanged: (value) => setState(() => _advancedKindFilter = value),
-            ),
-            _advancedFilter(
-              value: _advancedStatusFilter,
-              label: 'All states',
-              values: statuses,
-              onChanged: (value) =>
-                  setState(() => _advancedStatusFilter = value),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        if (visible.isEmpty)
-          const Text('No catalog artifacts match these controls.')
-        else
-          ...visible.map(
-            (artifact) => _quietRow(
-              leading: Icon(_artifactIcon(artifact.kind)),
-              title: artifact.id,
-              subtitle:
-                  '${artifact.kind} • ${artifact.status}\n${artifact.path}',
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _openArtifact(artifact),
+        if (visible.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(32, 0, 32, 36),
+            sliver: SliverList.builder(
+              itemCount: visible.length,
+              itemBuilder: (context, index) {
+                final artifact = visible[index];
+                return _quietRow(
+                  leading: Icon(_artifactIcon(artifact.kind)),
+                  title: artifact.id,
+                  subtitle:
+                      '${artifact.kind} • ${artifact.status}\n${artifact.path}',
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _openArtifact(artifact),
+                );
+              },
             ),
           ),
       ],

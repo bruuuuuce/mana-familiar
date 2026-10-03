@@ -13,6 +13,35 @@ Map<String, dynamic> fixture(String name) =>
         as Map<String, dynamic>;
 
 void main() {
+  test('offloads JSON decode above the measured payload threshold', () async {
+    final root = await Directory.systemTemp.createTemp('semantic-decode-');
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}/mana').writeAsString('');
+    final traces = <ManaInspectDecodeTrace>[];
+    final processes = <ManaInspectProcessTrace>[];
+    final projections = <ManaInspectProjectionTrace>[];
+    final payload = {..._projectWithSemantic, 'synthetic_padding': 'x' * 4096};
+    final client = ManaInspectClient(
+      projectRoot: root.path,
+      decodeOffloadThresholdBytes: 1024,
+      onProcessTrace: processes.add,
+      onDecodeTrace: traces.add,
+      onProjectionTrace: projections.add,
+      run: (_, _, {workingDirectory}) async =>
+          ProcessResult(0, 0, jsonEncode(payload), ''),
+    );
+
+    expect((await client.project()).projectId, isNotEmpty);
+    expect(traces.single.offloaded, isTrue);
+    expect(traces.single.responseBytes, greaterThan(4096));
+    expect(traces.single.elapsed, isNot(Duration.zero));
+    expect(projections.single.schema, inspectProjectSchema);
+    expect(projections.single.elapsed, isNot(Duration.zero));
+    expect(processes.single.operation, 'project');
+    expect(processes.single.responseBytes, greaterThan(4096));
+    expect(processes.single.exitCode, 0);
+  });
+
   test('parses all frozen M10 semantic fixture responses', () {
     final list = ManaWorkItemsResponse.fromJson(fixture('work-items.json'));
     final detail = ManaWorkItemResponse.fromJson(
@@ -246,6 +275,119 @@ void main() {
     expect(completed.projectContext, isNotNull);
     expect(completed.activity, isNotNull);
   });
+
+  test(
+    'initial Overview consumes one route-minimal semantic snapshot after negotiation',
+    () async {
+      final root = await Directory.systemTemp.createTemp('semantic-snapshot-');
+      addTearDown(() => root.delete(recursive: true));
+      await File('${root.path}/mana').writeAsString('');
+      final calls = <String>[];
+      final project = <String, dynamic>{
+        ..._projectWithSemantic,
+        'operations': [
+          ...(_projectWithSemantic['operations']! as List),
+          {
+            'name': 'semantic-snapshot',
+            'schema': inspectSemanticSnapshotSchema,
+          },
+        ],
+      };
+      final snapshot = <String, dynamic>{
+        'schema': inspectSemanticSnapshotSchema,
+        'snapshot_revision': 'sha256:${'a' * 64}',
+        'inventory': {
+          'catalog_build_count': 1,
+          'file_count': 42,
+          'admitted_bytes': 8192,
+        },
+        'project': project,
+        'projections': {
+          'work_items': {
+            'status': 'available',
+            'value': fixture('work-items.json'),
+            'diagnostic': null,
+          },
+          'project_context': {
+            'status': 'not_requested',
+            'value': null,
+            'diagnostic': null,
+          },
+          'activity': {
+            'status': 'not_requested',
+            'value': null,
+            'diagnostic': null,
+          },
+          'artifacts': {
+            'status': 'not_requested',
+            'value': null,
+            'diagnostic': null,
+          },
+        },
+        'guarantees': {
+          'model_calls': 0,
+          'network_calls': 0,
+          'writes': false,
+          'paths': 'project_relative_only',
+        },
+        'diagnostics': const [],
+      };
+      final client = ManaInspectClient(
+        projectRoot: root.path,
+        run: (_, args, {workingDirectory}) async {
+          final operation = args[args.indexOf('inspect') + 1];
+          calls.add(operation);
+          final response = operation == 'project'
+              ? project
+              : args.contains('--include-supporting')
+              ? {
+                  ...snapshot,
+                  'projections': {
+                    ...(snapshot['projections']! as Map<String, dynamic>),
+                    'project_context': {
+                      'status': 'available',
+                      'value': fixture('project-context.json'),
+                      'diagnostic': null,
+                    },
+                    'activity': {
+                      'status': 'available',
+                      'value': fixture('activity.json'),
+                      'diagnostic': null,
+                    },
+                  },
+                }
+              : snapshot;
+          return ProcessResult(0, 0, jsonEncode(response), '');
+        },
+      );
+
+      final repository = ManaSemanticRepository(client);
+      final initial = await repository.initialLoad();
+
+      expect(calls, ['project', 'semantic-snapshot']);
+      expect(initial.workItems, isNotNull);
+      expect(initial.catalog, isNull);
+      expect(initial.projectContext, isNull);
+      expect(initial.activity, isNull);
+      expect(initial.refreshError, isNull);
+
+      final supporting = await repository.loadSupportingSurfaces();
+      expect(calls, ['project', 'semantic-snapshot', 'semantic-snapshot']);
+      expect(supporting.projectContext, isNotNull);
+      expect(supporting.activity, isNotNull);
+      expect(supporting.refreshError, isNull);
+
+      final unchanged = await repository.refresh();
+      expect(unchanged, same(supporting));
+      expect(calls, [
+        'project',
+        'semantic-snapshot',
+        'semantic-snapshot',
+        'project',
+        'semantic-snapshot',
+      ]);
+    },
+  );
 
   test(
     'refresh reloads project context after the initial supporting load',

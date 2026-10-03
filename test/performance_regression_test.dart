@@ -178,4 +178,48 @@ void main() {
       '${activity.events.length} events in ${stopwatch.elapsedMilliseconds}ms',
     );
   });
+
+  testWidgets('windows the 10000-row Advanced artifact catalog', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final catalog = ManaInspectCatalog.fromJson(largeCatalogFixture());
+    final project = ManaInspectProject.fromJson({
+      'schema': inspectProjectSchema,
+      'project_id': 'project:scale',
+      'framework': {'compatibility': 'mana-inspect/v1'},
+      'mana': {'present': true},
+      'operations': const [],
+    });
+    final model = ManaSemanticReadModel(
+      project: project,
+      mode: ManaSemanticMode.legacyCatalog,
+      catalog: catalog,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProjectObservatoryPage(
+          client: ManaInspectClient(projectRoot: '/project'),
+          knowledge: const SizedBox(),
+          initialReadModel: model,
+          initialRoute: const ObservatoryRoute(
+            destination: ObservatoryDestination.advanced,
+            advancedSection: AdvancedSection.artifacts,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(CustomScrollView), findsOneWidget);
+    expect(find.byType(SliverList), findsWidgets);
+    expect(find.text('artifact:00000000'), findsOneWidget);
+    expect(
+      find.byType(ListTile).evaluate().length,
+      lessThan(100),
+      reason: 'only the visible sliver window may build artifact rows',
+    );
+  });
 }
