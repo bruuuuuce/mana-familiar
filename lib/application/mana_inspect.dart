@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../safe_path.dart';
+import 'mana_process.dart';
 
 const inspectProjectSchema = 'mana.inspect.project/v1';
 const inspectArtifactsSchema = 'mana.inspect.artifacts/v1';
@@ -750,7 +752,7 @@ class ManaInspectArtifactDetail {
     return ManaInspectArtifactDetail(
       artifact: ManaInspectArtifactSummary.fromJson(_map(json['artifact'])),
       payload: json['payload'],
-      relations: _objects(json['relations']),
+      relations: _objects(json['relations']).toList(growable: false),
       raw: json,
     );
   }
@@ -783,7 +785,7 @@ class ManaInspectSourceRelations {
       path: path,
       availability: _string(source['availability'], 'source.availability'),
       coverage: _string(json['coverage'], 'coverage'),
-      relations: _objects(json['relations']),
+      relations: _objects(json['relations']).toList(growable: false),
       raw: json,
     );
   }
@@ -938,6 +940,8 @@ class ManaInspectClient {
     this.onDecodeTrace,
     this.onProjectionTrace,
     ManaProcessRunner? run,
+    Future<Process> Function(String, List<String>, {String? workingDirectory})?
+    startProcess,
   }) : _run =
            run ??
            ((executable, arguments, {workingDirectory}) => _runInspectProcess(
@@ -945,6 +949,7 @@ class ManaInspectClient {
              arguments,
              workingDirectory: workingDirectory,
              timeout: processTimeout,
+             startProcess: startProcess,
            ));
 
   final String projectRoot;
@@ -1682,15 +1687,15 @@ List<dynamic> _list(Object? value) {
   );
 }
 
-List<Map<String, dynamic>> _objects(Object? value) => _list(value)
-    .map((value) {
+Iterable<Map<String, dynamic>> _objects(Object? value) =>
+    _list(value).map((value) {
+      if (value is Map<String, dynamic>) return value;
       if (value is Map) return value.cast<String, dynamic>();
       throw const ManaInspectException(
         ManaInspectFailure.malformedJson,
         'Expected an object array entry.',
       );
-    })
-    .toList(growable: false);
+    });
 String _string(Object? value, String field) {
   if (value is String && value.isNotEmpty) return value;
   throw ManaInspectException(
@@ -1711,8 +1716,10 @@ List<String> _strings(Object? value) => _list(value)
     })
     .toList(growable: false);
 
-bool _isWorkItemId(String value) =>
-    RegExp(r'^(feature|session):[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(value);
+final _workItemIdPattern = RegExp(
+  r'^(feature|session):[A-Za-z0-9][A-Za-z0-9._-]*$',
+);
+bool _isWorkItemId(String value) => _workItemIdPattern.hasMatch(value);
 
 void _requireUnique(Iterable<String> values, String field) {
   final seen = <String>{};
@@ -1785,12 +1792,13 @@ Future<ProcessResult> _runInspectProcess(
   List<String> arguments, {
   String? workingDirectory,
   required Duration timeout,
+  Future<Process> Function(String, List<String>, {String? workingDirectory})?
+  startProcess,
 }) async {
-  final process = await Process.start(
+  final process = await (startProcess ?? startManaProcess)(
     executable,
     arguments,
     workingDirectory: workingDirectory,
-    runInShell: false,
   );
   final stdout = _collectBounded(process.stdout, 16 * 1024 * 1024);
   final stderr = _collectBounded(process.stderr, 8 * 1024);
@@ -1800,13 +1808,14 @@ Future<ProcessResult> _runInspectProcess(
   } on TimeoutException {
     process.kill(ProcessSignal.sigterm);
     try {
-      await process.exitCode.timeout(const Duration(seconds: 2));
+      await Future.wait<Object?>([
+        process.exitCode,
+        stdout,
+        stderr,
+      ]).timeout(const Duration(seconds: 2));
     } on TimeoutException {
       process.kill(ProcessSignal.sigkill);
-      await process.exitCode;
     }
-    await stdout;
-    await stderr;
     throw ProcessException(
       executable,
       arguments,

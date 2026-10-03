@@ -70,6 +70,7 @@ def run_once(
     cache: Path,
     run_root: Path,
     timeout: float,
+    diagnostic_directory: Path | None = None,
 ) -> dict[str, Any]:
     trace = run_root / "trace"
     preferences = run_root / "preferences"
@@ -152,6 +153,30 @@ def run_once(
                 f"refresh_visible_route={'refresh_visible_route' in milestones}, "
                 f"refresh_processes={operations})"
             )
+    except Exception as error:
+        if diagnostic_directory is not None:
+            diagnostic_directory.mkdir(parents=True, exist_ok=True)
+            current = load_json(trace / "flutter-performance.json") or {}
+            window = load_json(trace / "native-window.json") or {}
+            diagnostic = {
+                "schema": "mana-familiar.c04.native-failure/v1",
+                "run": run_root.name,
+                "error_type": type(error).__name__,
+                "milestones_us": current.get("milestones_us", {}),
+                "operations": [
+                    {key: value for key, value in item.items() if key in {
+                        "operation", "start_us", "completed_us", "elapsed_us", "exit_code"
+                    }}
+                    for item in current.get("processes", [])
+                ],
+                "frames": current.get("frames", {}),
+                "rss_bytes": current.get("rss_bytes", {}),
+                "process_to_window_presented_us": window.get("process_to_window_presented_us"),
+            }
+            (diagnostic_directory / f"{run_root.name}-failure.json").write_text(
+                json.dumps(diagnostic, indent=2) + "\n", encoding="utf-8"
+            )
+        raise
     finally:
         if process.poll() is None:
             process.terminate()
@@ -227,6 +252,17 @@ def main() -> int:
     if not generator.is_file():
         raise SystemExit("Mana fixture generator is missing")
 
+    diagnostic_directory = args.output.parent / f"{args.output.stem}.diagnostics"
+
+    def measured_run(*run_arguments: Any) -> dict[str, Any]:
+        result = run_once(*run_arguments, diagnostic_directory=diagnostic_directory)
+        diagnostic_directory.mkdir(parents=True, exist_ok=True)
+        run_root = run_arguments[4]
+        (diagnostic_directory / f"{run_root.name}-sample.json").write_text(
+            json.dumps(result, indent=2) + "\n", encoding="utf-8"
+        )
+        return result
+
     with tempfile.TemporaryDirectory(prefix="mana-familiar-native-performance-") as temporary_value:
         temporary = Path(temporary_value)
         project = temporary / "project"
@@ -246,7 +282,7 @@ def main() -> int:
         cold: list[dict[str, Any]] = []
         for index in range(args.cold_runs):
             cold.append(
-                run_once(
+                measured_run(
                     app,
                     project,
                     mana_root,
@@ -256,9 +292,9 @@ def main() -> int:
                 )
             )
         warm_cache = temporary / "warm-cache"
-        run_once(app, project, mana_root, warm_cache, temporary / "warm-prime", args.timeout)
+        measured_run(app, project, mana_root, warm_cache, temporary / "warm-prime", args.timeout)
         warm = [
-            run_once(
+            measured_run(
                 app,
                 project,
                 mana_root,

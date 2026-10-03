@@ -20,6 +20,8 @@ jobs:
           repository: bruuuuuce/mana
           ref: develop
           path: mana
+      - name: Verify M08 producer prerequisites
+        run: python3 tool/check_mana_producer.py --mana-root ../mana
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.8'
@@ -29,6 +31,8 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed .
       - run: flutter analyze
       - run: flutter test
+      - name: Native performance failure evidence tests
+        run: python3 tests/test_m08_native_performance_runner.py
       - name: Build M08 release performance harnesses
         run: |
           mkdir -p build/m08-performance
@@ -80,6 +84,8 @@ jobs:
           repository: bruuuuuce/mana
           ref: develop
           path: mana
+      - name: Verify M08 producer prerequisites
+        run: python3 tool/check_mana_producer.py --mana-root ../mana
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.8'
@@ -89,4 +95,6 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed .
       - run: flutter analyze
       - run: flutter test
+      - name: Native performance failure evidence tests
+        run: python3 tests/test_m08_native_performance_runner.py
       - run: flutter build windows --release

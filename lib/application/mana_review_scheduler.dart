@@ -3,6 +3,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'mana_process.dart';
+
 import 'mana_inspect.dart';
 
 const manaReviewStatusSchema = 'mana.review-scheduler.status/v1';
@@ -252,12 +254,7 @@ Future<ProcessResult> _runProcess(
   String executable,
   List<String> arguments, {
   String? workingDirectory,
-}) => Process.run(
-  executable,
-  arguments,
-  workingDirectory: workingDirectory,
-  runInShell: false,
-);
+}) => runManaProcess(executable, arguments, workingDirectory: workingDirectory);
 
 void _schema(Map<String, dynamic> json, String expected) {
   if (json['schema'] != expected)

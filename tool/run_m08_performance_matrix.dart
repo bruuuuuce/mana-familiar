@@ -3,7 +3,10 @@ import 'dart:io';
 
 Future<void> main(List<String> arguments) async {
   final values = _arguments(arguments);
-  final manaRoot = values['--mana-root'];
+  final manaArgument = values['--mana-root'];
+  final manaRoot = manaArgument == null
+      ? null
+      : Directory(manaArgument).absolute.path;
   final harness = values['--harness'];
   final output = values['--output'];
   final coldRuns = int.tryParse(values['--cold-runs'] ?? '5');
@@ -31,12 +34,17 @@ Future<void> main(List<String> arguments) async {
     exitCode = 2;
     return;
   }
-  final harnessFile = File(harness);
+  final harnessFile = File(harness).absolute;
   final generator = File(
     '$manaRoot${Platform.pathSeparator}scripts${Platform.pathSeparator}generate-m08-fixture.py',
   );
-  if (!harnessFile.existsSync() || !generator.existsSync()) {
-    stderr.writeln('The release harness or Mana fixture generator is missing.');
+  if (!harnessFile.existsSync()) {
+    stderr.writeln('The release harness is missing.');
+    exitCode = 2;
+    return;
+  }
+  if (!generator.existsSync()) {
+    stderr.writeln('The Mana fixture generator is missing.');
     exitCode = 2;
     return;
   }

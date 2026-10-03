@@ -469,19 +469,49 @@ void main() {
       );
       addTearDown(() => root.delete(recursive: true));
       final wrapper = File('${root.path}${Platform.pathSeparator}mana');
-      await wrapper.writeAsString('#!/bin/sh\nexec sleep 5\n');
-      await Process.run('chmod', ['+x', wrapper.path]);
+      await wrapper.writeAsString('');
+      final fixture = File('${root.path}${Platform.pathSeparator}stall.dart');
+      await fixture.writeAsString(
+        "import 'dart:async';\n"
+        'Future<void> main() async {\n'
+        '  await Future<void>.delayed(const Duration(seconds: 60));\n'
+        '}\n',
+      );
+      Process? producer;
+      addTearDown(() => producer?.kill());
       final repository = ManaHumanFeedbackRepository(
         projectRoot: root.path,
-        commandTimeout: const Duration(milliseconds: 20),
+        commandTimeout: const Duration(milliseconds: 250),
+        startProcess: (_, _) async {
+          producer = await Process.start(_dartExecutable(), [fixture.path]);
+          return producer!;
+        },
       );
 
       await expectLater(
         repository.threads(target),
         throwsA(isA<TimeoutException>()),
       );
+      expect(producer, isNotNull);
+      await producer!.exitCode.timeout(const Duration(seconds: 2));
     },
   );
+}
+
+String _dartExecutable() {
+  var directory = File(Platform.resolvedExecutable).parent;
+  while (true) {
+    final candidate = File(
+      '${directory.path}${Platform.pathSeparator}dart-sdk'
+      '${Platform.pathSeparator}bin${Platform.pathSeparator}'
+      '${Platform.isWindows ? 'dart.exe' : 'dart'}',
+    );
+    if (candidate.existsSync()) return candidate.path;
+    if (directory.parent.path == directory.path) {
+      throw StateError('Cannot locate the Flutter test runner Dart SDK.');
+    }
+    directory = directory.parent;
+  }
 }
 
 String _threadPage({

@@ -20,6 +20,8 @@ jobs:
           repository: bruuuuuce/mana
           ref: develop
           path: mana
+      - name: Verify M08 producer prerequisites
+        run: python3 tool/check_mana_producer.py --mana-root ../mana
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.8'
@@ -81,6 +83,8 @@ jobs:
           repository: bruuuuuce/mana
           ref: develop
           path: mana
+      - name: Verify M08 producer prerequisites
+        run: python3 tool/check_mana_producer.py --mana-root ../mana
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.8'

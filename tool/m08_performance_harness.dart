@@ -6,6 +6,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:mana_familiar/application/mana_inspect.dart';
+import 'package:mana_familiar/application/mana_process.dart';
 
 Future<void> main(List<String> arguments) async {
   final values = _arguments(arguments);
@@ -28,11 +29,10 @@ Future<void> main(List<String> arguments) async {
     String? workingDirectory,
   }) async {
     final started = origin.elapsedMicroseconds;
-    final process = await Process.start(
+    final process = await startManaProcess(
       executable,
       args,
       workingDirectory: workingDirectory,
-      runInShell: false,
     );
     final output = BytesBuilder(copy: false);
     final errors = BytesBuilder(copy: false);
