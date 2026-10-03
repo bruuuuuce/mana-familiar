@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -13,6 +14,85 @@ Map<String, dynamic> fixture(String name) =>
         as Map<String, dynamic>;
 
 void main() {
+  test('offload does not capture observer timers or client state', () async {
+    final root = await Directory.systemTemp.createTemp('semantic-observer-');
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}/mana').writeAsString('');
+    final timer = Timer.periodic(const Duration(minutes: 1), (_) {});
+    addTearDown(timer.cancel);
+    var observed = false;
+    final client = ManaInspectClient(
+      projectRoot: root.path,
+      decodeOffloadThresholdBytes: 1,
+      onDecodeTrace: (_) => observed = timer.isActive,
+      run: (_, _, {workingDirectory}) async =>
+          ProcessResult(0, 0, jsonEncode(_projectWithSemantic), ''),
+    );
+    expect(
+      (await client.project()).projectId,
+      _projectWithSemantic['project_id'],
+    );
+    expect(observed, isTrue);
+  });
+
+  test('offloaded projection still rejects unsafe artifact paths', () async {
+    final root = await Directory.systemTemp.createTemp('semantic-worker-');
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}/mana').writeAsString('');
+    final unsafe = fixture('work-items.json');
+    (((unsafe['work_items'] as List).first as Map)['artifacts'] as List)
+            .first['path'] =
+        '.mana/features/PROJ-24342/../secret';
+    final client = ManaInspectClient(
+      projectRoot: root.path,
+      decodeOffloadThresholdBytes: 1,
+      run: (_, _, {workingDirectory}) async =>
+          ProcessResult(0, 0, jsonEncode(unsafe), ''),
+    );
+    await expectLater(
+      client.workItems(
+        capabilities: ManaInspectProject.fromJson(_projectWithSemantic),
+      ),
+      throwsA(
+        isA<ManaInspectException>().having(
+          (error) => error.kind,
+          'kind',
+          ManaInspectFailure.malformedJson,
+        ),
+      ),
+    );
+  });
+
+  test('offloads JSON decode above the measured payload threshold', () async {
+    final root = await Directory.systemTemp.createTemp('semantic-decode-');
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}/mana').writeAsString('');
+    final traces = <ManaInspectDecodeTrace>[];
+    final processes = <ManaInspectProcessTrace>[];
+    final projections = <ManaInspectProjectionTrace>[];
+    final payload = {..._projectWithSemantic, 'synthetic_padding': 'x' * 4096};
+    final client = ManaInspectClient(
+      projectRoot: root.path,
+      decodeOffloadThresholdBytes: 1024,
+      onProcessTrace: processes.add,
+      onDecodeTrace: traces.add,
+      onProjectionTrace: projections.add,
+      run: (_, _, {workingDirectory}) async =>
+          ProcessResult(0, 0, jsonEncode(payload), ''),
+    );
+
+    expect((await client.project()).projectId, isNotEmpty);
+    expect(traces.single.offloaded, isTrue);
+    expect(traces.single.responseBytes, greaterThan(4096));
+    expect(traces.single.elapsed, isNot(Duration.zero));
+    expect(projections.single.schema, inspectProjectSchema);
+    expect(projections.single.offloaded, isTrue);
+    expect(projections.single.elapsed, isNot(Duration.zero));
+    expect(processes.single.operation, 'project');
+    expect(processes.single.responseBytes, greaterThan(4096));
+    expect(processes.single.exitCode, 0);
+  });
+
   test('parses all frozen M10 semantic fixture responses', () {
     final list = ManaWorkItemsResponse.fromJson(fixture('work-items.json'));
     final detail = ManaWorkItemResponse.fromJson(
@@ -248,6 +328,119 @@ void main() {
   });
 
   test(
+    'initial Overview consumes one route-minimal semantic snapshot after negotiation',
+    () async {
+      final root = await Directory.systemTemp.createTemp('semantic-snapshot-');
+      addTearDown(() => root.delete(recursive: true));
+      await File('${root.path}/mana').writeAsString('');
+      final calls = <String>[];
+      final project = <String, dynamic>{
+        ..._projectWithSemantic,
+        'operations': [
+          ...(_projectWithSemantic['operations']! as List),
+          {
+            'name': 'semantic-snapshot',
+            'schema': inspectSemanticSnapshotSchema,
+          },
+        ],
+      };
+      final snapshot = <String, dynamic>{
+        'schema': inspectSemanticSnapshotSchema,
+        'snapshot_revision': 'sha256:${'a' * 64}',
+        'inventory': {
+          'catalog_build_count': 1,
+          'file_count': 42,
+          'admitted_bytes': 8192,
+        },
+        'project': project,
+        'projections': {
+          'work_items': {
+            'status': 'available',
+            'value': fixture('work-items.json'),
+            'diagnostic': null,
+          },
+          'project_context': {
+            'status': 'not_requested',
+            'value': null,
+            'diagnostic': null,
+          },
+          'activity': {
+            'status': 'not_requested',
+            'value': null,
+            'diagnostic': null,
+          },
+          'artifacts': {
+            'status': 'not_requested',
+            'value': null,
+            'diagnostic': null,
+          },
+        },
+        'guarantees': {
+          'model_calls': 0,
+          'network_calls': 0,
+          'writes': false,
+          'paths': 'project_relative_only',
+        },
+        'diagnostics': const [],
+      };
+      final client = ManaInspectClient(
+        projectRoot: root.path,
+        run: (_, args, {workingDirectory}) async {
+          final operation = args[args.indexOf('inspect') + 1];
+          calls.add(operation);
+          final response = operation == 'project'
+              ? project
+              : args.contains('--include-supporting')
+              ? {
+                  ...snapshot,
+                  'projections': {
+                    ...(snapshot['projections']! as Map<String, dynamic>),
+                    'project_context': {
+                      'status': 'available',
+                      'value': fixture('project-context.json'),
+                      'diagnostic': null,
+                    },
+                    'activity': {
+                      'status': 'available',
+                      'value': fixture('activity.json'),
+                      'diagnostic': null,
+                    },
+                  },
+                }
+              : snapshot;
+          return ProcessResult(0, 0, jsonEncode(response), '');
+        },
+      );
+
+      final repository = ManaSemanticRepository(client);
+      final initial = await repository.initialLoad();
+
+      expect(calls, ['project', 'semantic-snapshot']);
+      expect(initial.workItems, isNotNull);
+      expect(initial.catalog, isNull);
+      expect(initial.projectContext, isNull);
+      expect(initial.activity, isNull);
+      expect(initial.refreshError, isNull);
+
+      final supporting = await repository.loadSupportingSurfaces();
+      expect(calls, ['project', 'semantic-snapshot', 'semantic-snapshot']);
+      expect(supporting.projectContext, isNotNull);
+      expect(supporting.activity, isNotNull);
+      expect(supporting.refreshError, isNull);
+
+      final unchanged = await repository.refresh();
+      expect(unchanged, same(supporting));
+      expect(calls, [
+        'project',
+        'semantic-snapshot',
+        'semantic-snapshot',
+        'project',
+        'semantic-snapshot',
+      ]);
+    },
+  );
+
+  test(
     'refresh reloads project context after the initial supporting load',
     () async {
       final root = await Directory.systemTemp.createTemp('semantic-context-');
@@ -455,18 +648,58 @@ void main() {
     }
   });
 
+  test(
+    'closes unused Inspect stdin before waiting for producer output',
+    () async {
+      final root = await Directory.systemTemp.createTemp('semantic-eof-');
+      addTearDown(() => root.delete(recursive: true));
+      await File('${root.path}/mana').writeAsString('');
+      final fixture = File('${root.path}/eof.dart');
+      await fixture.writeAsString(
+        "import 'dart:io';\n"
+        'Future<void> main() async { await stdin.drain<void>(); '
+        'stdout.write(${jsonEncode(jsonEncode(_projectWithSemantic))}); }\n',
+      );
+      Process? producer;
+      addTearDown(() => producer?.kill());
+      final client = ManaInspectClient(
+        projectRoot: root.path,
+        processTimeout: const Duration(seconds: 2),
+        startProcess: (_, _, {workingDirectory}) async {
+          producer = await Process.start(_dartExecutable(), [fixture.path]);
+          return producer!;
+        },
+      );
+      expect(
+        (await client.project()).projectId,
+        _projectWithSemantic['project_id'],
+      );
+      expect(await producer!.exitCode, 0);
+    },
+  );
+
   test('times out and terminates an unresponsive inspect process', () async {
     final root = await Directory.systemTemp.createTemp('semantic-timeout-');
     addTearDown(() => root.delete(recursive: true));
     final wrapper = File('${root.path}/mana');
-    await wrapper.writeAsString(
-      "#!/bin/sh\ntrap 'exit 0' TERM\nwhile :; do :; done\n",
+    await wrapper.writeAsString('');
+    final fixture = File('${root.path}${Platform.pathSeparator}stall.dart');
+    await fixture.writeAsString(
+      "import 'dart:async';\n"
+      'Future<void> main() async {\n'
+      '  await Future<void>.delayed(const Duration(seconds: 60));\n'
+      '}\n',
     );
-    expect((await Process.run('chmod', ['+x', wrapper.path])).exitCode, 0);
+    Process? producer;
+    addTearDown(() => producer?.kill());
     final stopwatch = Stopwatch()..start();
     final client = ManaInspectClient(
       projectRoot: root.path,
-      processTimeout: const Duration(milliseconds: 100),
+      processTimeout: const Duration(milliseconds: 250),
+      startProcess: (_, _, {workingDirectory}) async {
+        producer = await Process.start(_dartExecutable(), [fixture.path]);
+        return producer!;
+      },
     );
 
     await expectLater(
@@ -481,6 +714,7 @@ void main() {
     );
     stopwatch.stop();
     expect(stopwatch.elapsed, lessThan(const Duration(seconds: 3)));
+    await producer!.exitCode.timeout(const Duration(seconds: 2));
   });
 }
 
@@ -498,3 +732,19 @@ const _projectWithSemantic = {
     {'name': 'activity', 'schema': inspectActivitySchema},
   ],
 };
+
+String _dartExecutable() {
+  var directory = File(Platform.resolvedExecutable).parent;
+  while (true) {
+    final candidate = File(
+      '${directory.path}${Platform.pathSeparator}dart-sdk'
+      '${Platform.pathSeparator}bin${Platform.pathSeparator}'
+      '${Platform.isWindows ? 'dart.exe' : 'dart'}',
+    );
+    if (candidate.existsSync()) return candidate.path;
+    if (directory.parent.path == directory.path) {
+      throw StateError('Cannot locate the Flutter test runner Dart SDK.');
+    }
+    directory = directory.parent;
+  }
+}

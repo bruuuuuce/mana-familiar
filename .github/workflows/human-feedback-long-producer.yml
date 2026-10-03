@@ -1,0 +1,60 @@
+name: Human Feedback long producer gates
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 0'
+
+jobs:
+  c03-producer-desktop-long:
+    # This is deliberately manual: it is the 20-minute producer-data-path
+    # profile, not a claim that a native desktop lifecycle test was executed.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-14
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: mana-familiar
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mana-familiar
+      - uses: actions/checkout@v4
+        with:
+          repository: bruuuuuce/mana
+          ref: develop
+          path: mana
+      - name: C03 producer long profile
+        run: python3 tests/run-c03-human-feedback-harness.py --mana-root ../mana --profile desktop-long
+      - name: Upload C03 producer-long evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c03-human-feedback-producer-desktop-long
+          path: mana-familiar/build/feedback-audit
+          if-no-files-found: warn
+
+  c03-producer-soak:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: mana-familiar
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mana-familiar
+      - uses: actions/checkout@v4
+        with:
+          repository: bruuuuuce/mana
+          ref: develop
+          path: mana
+      - name: C03 producer soak
+        run: python3 tests/run-c03-human-feedback-harness.py --mana-root ../mana --profile soak
+      - name: Upload C03 producer-soak evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c03-human-feedback-producer-soak
+          path: mana-familiar/build/feedback-audit
+          if-no-files-found: warn

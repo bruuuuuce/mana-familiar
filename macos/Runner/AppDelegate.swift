@@ -3,12 +3,31 @@ import FlutterMacOS
 
 @main
 class AppDelegate: FlutterAppDelegate {
+  let performanceProcessStartedAt = ProcessInfo.processInfo.systemUptime
   private let projectMenuController = ProjectMenuController()
+  private weak var closeCoordinator: NativeWindowCloseCoordinator?
 
   /// Called after MainMenu.xib has loaded its menu hierarchy.
   func installProjectMenu() {
     projectMenuController.install(in: NSApp.mainMenu)
   }
+
+  /// Cocoa asks for termination before Flutter has a chance to dispose its
+  /// widget tree. Delay the reply until the window bridge has flushed drafts.
+  func installTerminationPreparation(_ coordinator: NativeWindowCloseCoordinator) {
+    closeCoordinator = coordinator
+  }
+
+  override func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    guard let closeCoordinator else { return .terminateNow }
+    closeCoordinator.prepare { shouldTerminate in
+      DispatchQueue.main.async {
+        sender.reply(toApplicationShouldTerminate: shouldTerminate)
+      }
+    }
+    return .terminateLater
+  }
+
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     return true
   }
@@ -26,6 +45,33 @@ final class ProjectMenuController: NSObject, NSMenuDelegate {
   private static let maximumRecentProjects = 10
 
   private var recentMenu: NSMenu?
+
+  /// Test and portable launches may supply an isolated preferences directory.
+  /// Keep the native recent-project list in the matching isolated defaults
+  /// suite so opening another native window never mutates a user's recents.
+  private static var defaults: UserDefaults {
+    guard let root = argumentValue("--preferences-root"), !root.isEmpty else {
+      return .standard
+    }
+    return UserDefaults(suiteName: "com.mana.familiar.preferences.\(stableHash(root))") ?? .standard
+  }
+
+  private static func argumentValue(_ flag: String) -> String? {
+    let arguments = ProcessInfo.processInfo.arguments
+    guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else {
+      return nil
+    }
+    return arguments[index + 1]
+  }
+
+  private static func stableHash(_ value: String) -> String {
+    var hash: UInt64 = 1469598103934665603
+    for byte in value.utf8 {
+      hash ^= UInt64(byte)
+      hash &*= 1099511628211
+    }
+    return String(hash, radix: 16)
+  }
 
   func install(in mainMenu: NSMenu?) {
     guard let mainMenu, mainMenu.item(withTitle: "File") == nil else { return }
@@ -114,10 +160,19 @@ final class ProjectMenuController: NSObject, NSMenuDelegate {
   private func open(_ url: URL) {
     Self.remember(url)
     let executable = ProcessInfo.processInfo.arguments[0]
+    var arguments = ["--project-root", url.path]
+    for flag in ["--mana-root", "--preferences-root"] {
+      if let value = Self.argumentValue(flag), !value.isEmpty {
+        arguments.append(contentsOf: [flag, value])
+      }
+    }
+    // A new native Runner process needs independent recoverable drafts even
+    // when it observes the same project as the originating window.
+    arguments.append(contentsOf: ["--window-session", UUID().uuidString])
     do {
       try Process.run(
         URL(fileURLWithPath: executable),
-        arguments: ["--project-root", url.path]
+        arguments: arguments
       )
     } catch {
       let alert = NSAlert(error: error)
@@ -129,20 +184,20 @@ final class ProjectMenuController: NSObject, NSMenuDelegate {
     let path = url.standardizedFileURL.path
     guard isUsableProjectRoot(path) else { return }
     let entries = [path] + recentProjects().filter { $0 != path }
-    UserDefaults.standard.set(Array(entries.prefix(maximumRecentProjects)), forKey: recentProjectsKey)
+    defaults.set(Array(entries.prefix(maximumRecentProjects)), forKey: recentProjectsKey)
   }
 
   static func clearRecentProjectsStorage() {
-    UserDefaults.standard.removeObject(forKey: recentProjectsKey)
+    defaults.removeObject(forKey: recentProjectsKey)
   }
 
   private static func remove(_ url: URL) {
     let path = url.standardizedFileURL.path
-    UserDefaults.standard.set(recentProjects().filter { $0 != path }, forKey: recentProjectsKey)
+    defaults.set(recentProjects().filter { $0 != path }, forKey: recentProjectsKey)
   }
 
   private static func recentProjects() -> [String] {
-    ((UserDefaults.standard.array(forKey: recentProjectsKey) as? [String]) ?? [])
+    ((defaults.array(forKey: recentProjectsKey) as? [String]) ?? [])
       .filter(isUsableProjectRoot)
   }
 

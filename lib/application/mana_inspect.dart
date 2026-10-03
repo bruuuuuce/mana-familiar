@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../safe_path.dart';
+import 'mana_process.dart';
 
 const inspectProjectSchema = 'mana.inspect.project/v1';
 const inspectArtifactsSchema = 'mana.inspect.artifacts/v1';
@@ -13,6 +16,7 @@ const inspectWorkItemsSchema = 'mana.inspect.work-items/v1';
 const inspectWorkItemSchema = 'mana.inspect.work-item/v1';
 const inspectProjectContextSchema = 'mana.inspect.project-context/v1';
 const inspectActivitySchema = 'mana.inspect.activity/v1';
+const inspectSemanticSnapshotSchema = 'mana.inspect.semantic-snapshot/v1';
 
 /// Negotiated from the producer's advertised operations; never inferred from
 /// catalog paths or names.
@@ -591,18 +595,23 @@ class ManaInspectProject {
     required this.projectId,
     required this.frameworkCompatibility,
     required this.manaPresent,
+    required this.capabilities,
     required this.operations,
     required this.raw,
   });
   final String projectId;
   final String? frameworkCompatibility;
   final bool manaPresent;
+  final Set<String> capabilities;
   final List<ManaInspectOperation> operations;
   final Map<String, dynamic> raw;
 
   bool supports(String operation, String schema) => operations.any(
     (candidate) => candidate.name == operation && candidate.schema == schema,
   );
+
+  bool supportsCapability(String capability) =>
+      capabilities.contains(capability);
 
   ManaSemanticMode get semanticMode {
     final work =
@@ -621,6 +630,8 @@ class ManaInspectProject {
   bool get supportsProjectContext =>
       supports('project-context', inspectProjectContextSchema);
   bool get supportsActivity => supports('activity', inspectActivitySchema);
+  bool get supportsSemanticSnapshot =>
+      supports('semantic-snapshot', inspectSemanticSnapshotSchema);
 
   factory ManaInspectProject.fromJson(Map<String, dynamic> json) {
     _requireSchema(json, inspectProjectSchema);
@@ -630,6 +641,12 @@ class ManaInspectProject {
       frameworkCompatibility:
           _map(json['framework'])['compatibility'] as String?,
       manaPresent: mana['present'] as bool? ?? false,
+      capabilities:
+          (json['capabilities'] is List
+                  ? json['capabilities'] as List
+                  : const <Object?>[])
+              .whereType<String>()
+              .toSet(),
       operations: (_list(json['operations']))
           .whereType<Map>()
           .map((value) {
@@ -735,7 +752,7 @@ class ManaInspectArtifactDetail {
     return ManaInspectArtifactDetail(
       artifact: ManaInspectArtifactSummary.fromJson(_map(json['artifact'])),
       payload: json['payload'],
-      relations: _objects(json['relations']),
+      relations: _objects(json['relations']).toList(growable: false),
       raw: json,
     );
   }
@@ -768,7 +785,94 @@ class ManaInspectSourceRelations {
       path: path,
       availability: _string(source['availability'], 'source.availability'),
       coverage: _string(json['coverage'], 'coverage'),
-      relations: _objects(json['relations']),
+      relations: _objects(json['relations']).toList(growable: false),
+      raw: json,
+    );
+  }
+}
+
+class ManaSemanticSnapshot {
+  const ManaSemanticSnapshot({
+    required this.revision,
+    required this.catalogBuildCount,
+    required this.fileCount,
+    required this.admittedBytes,
+    required this.project,
+    required this.workItems,
+    required this.projectContext,
+    required this.activity,
+    required this.raw,
+  });
+
+  final String revision;
+  final int catalogBuildCount;
+  final int fileCount;
+  final int admittedBytes;
+  final ManaInspectProject project;
+  final ManaWorkItemsResponse workItems;
+  final ManaProjectContextResponse? projectContext;
+  final ManaActivityResponse? activity;
+  final Map<String, dynamic> raw;
+
+  factory ManaSemanticSnapshot.fromJson(Map<String, dynamic> json) {
+    _requireSchema(json, inspectSemanticSnapshotSchema);
+    final revision = _string(json['snapshot_revision'], 'snapshot_revision');
+    if (!RegExp(r'^sha256:[0-9a-f]{64}$').hasMatch(revision)) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Semantic snapshot revision is malformed.',
+      );
+    }
+    final inventory = _map(json['inventory']);
+    final catalogBuildCount = inventory['catalog_build_count'];
+    final fileCount = inventory['file_count'];
+    final admittedBytes = inventory['admitted_bytes'];
+    if (catalogBuildCount != 1 ||
+        fileCount is! int ||
+        admittedBytes is! int ||
+        fileCount < 0 ||
+        admittedBytes < 0) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Semantic snapshot inventory metrics are malformed.',
+      );
+    }
+    final projections = _map(json['projections']);
+    final workItemsProjection = _map(projections['work_items']);
+    if (workItemsProjection['status'] != 'available' ||
+        workItemsProjection['diagnostic'] != null) {
+      throw const ManaInspectException(
+        ManaInspectFailure.partialCatalog,
+        'Semantic snapshot work items are unavailable.',
+      );
+    }
+    final projectContextProjection = _map(projections['project_context']);
+    final activityProjection = _map(projections['activity']);
+    final artifactsProjection = _map(projections['artifacts']);
+    if (artifactsProjection['status'] != 'not_requested' ||
+        artifactsProjection['value'] != null) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Semantic snapshot eagerly returned the raw catalog.',
+      );
+    }
+    return ManaSemanticSnapshot(
+      revision: revision,
+      catalogBuildCount: catalogBuildCount,
+      fileCount: fileCount,
+      admittedBytes: admittedBytes,
+      project: ManaInspectProject.fromJson(_map(json['project'])),
+      workItems: ManaWorkItemsResponse.fromJson(
+        _map(workItemsProjection['value']),
+      ),
+      projectContext: _optionalSnapshotProjection(
+        projectContextProjection,
+        ManaProjectContextResponse.fromJson,
+      ),
+      activity: _optionalSnapshotProjection(
+        activityProjection,
+        ManaActivityResponse.fromJson,
+      ),
       raw: json,
     );
   }
@@ -781,13 +885,71 @@ typedef ManaProcessRunner =
       String? workingDirectory,
     });
 
+class ManaInspectDecodeTrace {
+  const ManaInspectDecodeTrace({
+    required this.responseBytes,
+    required this.offloaded,
+    required this.elapsed,
+    this.pipelineElapsed,
+  });
+  final int responseBytes;
+  final bool offloaded;
+  final Duration elapsed;
+  final Duration? pipelineElapsed;
+}
+
+typedef ManaInspectDecodeTraceCallback =
+    void Function(ManaInspectDecodeTrace trace);
+
+class ManaInspectProcessTrace {
+  const ManaInspectProcessTrace({
+    required this.operation,
+    required this.elapsed,
+    required this.responseBytes,
+    required this.exitCode,
+    this.transportErrorCode,
+  });
+
+  final String operation;
+  final Duration elapsed;
+  final int responseBytes;
+  final int exitCode;
+  final int? transportErrorCode;
+}
+
+typedef ManaInspectProcessTraceCallback =
+    void Function(ManaInspectProcessTrace trace);
+
+class ManaInspectProjectionTrace {
+  const ManaInspectProjectionTrace({
+    required this.schema,
+    required this.elapsed,
+    this.offloaded = false,
+    this.failureCode,
+  });
+
+  final String schema;
+  final Duration elapsed;
+  final bool offloaded;
+  final String? failureCode;
+}
+
+typedef ManaInspectProjectionTraceCallback =
+    void Function(ManaInspectProjectionTrace trace);
+
 class ManaInspectClient {
   ManaInspectClient({
     required this.projectRoot,
     this.manaRoot,
     this.snapshotPath,
     this.processTimeout = const Duration(seconds: 30),
+    this.decodeOffloadThresholdBytes = 256 * 1024,
+    this.onProcessTrace,
+    this.onDecodeTrace,
+    this.onProjectionTrace,
     ManaProcessRunner? run,
+    Future<Process> Function(String, List<String>, {String? workingDirectory})?
+    startProcess,
   }) : _run =
            run ??
            ((executable, arguments, {workingDirectory}) => _runInspectProcess(
@@ -795,12 +957,17 @@ class ManaInspectClient {
              arguments,
              workingDirectory: workingDirectory,
              timeout: processTimeout,
+             startProcess: startProcess,
            ));
 
   final String projectRoot;
   final String? manaRoot;
   final String? snapshotPath;
   final Duration processTimeout;
+  final int decodeOffloadThresholdBytes;
+  final ManaInspectProcessTraceCallback? onProcessTrace;
+  final ManaInspectDecodeTraceCallback? onDecodeTrace;
+  final ManaInspectProjectionTraceCallback? onProjectionTrace;
   final ManaProcessRunner _run;
 
   ManaInspectMode get mode {
@@ -811,12 +978,19 @@ class ManaInspectClient {
     return ManaInspectMode.producerRoot;
   }
 
-  Future<ManaInspectProject> project() async =>
-      ManaInspectProject.fromJson(await _response('project'));
+  Future<ManaInspectProject> project() => _projection(
+    operation: 'project',
+    schema: inspectProjectSchema,
+    decode: ManaInspectProject.fromJson,
+  );
 
   Future<ManaInspectCatalog> catalog({ManaInspectProject? capabilities}) async {
     if (snapshotPath != null) {
-      return ManaInspectCatalog.fromJson(await _response('artifacts'));
+      return _projection(
+        operation: 'artifacts',
+        schema: inspectArtifactsSchema,
+        decode: ManaInspectCatalog.fromJson,
+      );
     }
     final projectInfo = capabilities ?? await project();
     if (!projectInfo.manaPresent) {
@@ -826,19 +1000,29 @@ class ManaInspectClient {
       );
     }
     _requireOperation(projectInfo, 'artifacts', inspectArtifactsSchema);
-    return ManaInspectCatalog.fromJson(await _response('artifacts'));
+    return _projection(
+      operation: 'artifacts',
+      schema: inspectArtifactsSchema,
+      decode: ManaInspectCatalog.fromJson,
+    );
   }
 
   Future<ManaInspectArtifactDetail> artifact(String id) async {
     if (snapshotPath != null) {
-      return ManaInspectArtifactDetail.fromJson(
-        await _response('artifact', target: id),
+      return _projection(
+        operation: 'artifact',
+        schema: inspectArtifactSchema,
+        target: id,
+        decode: ManaInspectArtifactDetail.fromJson,
       );
     }
     final projectInfo = await project();
     _requireOperation(projectInfo, 'artifact', inspectArtifactSchema);
-    return ManaInspectArtifactDetail.fromJson(
-      await _response('artifact', target: id),
+    return _projection(
+      operation: 'artifact',
+      schema: inspectArtifactSchema,
+      target: id,
+      decode: ManaInspectArtifactDetail.fromJson,
     );
   }
 
@@ -850,14 +1034,20 @@ class ManaInspectClient {
       );
     }
     if (snapshotPath != null) {
-      return ManaInspectSourceRelations.fromJson(
-        await _response('source', target: path),
+      return _projection(
+        operation: 'source',
+        schema: inspectSourceSchema,
+        target: path,
+        decode: ManaInspectSourceRelations.fromJson,
       );
     }
     final projectInfo = await project();
     _requireOperation(projectInfo, 'source', inspectSourceSchema);
-    return ManaInspectSourceRelations.fromJson(
-      await _response('source', target: path),
+    return _projection(
+      operation: 'source',
+      schema: inspectSourceSchema,
+      target: path,
+      decode: ManaInspectSourceRelations.fromJson,
     );
   }
 
@@ -866,7 +1056,11 @@ class ManaInspectClient {
   }) async {
     final projectInfo = capabilities ?? await project();
     _requireOperation(projectInfo, 'work-items', inspectWorkItemsSchema);
-    return ManaWorkItemsResponse.fromJson(await _response('work-items'));
+    return _projection(
+      operation: 'work-items',
+      schema: inspectWorkItemsSchema,
+      decode: ManaWorkItemsResponse.fromJson,
+    );
   }
 
   Future<ManaWorkItemResponse> workItem(
@@ -883,8 +1077,11 @@ class ManaInspectClient {
     }
     final projectInfo = capabilities ?? await project();
     _requireOperation(projectInfo, 'work-item', inspectWorkItemSchema);
-    return ManaWorkItemResponse.fromJson(
-      await _response('work-item', target: id),
+    return _projection(
+      operation: 'work-item',
+      schema: inspectWorkItemSchema,
+      target: id,
+      decode: ManaWorkItemResponse.fromJson,
     );
   }
 
@@ -897,8 +1094,10 @@ class ManaInspectClient {
       'project-context',
       inspectProjectContextSchema,
     );
-    return ManaProjectContextResponse.fromJson(
-      await _response('project-context'),
+    return _projection(
+      operation: 'project-context',
+      schema: inspectProjectContextSchema,
+      decode: ManaProjectContextResponse.fromJson,
     );
   }
 
@@ -907,12 +1106,97 @@ class ManaInspectClient {
   }) async {
     final projectInfo = capabilities ?? await project();
     _requireOperation(projectInfo, 'activity', inspectActivitySchema);
-    return ManaActivityResponse.fromJson(await _response('activity'));
+    return _projection(
+      operation: 'activity',
+      schema: inspectActivitySchema,
+      decode: ManaActivityResponse.fromJson,
+    );
   }
 
-  Future<Map<String, dynamic>> _response(
+  Future<ManaSemanticSnapshot> semanticSnapshot({
+    ManaInspectProject? capabilities,
+    bool includeSupporting = false,
+  }) async {
+    final projectInfo = capabilities ?? await project();
+    _requireOperation(
+      projectInfo,
+      'semantic-snapshot',
+      inspectSemanticSnapshotSchema,
+    );
+    return _projection(
+      operation: 'semantic-snapshot',
+      schema: inspectSemanticSnapshotSchema,
+      options: [if (includeSupporting) '--include-supporting'],
+      decode: ManaSemanticSnapshot.fromJson,
+    );
+  }
+
+  Future<T> _projection<T>({
+    required String operation,
+    required String schema,
+    required T Function(Map<String, dynamic>) decode,
+    String? target,
+    List<String> options = const [],
+  }) async {
+    final raw = await _response(operation, target: target, options: options);
+    final bytes = utf8.encode(raw).length;
+    final offloaded = bytes >= decodeOffloadThresholdBytes;
+    final snapshotSchema = snapshotPath == null ? null : schema;
+    final pipeline = Stopwatch()..start();
+    try {
+      // Transfer only the raw string into the worker. Returning the completed
+      // typed model avoids decoding a large Map and validating it on the UI.
+      final result = offloaded
+          ? await _offloadProjection(raw, decode, snapshotSchema)
+          : _decodeAndProject(raw, decode, snapshotSchema);
+      onDecodeTrace?.call(
+        ManaInspectDecodeTrace(
+          responseBytes: bytes,
+          offloaded: offloaded,
+          elapsed: result.decodeElapsed,
+          pipelineElapsed: pipeline.elapsed,
+        ),
+      );
+      onProjectionTrace?.call(
+        ManaInspectProjectionTrace(
+          schema: schema,
+          elapsed: result.projectionElapsed,
+          offloaded: offloaded,
+        ),
+      );
+      return result.value;
+    } on ManaInspectException catch (error) {
+      onProjectionTrace?.call(
+        ManaInspectProjectionTrace(
+          schema: schema,
+          elapsed: pipeline.elapsed,
+          offloaded: offloaded,
+          failureCode: switch (error.message) {
+            'Semantic snapshot revision is malformed.' =>
+              'invalid_snapshot_revision',
+            'Semantic snapshot inventory metrics are malformed.' =>
+              'invalid_snapshot_inventory',
+            'Semantic snapshot work items are unavailable.' =>
+              'missing_work_items',
+            'Semantic snapshot eagerly returned the raw catalog.' =>
+              'unexpected_catalog',
+            _ => error.kind.name,
+          },
+        ),
+      );
+      rethrow;
+    } on FormatException catch (error) {
+      throw ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        error.message,
+      );
+    }
+  }
+
+  Future<String> _response(
     String operation, {
     String? target,
+    List<String> options = const [],
   }) async {
     if (snapshotPath != null) return _readSnapshot(operation);
     final executable = mode == ManaInspectMode.projectWrapper
@@ -935,24 +1219,46 @@ class ManaInspectClient {
       ],
       operation,
       if (target case final String value) value,
+      ...options,
       '--json',
     ];
     ProcessResult result;
+    final stopwatch = Stopwatch()..start();
     try {
       result = await _run(executable, arguments, workingDirectory: projectRoot);
     } on ProcessException catch (error) {
+      onProcessTrace?.call(
+        ManaInspectProcessTrace(
+          operation: operation,
+          elapsed: stopwatch.elapsed,
+          responseBytes: 0,
+          exitCode: -1,
+          transportErrorCode: error.errorCode,
+        ),
+      );
       throw ManaInspectException(ManaInspectFailure.transport, error.message);
+    } finally {
+      stopwatch.stop();
     }
+    final raw = result.stdout.toString();
+    onProcessTrace?.call(
+      ManaInspectProcessTrace(
+        operation: operation,
+        elapsed: stopwatch.elapsed,
+        responseBytes: utf8.encode(raw).length,
+        exitCode: result.exitCode,
+      ),
+    );
     if (result.exitCode != 0) {
       throw ManaInspectException(
         ManaInspectFailure.command,
         'Exit ${result.exitCode}: ${_safeProcessDiagnostic(result.stderr, projectRoot)}',
       );
     }
-    return _decode(result.stdout.toString());
+    return raw;
   }
 
-  Future<Map<String, dynamic>> _readSnapshot(String operation) async {
+  Future<String> _readSnapshot(String operation) async {
     try {
       final file = await SafePathPolicy.resolveDirectFile(snapshotPath!);
       if (file == null) {
@@ -961,23 +1267,7 @@ class ManaInspectClient {
           'Inspect snapshot does not exist.',
         );
       }
-      final decoded = _decode(await file.readAsString());
-      final expected = switch (operation) {
-        'project' => inspectProjectSchema,
-        'artifacts' => inspectArtifactsSchema,
-        'artifact' => inspectArtifactSchema,
-        'source' => inspectSourceSchema,
-        'work-items' => inspectWorkItemsSchema,
-        'work-item' => inspectWorkItemSchema,
-        'project-context' => inspectProjectContextSchema,
-        'activity' => inspectActivitySchema,
-        _ => null,
-      };
-      if (decoded['schema'] == expected) return decoded;
-      throw ManaInspectException(
-        ManaInspectFailure.partialCatalog,
-        'Snapshot contains ${decoded['schema']}, not the requested $operation response.',
-      );
+      return file.readAsString();
     } on SafePathException catch (error) {
       throw ManaInspectException(ManaInspectFailure.transport, error.message);
     }
@@ -994,6 +1284,7 @@ class ManaSemanticReadModel {
     this.workItems,
     this.projectContext,
     this.activity,
+    this.semanticRevision,
     this.refreshError,
   });
   final ManaInspectProject project;
@@ -1002,6 +1293,7 @@ class ManaSemanticReadModel {
   final ManaWorkItemsResponse? workItems;
   final ManaProjectContextResponse? projectContext;
   final ManaActivityResponse? activity;
+  final String? semanticRevision;
   final Object? refreshError;
 }
 
@@ -1013,10 +1305,15 @@ class ManaSemanticRepository {
   final Map<String, Future<ManaWorkItemResponse>> _details = {};
   ManaSemanticReadModel? _latest;
 
+  /// Detail responses are scoped to the semantic revision that produced them.
+  /// A UI refresh therefore must not reuse an in-flight or cached dossier from
+  /// a prior revision.
+  void invalidateWorkItemDetails() => _details.clear();
+
   /// Refreshes the semantic surfaces needed for the cockpit. The raw artifact
   /// catalog is deliberately optional because it is only rendered in Advanced
   /// and can be substantially more expensive than the overview data.
-  Future<ManaSemanticReadModel> refresh({bool includeCatalog = true}) =>
+  Future<ManaSemanticReadModel> refresh({bool includeCatalog = false}) =>
       _refreshing ??= _refresh(
         includeCatalog: includeCatalog,
         includeProjectContext: true,
@@ -1036,9 +1333,43 @@ class ManaSemanticRepository {
   Future<ManaSemanticReadModel> loadSupportingSurfaces() async {
     final latest = _latest;
     if (latest == null) return refresh(includeCatalog: false);
+    Object? aggregateError;
+    if (latest.project.supportsSemanticSnapshot) {
+      try {
+        final snapshot = await client.semanticSnapshot(
+          capabilities: latest.project,
+          includeSupporting: true,
+        );
+        final missingSupporting =
+            (snapshot.project.supportsProjectContext &&
+                snapshot.projectContext == null) ||
+            (snapshot.project.supportsActivity && snapshot.activity == null);
+        if (!identical(_latest, latest)) return _latest!;
+        final model = ManaSemanticReadModel(
+          project: snapshot.project,
+          mode: snapshot.project.semanticMode,
+          catalog: latest.catalog,
+          workItems: snapshot.workItems,
+          projectContext: snapshot.projectContext ?? latest.projectContext,
+          activity: snapshot.activity ?? latest.activity,
+          semanticRevision: snapshot.revision,
+          refreshError: missingSupporting
+              ? const ManaInspectException(
+                  ManaInspectFailure.partialCatalog,
+                  'A supporting semantic-snapshot projection is unavailable.',
+                )
+              : null,
+        );
+        _latest = model;
+        _details.clear();
+        return model;
+      } catch (caught) {
+        aggregateError = caught;
+      }
+    }
     ManaProjectContextResponse? context = latest.projectContext;
     ManaActivityResponse? activity = latest.activity;
-    Object? error = latest.refreshError;
+    Object? error = aggregateError ?? latest.refreshError;
     final tasks = <Future<void>>[];
     Future<void> optional(Future<void> task) async {
       try {
@@ -1067,7 +1398,8 @@ class ManaSemanticRepository {
       );
     }
     await Future.wait(tasks);
-    final current = _latest ?? latest;
+    if (!identical(_latest, latest)) return _latest!;
+    final current = latest;
     final model = ManaSemanticReadModel(
       project: current.project,
       mode: current.mode,
@@ -1075,6 +1407,7 @@ class ManaSemanticRepository {
       workItems: current.workItems,
       projectContext: context ?? current.projectContext,
       activity: activity ?? current.activity,
+      semanticRevision: current.semanticRevision,
       refreshError: error,
     );
     _latest = model;
@@ -1101,6 +1434,7 @@ class ManaSemanticRepository {
             workItems: current.workItems,
             projectContext: current.projectContext,
             activity: current.activity,
+            semanticRevision: current.semanticRevision,
             refreshError: current.refreshError,
           );
           _latest = model;
@@ -1135,6 +1469,7 @@ class ManaSemanticRepository {
         workItems: previous.workItems,
         projectContext: previous.projectContext,
         activity: previous.activity,
+        semanticRevision: previous.semanticRevision,
         refreshError: error,
       );
     }
@@ -1148,6 +1483,60 @@ class ManaSemanticRepository {
     ManaProjectContextResponse? context;
     ManaActivityResponse? activity;
     Object? error;
+
+    if (!includeCatalog && project.supportsSemanticSnapshot) {
+      try {
+        final includeSupporting = includeProjectContext || includeActivity;
+        final snapshot = await client.semanticSnapshot(
+          capabilities: project,
+          includeSupporting: includeSupporting,
+        );
+        final supportingComplete =
+            (!includeProjectContext ||
+                !snapshot.project.supportsProjectContext ||
+                snapshot.projectContext != null) &&
+            (!includeActivity ||
+                !snapshot.project.supportsActivity ||
+                snapshot.activity != null);
+        final addsProjectContext =
+            includeProjectContext &&
+            previous?.projectContext == null &&
+            snapshot.projectContext != null;
+        final addsActivity =
+            includeActivity &&
+            previous?.activity == null &&
+            snapshot.activity != null;
+        if (mayRetain &&
+            previous.semanticRevision == snapshot.revision &&
+            !addsProjectContext &&
+            !addsActivity) {
+          return previous;
+        }
+        final model = ManaSemanticReadModel(
+          project: snapshot.project,
+          mode: snapshot.project.semanticMode,
+          catalog: mayRetain ? previous.catalog : null,
+          workItems: snapshot.workItems,
+          projectContext: snapshot.projectContext,
+          activity: snapshot.activity,
+          semanticRevision: snapshot.revision,
+          refreshError: supportingComplete
+              ? null
+              : const ManaInspectException(
+                  ManaInspectFailure.partialCatalog,
+                  'A requested semantic-snapshot projection is unavailable.',
+                ),
+        );
+        _latest = model;
+        if (!mayRetain || previous.semanticRevision != snapshot.revision) {
+          _details.clear();
+        }
+        return model;
+      } catch (caught) {
+        error = caught;
+      }
+    }
+
     final tasks = <Future<void>>[];
     Future<void> optional(Future<void> task) async {
       try {
@@ -1216,12 +1605,44 @@ class ManaSemanticRepository {
       activity:
           activity ??
           (mayRetain && project.supportsActivity ? previous.activity : null),
+      semanticRevision: mayRetain ? previous.semanticRevision : null,
       refreshError: error,
     );
     _latest = model;
     if (!mayRetain || workItems != null) _details.clear();
     return model;
   }
+}
+
+T? _optionalSnapshotProjection<T>(
+  Map<String, dynamic> projection,
+  T Function(Map<String, dynamic>) decode,
+) {
+  switch (projection['status']) {
+    case 'available':
+      if (projection['diagnostic'] != null) {
+        throw const ManaInspectException(
+          ManaInspectFailure.malformedJson,
+          'Available snapshot projections cannot carry diagnostics.',
+        );
+      }
+      return decode(_map(projection['value']));
+    case 'not_requested':
+      if (projection['value'] == null && projection['diagnostic'] == null) {
+        return null;
+      }
+      break;
+    case 'unavailable':
+      final diagnostic = _map(projection['diagnostic']);
+      if (projection['value'] == null && diagnostic['code'] is String) {
+        return null;
+      }
+      break;
+  }
+  throw const ManaInspectException(
+    ManaInspectFailure.malformedJson,
+    'Optional semantic snapshot projection is malformed.',
+  );
 }
 
 void _requireOperation(
@@ -1247,14 +1668,43 @@ void _requireSchema(Map<String, dynamic> json, String supported) {
   }
 }
 
-Map<String, dynamic> _decode(String raw) {
-  try {
-    final value = jsonDecode(raw);
-    if (value is Map<String, dynamic>) return value;
-    throw const FormatException('response is not an object');
-  } on FormatException catch (error) {
-    throw ManaInspectException(ManaInspectFailure.malformedJson, error.message);
+// Keep the isolate closure in a top-level scope: it must never capture the
+// client, its UI observers, timers, or process handles.
+Future<({T value, Duration decodeElapsed, Duration projectionElapsed})>
+_offloadProjection<T>(
+  String raw,
+  T Function(Map<String, dynamic>) project,
+  String? snapshotSchema,
+) => Isolate.run(() => _decodeAndProject(raw, project, snapshotSchema));
+
+({T value, Duration decodeElapsed, Duration projectionElapsed})
+_decodeAndProject<T>(
+  String raw,
+  T Function(Map<String, dynamic>) project,
+  String? snapshotSchema,
+) {
+  final stopwatch = Stopwatch()..start();
+  final json = _decodePayload(raw);
+  final decodeElapsed = stopwatch.elapsed;
+  if (snapshotSchema != null && json['schema'] != snapshotSchema) {
+    throw ManaInspectException(
+      ManaInspectFailure.partialCatalog,
+      'Snapshot contains ${json['schema']}, not the requested $snapshotSchema response.',
+    );
   }
+  stopwatch.reset();
+  final value = project(json);
+  return (
+    value: value,
+    decodeElapsed: decodeElapsed,
+    projectionElapsed: stopwatch.elapsed,
+  );
+}
+
+Map<String, dynamic> _decodePayload(String raw) {
+  final value = jsonDecode(raw);
+  if (value is Map<String, dynamic>) return value;
+  throw const FormatException('response is not an object');
 }
 
 Map<String, dynamic> _map(Object? value) {
@@ -1274,15 +1724,15 @@ List<dynamic> _list(Object? value) {
   );
 }
 
-List<Map<String, dynamic>> _objects(Object? value) => _list(value)
-    .map((value) {
+Iterable<Map<String, dynamic>> _objects(Object? value) =>
+    _list(value).map((value) {
+      if (value is Map<String, dynamic>) return value;
       if (value is Map) return value.cast<String, dynamic>();
       throw const ManaInspectException(
         ManaInspectFailure.malformedJson,
         'Expected an object array entry.',
       );
-    })
-    .toList(growable: false);
+    });
 String _string(Object? value, String field) {
   if (value is String && value.isNotEmpty) return value;
   throw ManaInspectException(
@@ -1303,8 +1753,10 @@ List<String> _strings(Object? value) => _list(value)
     })
     .toList(growable: false);
 
-bool _isWorkItemId(String value) =>
-    RegExp(r'^(feature|session):[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(value);
+final _workItemIdPattern = RegExp(
+  r'^(feature|session):[A-Za-z0-9][A-Za-z0-9._-]*$',
+);
+bool _isWorkItemId(String value) => _workItemIdPattern.hasMatch(value);
 
 void _requireUnique(Iterable<String> values, String field) {
   final seen = <String>{};
@@ -1377,28 +1829,34 @@ Future<ProcessResult> _runInspectProcess(
   List<String> arguments, {
   String? workingDirectory,
   required Duration timeout,
+  Future<Process> Function(String, List<String>, {String? workingDirectory})?
+  startProcess,
 }) async {
-  final process = await Process.start(
+  final process = await (startProcess ?? startManaProcess)(
     executable,
     arguments,
     workingDirectory: workingDirectory,
-    runInShell: false,
   );
   final stdout = _collectBounded(process.stdout, 16 * 1024 * 1024);
   final stderr = _collectBounded(process.stderr, 8 * 1024);
+  // Inspect receives its request in argv and never consumes stdin. Close the
+  // unused pipe promptly, including on Windows where open pipe handles can
+  // outlive the child. Exit status/output still report producer failures.
+  unawaited(process.stdin.close().catchError((Object _) {}));
   int exitCode;
   try {
     exitCode = await process.exitCode.timeout(timeout);
   } on TimeoutException {
-    process.kill(ProcessSignal.sigterm);
+    await terminateManaProcess(process);
     try {
-      await process.exitCode.timeout(const Duration(seconds: 2));
+      await Future.wait<Object?>([
+        process.exitCode,
+        stdout,
+        stderr,
+      ]).timeout(const Duration(seconds: 2));
     } on TimeoutException {
-      process.kill(ProcessSignal.sigkill);
-      await process.exitCode;
+      await terminateManaProcess(process, force: true);
     }
-    await stdout;
-    await stderr;
     throw ProcessException(
       executable,
       arguments,

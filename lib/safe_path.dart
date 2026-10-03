@@ -34,12 +34,14 @@ class SafePathPolicy {
   static const artifactMaxBytes = 8 * 1024 * 1024;
   static const sourceMaxBytes = 4 * 1024 * 1024;
 
+  static final _windowsDrivePattern = RegExp(r'^[a-zA-Z]:');
+
   static bool isSafeRelativePath(String path) {
     if (path.isEmpty || path.contains('\\') || path.startsWith('/')) {
       return false;
     }
     // Reject Windows absolute paths even when running on a Unix host.
-    if (RegExp(r'^[a-zA-Z]:').hasMatch(path)) return false;
+    if (_windowsDrivePattern.hasMatch(path)) return false;
     return path
         .split('/')
         .every(

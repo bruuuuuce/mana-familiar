@@ -18,8 +18,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: bruuuuuce/mana
-          ref: develop
+          # Compatible M08 + C03 producer; reproducible across both platforms.
+          ref: 779aa8d9ff16ea5861fccbe7b6295d26c0ec6b46
           path: mana
+      - name: Verify M08 producer prerequisites
+        run: python3 tool/check_mana_producer.py --mana-root ../mana
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.8'
@@ -29,6 +32,42 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed .
       - run: flutter analyze
       - run: flutter test
+      - name: Native performance failure evidence tests
+        run: python3 tests/test_m08_native_performance_runner.py
+      - name: Build M08 release performance harnesses
+        run: |
+          mkdir -p build/m08-performance
+          dart compile exe tool/m08_performance_harness.dart -o build/m08-performance/harness
+          dart compile exe tool/run_m08_performance_matrix.dart -o build/m08-performance/matrix
+      - name: Run M08 medium PR performance budget
+        run: |
+          build/m08-performance/matrix \
+            --mana-root ../mana \
+            --harness build/m08-performance/harness \
+            --output build/m08-performance/medium-report.json \
+            --classes medium \
+            --cold-runs 5 \
+            --warm-runs 5
+          M08_PERFORMANCE_REPORT=build/m08-performance/medium-report.json \
+          M08_PERFORMANCE_CLASSES=medium \
+            flutter test test/m08_performance_report_test.dart \
+              --plain-name 'release performance matrix preserves C04 evidence and budgets'
+      - name: Upload M08 medium performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m08-medium-performance
+          path: mana-familiar/build/m08-performance/medium-report.json
+          if-no-files-found: error
+      - name: C03 Human Feedback producer smoke
+        run: python3 tests/run-c03-human-feedback-harness.py --mana-root ../mana --profile smoke
+      - name: Upload C03 Human Feedback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c03-human-feedback-smoke
+          path: mana-familiar/build/feedback-audit
+          if-no-files-found: warn
       - run: flutter build macos --debug
 
   validate-windows:
@@ -44,8 +83,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: bruuuuuce/mana
-          ref: develop
+          # Compatible M08 + C03 producer; reproducible across both platforms.
+          ref: 779aa8d9ff16ea5861fccbe7b6295d26c0ec6b46
           path: mana
+      - name: Verify M08 producer prerequisites
+        run: python3 tool/check_mana_producer.py --mana-root ../mana
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.8'
@@ -55,4 +97,6 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed .
       - run: flutter analyze
       - run: flutter test
+      - name: Native performance failure evidence tests
+        run: python3 tests/test_m08_native_performance_runner.py
       - run: flutter build windows --release

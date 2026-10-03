@@ -1,0 +1,32 @@
+name: Human Feedback stress
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * 6'
+
+jobs:
+  c03-stress:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    defaults:
+      run:
+        working-directory: mana-familiar
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mana-familiar
+      - uses: actions/checkout@v4
+        with:
+          repository: bruuuuuce/mana
+          ref: develop
+          path: mana
+      - name: C03 Human Feedback stress
+        run: python3 tests/run-c03-human-feedback-harness.py --mana-root ../mana --profile stress
+      - name: Upload C03 Human Feedback stress evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c03-human-feedback-stress
+          path: mana-familiar/build/feedback-audit
+          if-no-files-found: warn

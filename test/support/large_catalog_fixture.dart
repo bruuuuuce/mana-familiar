@@ -2,7 +2,7 @@ import 'package:mana_familiar/mana_inspect.dart';
 
 /// Deterministic F10 fixture representing a long-lived mixed `.mana` history.
 /// It remains generated rather than checked in as a multi-megabyte JSON blob.
-const largeCatalogArtifactCount = 2400;
+const largeCatalogArtifactCount = 10000;
 
 Map<String, dynamic> largeCatalogFixture({
   int count = largeCatalogArtifactCount,

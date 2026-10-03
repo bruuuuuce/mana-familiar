@@ -2,7 +2,7 @@
 
 | Semantic mode | Required advertised operations | Available experience | Limitation |
 | --- | --- | --- | --- |
-| FULL_SEMANTIC | `work-items`, `work-item`, `project-context`, `activity` with exact v1 schemas | Overview, Work/dossier, Reviews, Knowledge, Activity, Advanced | Review/lifecycle/attention remain absent or unknown when Mana does not declare them. |
+| FULL_SEMANTIC | `work-items`, `work-item`, `project-context`, `activity` with exact v1 schemas; `semantic-snapshot` is optional | Overview, Work/dossier, Reviews, Knowledge, Activity, Advanced | Review/lifecycle/attention remain absent or unknown when Mana does not declare them. |
 | WORK_SEMANTIC | `work-items` and `work-item`; project context or activity incomplete | Work/dossier and producer-owned review/work semantics; Advanced | Knowledge and Activity explain their unavailable capability instead of guessing. |
 | LEGACY_CATALOG | Semantic work operations unavailable; catalog may remain | Explicit compatibility catalog, legacy Review/Knowledge adapters, Advanced | No semantic dossier/context/activity is fabricated from artifact names or paths. |
 
@@ -10,7 +10,7 @@ Transport can use a project-local `./mana` wrapper or an explicit compatible
 `--mana-root`. A saved inspect response represents only its matching operation.
 Direct `mana.learning.graph/v1` artifacts open the separate legacy Journey UI.
 
-Familiar accepts the eight v1 inspect schemas listed in
+Familiar accepts the nine v1 inspect schemas listed in
 [mana-inspect compatibility](mana-inspect-compatibility.md). Unknown additive
 object fields are ignored safely; unknown enum values map to explicit unknown
 state where the typed model supports it. Invalid identity, ownership, unsafe
@@ -18,9 +18,11 @@ paths, duplicate IDs, and unknown schema versions are rejected.
 
 ## Known limitations
 
-- macOS desktop is the only supported runtime target.
-- Familiar does not execute Review Inbox commands, approve work, repair a
-  project, promote learning, or mutate `.mana`.
+- macOS and Windows are application targets, but native acceptance remains a
+  separate gate per platform. A successful macOS build is not Windows evidence.
+- Familiar executes only capability-advertised, revision-checked Knowledge,
+  Learning, and scheduler actions through Mana. It does not approve work,
+  repair source, run providers, poll GitHub, or publish a review implicitly.
 - A saved response cannot synthesize a multi-operation semantic session.
 - The current inspect v1 contract exposes only explicit Journey-anchor source
   relations. Missing relation metadata is not treated as evidence of safety.

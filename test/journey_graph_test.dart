@@ -69,6 +69,18 @@ void main() {
     expect(config.manaRoot, '/tools/mana');
   });
 
+  test('accepts isolated preferences and window session arguments', () {
+    final config = ExplorerConfig.parse(const [
+      '--preferences-root',
+      '/tmp/familiar-preferences',
+      '--window-session',
+      'window-A',
+    ]);
+
+    expect(config.preferencesRoot, '/tmp/familiar-preferences');
+    expect(config.windowSessionId, 'window-A');
+  });
+
   test('accepts an arbitrary materialized artifact path', () {
     final config = ExplorerConfig.parse(const [
       '--artifact',

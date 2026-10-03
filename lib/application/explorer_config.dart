@@ -8,6 +8,11 @@ class ExplorerConfig {
     required this.manaRoot,
     this.hasExplicitProjectRoot = true,
     this.preferencesRoot,
+    this.windowSessionId,
+    this.initialArtifactId,
+    this.nativeE2EPort,
+    this.nativeE2EToken,
+    this.performanceTraceDirectory,
     this.journeyId,
     this.fixturePath,
     this.inspectSnapshotPath,
@@ -20,6 +25,29 @@ class ExplorerConfig {
   /// inferred from the process working directory.
   final bool hasExplicitProjectRoot;
   final String? preferencesRoot;
+
+  /// A caller-owned identifier that keeps recoverable UI state from two
+  /// desktop windows independent while they observe the same project.
+  final String? windowSessionId;
+
+  /// Opens an explicitly named inspect artifact at startup. This is useful for
+  /// links from a desktop launcher and keeps the target producer-owned rather
+  /// than reconstructing it from a local path.
+  final String? initialArtifactId;
+
+  /// Loopback-only debug test transport. Both values are required before the
+  /// app exposes it; ordinary product launches never create a listener.
+  final int? nativeE2EPort;
+  final String? nativeE2EToken;
+
+  /// Explicit test-only destination for payload-free profile/release metrics.
+  final String? performanceTraceDirectory;
+
+  bool get hasNativeE2EBridge =>
+      nativeE2EPort != null &&
+      nativeE2EPort! >= 0 &&
+      nativeE2EToken != null &&
+      nativeE2EToken!.isNotEmpty;
   final String? journeyId;
   final String? fixturePath;
 
@@ -31,6 +59,11 @@ class ExplorerConfig {
     manaRoot: manaRoot,
     hasExplicitProjectRoot: true,
     preferencesRoot: preferencesRoot,
+    windowSessionId: windowSessionId,
+    initialArtifactId: initialArtifactId,
+    nativeE2EPort: nativeE2EPort,
+    nativeE2EToken: nativeE2EToken,
+    performanceTraceDirectory: performanceTraceDirectory,
     journeyId: journeyId,
     fixturePath: fixturePath,
     inspectSnapshotPath: inspectSnapshotPath,
@@ -76,6 +109,24 @@ class ExplorerConfig {
       projectRoot: value('--project-root', detect('.mana')),
       manaRoot: value('--mana-root', detect('scripts/mana-journey.sh')),
       hasExplicitProjectRoot: hasExplicitProjectRoot,
+      preferencesRoot: args.contains('--preferences-root')
+          ? value('--preferences-root', '')
+          : null,
+      windowSessionId: args.contains('--window-session')
+          ? value('--window-session', '')
+          : null,
+      initialArtifactId: args.contains('--initial-artifact')
+          ? value('--initial-artifact', '')
+          : null,
+      nativeE2EPort: args.contains('--native-e2e-port')
+          ? int.tryParse(value('--native-e2e-port', ''))
+          : null,
+      nativeE2EToken: args.contains('--native-e2e-token')
+          ? value('--native-e2e-token', '')
+          : null,
+      performanceTraceDirectory: args.contains('--performance-trace-dir')
+          ? value('--performance-trace-dir', '')
+          : null,
       journeyId: args.contains('--journey') ? value('--journey', '') : null,
       fixturePath: artifactPath,
       inspectSnapshotPath: args.contains('--inspect-snapshot')

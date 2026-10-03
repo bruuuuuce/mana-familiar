@@ -11,6 +11,7 @@ Mana `mana-inspect-contract/v1` response schemas:
 - `mana.inspect.work-item/v1`
 - `mana.inspect.project-context/v1`
 - `mana.inspect.activity/v1`
+- `mana.inspect.semantic-snapshot/v1`
 
 Before requesting optional detail or source relations, Familiar calls
 `mana inspect project --json` and only invokes operations advertised in its
@@ -18,6 +19,12 @@ Before requesting optional detail or source relations, Familiar calls
 artifact families, relation types, statuses, and payload fields are retained
 as raw data and otherwise safely ignored. An unknown schema is rejected; it is
 never treated as a partially compatible v1 response.
+
+When `semantic-snapshot` is advertised with the exact v1 schema, the initial
+route uses it for project identity and work summaries. Supporting context and
+activity are requested only after first meaningful Overview; the raw artifact
+catalog is loaded only on the Advanced route. Producers without the aggregate
+operation retain the individual v1 fallback.
 
 Semantic mode is negotiated only from exact operation/schema pairs:
 
