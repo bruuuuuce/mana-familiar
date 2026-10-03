@@ -12,6 +12,7 @@ class ExplorerConfig {
     this.initialArtifactId,
     this.nativeE2EPort,
     this.nativeE2EToken,
+    this.performanceTraceDirectory,
     this.journeyId,
     this.fixturePath,
     this.inspectSnapshotPath,
@@ -39,6 +40,9 @@ class ExplorerConfig {
   final int? nativeE2EPort;
   final String? nativeE2EToken;
 
+  /// Explicit test-only destination for payload-free profile/release metrics.
+  final String? performanceTraceDirectory;
+
   bool get hasNativeE2EBridge =>
       nativeE2EPort != null &&
       nativeE2EPort! >= 0 &&
@@ -59,6 +63,7 @@ class ExplorerConfig {
     initialArtifactId: initialArtifactId,
     nativeE2EPort: nativeE2EPort,
     nativeE2EToken: nativeE2EToken,
+    performanceTraceDirectory: performanceTraceDirectory,
     journeyId: journeyId,
     fixturePath: fixturePath,
     inspectSnapshotPath: inspectSnapshotPath,
@@ -118,6 +123,9 @@ class ExplorerConfig {
           : null,
       nativeE2EToken: args.contains('--native-e2e-token')
           ? value('--native-e2e-token', '')
+          : null,
+      performanceTraceDirectory: args.contains('--performance-trace-dir')
+          ? value('--performance-trace-dir', '')
           : null,
       journeyId: args.contains('--journey') ? value('--journey', '') : null,
       fixturePath: artifactPath,

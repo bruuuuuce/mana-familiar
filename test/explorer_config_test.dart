@@ -42,4 +42,17 @@ void main() {
     expect(enabled.withProjectRoot('/other').hasNativeE2EBridge, isTrue);
     expect(incomplete.hasNativeE2EBridge, isFalse);
   });
+
+  test('preserves the explicit performance trace destination', () {
+    final config = ExplorerConfig.parse(const [
+      '--performance-trace-dir',
+      '/tmp/mana-familiar-performance',
+    ]);
+
+    expect(config.performanceTraceDirectory, '/tmp/mana-familiar-performance');
+    expect(
+      config.withProjectRoot('/other').performanceTraceDirectory,
+      config.performanceTraceDirectory,
+    );
+  });
 }

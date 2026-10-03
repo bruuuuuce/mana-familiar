@@ -1,8 +1,58 @@
 import Cocoa
 import FlutterMacOS
 
+private func performanceTraceDirectory() -> URL? {
+  let arguments = ProcessInfo.processInfo.arguments
+  guard let index = arguments.firstIndex(of: "--performance-trace-dir"),
+        index + 1 < arguments.count else {
+    return nil
+  }
+  let path = arguments[index + 1]
+  guard path.hasPrefix("/") else { return nil }
+  return URL(fileURLWithPath: path, isDirectory: true)
+}
+
+private func writeNativeWindowPerformance(
+  processStartedAt: TimeInterval,
+  presentedAt: TimeInterval
+) {
+  guard let directory = performanceTraceDirectory() else { return }
+  let fileManager = FileManager.default
+  do {
+    try fileManager.createDirectory(
+      at: directory,
+      withIntermediateDirectories: true
+    )
+    let report: [String: Any] = [
+      "schema": "mana-familiar.c04.native-window/v1",
+      "platform": "macos",
+      "process_to_window_presented_us": Int(
+        (presentedAt - processStartedAt) * 1_000_000
+      ),
+      "privacy": [
+        "source_content": false,
+        "absolute_paths": false,
+        "credentials": false,
+        "responses": false,
+      ],
+    ]
+    let data = try JSONSerialization.data(
+      withJSONObject: report,
+      options: [.prettyPrinted, .sortedKeys]
+    )
+    try data.write(
+      to: directory.appendingPathComponent("native-window.json"),
+      options: .atomic
+    )
+  } catch {
+    fputs("Mana Familiar performance trace failed: \(error)\n", stderr)
+  }
+}
+
 class MainFlutterWindow: NSWindow {
   private var closeCoordinator: NativeWindowCloseCoordinator?
+  private var performanceVisibilityObserver: NSObjectProtocol?
+  private var performancePresentedAt: TimeInterval?
 
   override func awakeFromNib() {
     // Keep the native surface aligned with macOS appearance while Flutter is
@@ -27,6 +77,37 @@ class MainFlutterWindow: NSWindow {
       appDelegate.installProjectMenu()
       appDelegate.installTerminationPreparation(closeCoordinator)
     }
+    // Becoming key is an AppKit-owned upper bound for a presented interactive
+    // window and does not require Accessibility permission.
+    performanceVisibilityObserver = NotificationCenter.default.addObserver(
+      forName: NSWindow.didBecomeKeyNotification,
+      object: self,
+      queue: .main
+    ) { [weak self] _ in
+      self?.recordNativeWindowPresented()
+    }
+    DispatchQueue.main.async { [weak self] in
+      guard let self, self.isVisible else { return }
+      self.recordNativeWindowPresented()
+    }
+  }
+
+  deinit {
+    if let performanceVisibilityObserver {
+      NotificationCenter.default.removeObserver(performanceVisibilityObserver)
+    }
+  }
+
+  private func recordNativeWindowPresented() {
+    guard performancePresentedAt == nil else { return }
+    let presentedAt = ProcessInfo.processInfo.systemUptime
+    performancePresentedAt = presentedAt
+    let processStartedAt = (NSApp.delegate as? AppDelegate)?
+      .performanceProcessStartedAt ?? presentedAt
+    writeNativeWindowPerformance(
+      processStartedAt: processStartedAt,
+      presentedAt: presentedAt
+    )
   }
 
   /// `performClose` is AppKit's common path for the Close Window menu item,

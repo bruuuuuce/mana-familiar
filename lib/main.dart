@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 
 import 'app/mana_familiar_app.dart';
 import 'application/explorer_config.dart';
+import 'application/m08_performance_probe.dart';
 import 'presentation/explorer_page.dart';
 
 export 'application/explorer_config.dart';
@@ -25,9 +26,24 @@ Future<void> main(List<String> args) async {
   // screen-reader process to happen to enable it after launch.
   SemanticsBinding.instance.ensureSemantics();
   final config = ExplorerConfig.parse(args);
+  final probe = config.performanceTraceDirectory == null
+      ? null
+      : M08PerformanceProbe(config.performanceTraceDirectory!);
+  probe?.mark('configuration_ready');
   final preferences = await ExplorerPreferences.load(config);
+  probe?.mark('preferences_ready');
   if (config.fixturePath == null && config.hasExplicitProjectRoot) {
     await preferences.rememberProjectRoot(config.projectRoot);
   }
-  runApp(ManaFamiliarApp(config: config, preferences: preferences));
+  probe?.mark('run_app_invoked');
+  runApp(
+    ManaFamiliarApp(
+      config: config,
+      preferences: preferences,
+      performanceProbe: probe,
+    ),
+  );
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    probe?.mark('first_application_frame');
+  });
 }

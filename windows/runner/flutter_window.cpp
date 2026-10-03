@@ -1,11 +1,20 @@
 #include "flutter_window.h"
 
+#include <filesystem>
+#include <fstream>
 #include <optional>
+#include <utility>
 
 #include "flutter/generated_plugin_registrant.h"
 
-FlutterWindow::FlutterWindow(const flutter::DartProject& project)
-    : project_(project) {}
+FlutterWindow::FlutterWindow(const flutter::DartProject& project,
+                             std::string performance_trace_directory,
+                             long long process_started_counter,
+                             long long performance_counter_frequency)
+    : project_(project),
+      performance_trace_directory_(std::move(performance_trace_directory)),
+      process_started_counter_(process_started_counter),
+      performance_counter_frequency_(performance_counter_frequency) {}
 
 FlutterWindow::~FlutterWindow() {}
 
@@ -29,6 +38,7 @@ bool FlutterWindow::OnCreate() {
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
+    this->WriteNativeWindowPerformance();
   });
 
   // Flutter can complete the first frame before the "show window" callback is
@@ -37,6 +47,46 @@ bool FlutterWindow::OnCreate() {
   flutter_controller_->ForceRedraw();
 
   return true;
+}
+
+void FlutterWindow::WriteNativeWindowPerformance() {
+  if (performance_trace_directory_.empty() ||
+      process_started_counter_ <= 0 ||
+      performance_counter_frequency_ <= 0) {
+    return;
+  }
+  LARGE_INTEGER presented;
+  ::QueryPerformanceCounter(&presented);
+  const auto elapsed_us =
+      (presented.QuadPart - process_started_counter_) * 1000000LL /
+      performance_counter_frequency_;
+  try {
+    const auto directory =
+        std::filesystem::u8path(performance_trace_directory_);
+    if (!directory.is_absolute()) {
+      return;
+    }
+    std::filesystem::create_directories(directory);
+    const auto temporary = directory / "native-window.json.tmp";
+    const auto target = directory / "native-window.json";
+    std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+    output << "{\n"
+           << "  \"schema\": \"mana-familiar.c04.native-window/v1\",\n"
+           << "  \"platform\": \"windows\",\n"
+           << "  \"process_to_window_presented_us\": " << elapsed_us
+           << ",\n"
+           << "  \"privacy\": {\"source_content\": false, "
+              "\"absolute_paths\": false, \"credentials\": false, "
+              "\"responses\": false}\n"
+           << "}\n";
+    output.close();
+    std::error_code error;
+    std::filesystem::remove(target, error);
+    error.clear();
+    std::filesystem::rename(temporary, target, error);
+  } catch (...) {
+    // Performance evidence must never prevent the application from opening.
+  }
 }
 
 void FlutterWindow::OnDestroy() {

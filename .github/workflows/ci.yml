@@ -29,6 +29,31 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed .
       - run: flutter analyze
       - run: flutter test
+      - name: Build M08 release performance harnesses
+        run: |
+          mkdir -p build/m08-performance
+          dart compile exe tool/m08_performance_harness.dart -o build/m08-performance/harness
+          dart compile exe tool/run_m08_performance_matrix.dart -o build/m08-performance/matrix
+      - name: Run M08 medium PR performance budget
+        run: |
+          build/m08-performance/matrix \
+            --mana-root ../mana \
+            --harness build/m08-performance/harness \
+            --output build/m08-performance/medium-report.json \
+            --classes medium \
+            --cold-runs 5 \
+            --warm-runs 5
+          M08_PERFORMANCE_REPORT=build/m08-performance/medium-report.json \
+          M08_PERFORMANCE_CLASSES=medium \
+            flutter test test/m08_performance_report_test.dart \
+              --plain-name 'release performance matrix preserves C04 evidence and budgets'
+      - name: Upload M08 medium performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m08-medium-performance
+          path: mana-familiar/build/m08-performance/medium-report.json
+          if-no-files-found: error
       - name: C03 Human Feedback producer smoke
         run: python3 tests/run-c03-human-feedback-harness.py --mana-root ../mana --profile smoke
       - name: Upload C03 Human Feedback evidence
