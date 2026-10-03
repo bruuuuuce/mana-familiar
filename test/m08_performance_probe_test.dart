@@ -71,6 +71,91 @@ void main() {
     expect(() => M08PerformanceProbe('relative/path'), throwsArgumentError);
   });
 
+  test('publication failure preserves measurements for the next write', () {
+    final directory = Directory.systemTemp.createTempSync('m08-retry-');
+    final probe = M08PerformanceProbe(directory.path);
+    directory.deleteSync(recursive: true);
+    expect(() => probe.mark('project_loading_shell'), returnsNormally);
+    expect(
+      () => probe.recordProjection(
+        const ManaInspectProjectionTrace(
+          schema: inspectSemanticSnapshotSchema,
+          elapsed: Duration(microseconds: 200),
+        ),
+      ),
+      returnsNormally,
+    );
+    directory.createSync();
+    probe.mark('first_meaningful_overview');
+    probe.dispose();
+    final report =
+        jsonDecode(
+              File(
+                '${directory.path}/flutter-performance.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    expect(
+      (report['milestones_us'] as Map).keys,
+      containsAll(['project_loading_shell', 'first_meaningful_overview']),
+    );
+    expect((report['typed_projection'] as List).single['elapsed_us'], 200);
+    directory.deleteSync(recursive: true);
+  });
+
+  test(
+    'Windows report reader cannot interrupt model observations',
+    () async {
+      final directory = Directory.systemTemp.createTempSync('m08-lock-');
+      final probe = M08PerformanceProbe(directory.path);
+      final target = File('${directory.path}/flutter-performance.json');
+      final locker = await Process.start(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          r"$file=[IO.File]::Open($env:M08_LOCK_FILE,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read); [Console]::WriteLine('ready'); [Console]::ReadLine() | Out-Null; $file.Dispose()",
+        ],
+        environment: {'M08_LOCK_FILE': target.path},
+      );
+      addTearDown(() async {
+        locker.kill();
+        probe.dispose();
+        await directory.delete(recursive: true);
+      });
+      expect(
+        await locker.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .first,
+        'ready',
+      );
+      expect(() => probe.mark('first_meaningful_overview'), returnsNormally);
+      expect(
+        () => probe.recordProjection(
+          const ManaInspectProjectionTrace(
+            schema: inspectSemanticSnapshotSchema,
+            elapsed: Duration(microseconds: 200),
+          ),
+        ),
+        returnsNormally,
+      );
+      locker.stdin.writeln('release');
+      await locker.stdin.close();
+      expect(await locker.exitCode, 0);
+      probe.mark('optional_surfaces_settled');
+      final report =
+          jsonDecode(target.readAsStringSync()) as Map<String, dynamic>;
+      expect(
+        (report['milestones_us'] as Map).keys,
+        contains('first_meaningful_overview'),
+      );
+      expect((report['typed_projection'] as List), hasLength(1));
+    },
+    skip: !Platform.isWindows,
+  );
+
   test('re-arms refresh milestones for the latest workspace event', () async {
     final directory = Directory.systemTemp.createTempSync('m08-probe-');
     addTearDown(() => directory.deleteSync(recursive: true));

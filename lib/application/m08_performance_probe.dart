@@ -237,15 +237,22 @@ class M08PerformanceProbe {
       '${_directory.path}${Platform.pathSeparator}flutter-performance.json',
     );
     final temporary = File('${target.path}.tmp');
-    temporary.writeAsStringSync(
-      '${const JsonEncoder.withIndent('  ').convert(report)}\n',
-      flush: true,
-    );
     try {
-      temporary.renameSync(target.path);
+      temporary.writeAsStringSync(
+        '${const JsonEncoder.withIndent('  ').convert(report)}\n',
+        flush: true,
+      );
+      try {
+        temporary.renameSync(target.path);
+      } on FileSystemException {
+        if (target.existsSync()) target.deleteSync();
+        temporary.renameSync(target.path);
+      }
     } on FileSystemException {
-      if (target.existsSync()) target.deleteSync();
-      temporary.renameSync(target.path);
+      // A Windows reader can briefly deny replacement/deletion of the report.
+      // Keep all measurements in memory and retry on the next publication.
+      // Observing performance must never turn a successful producer/model
+      // operation into a fallback, nor prevent a lifecycle milestone.
     }
   }
 }
