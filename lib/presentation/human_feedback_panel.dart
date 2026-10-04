@@ -44,6 +44,7 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
   final _authorFocus = FocusNode();
   final _bodyFocus = FocusNode();
   final Map<String, TextEditingController> _replies = {};
+  final Map<String, FocusNode> _replyFocusNodes = {};
   final Map<String, String> _replyIdempotencyKeys = {};
   final Set<String> _replying = {};
   late String _idempotencyKey;
@@ -107,6 +108,9 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
     _author.dispose();
     _authorFocus.dispose();
     _bodyFocus.dispose();
+    for (final node in _replyFocusNodes.values) {
+      node.dispose();
+    }
     for (final reply in _replies.values) {
       reply.dispose();
     }
@@ -238,6 +242,22 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
         .firstOrNull;
     if (thread == null) throw StateError('thread is not available: $threadId');
     return thread;
+  }
+
+  void _openReply(HumanFeedbackThread thread) {
+    final node = _replyFocusNodes.putIfAbsent(
+      thread.id,
+      () => FocusNode(debugLabel: 'feedback-reply-${thread.id}'),
+    );
+    setState(() => _replying.add(thread.id));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_replying.contains(thread.id)) return;
+      node.requestFocus();
+      final context = node.context;
+      if (context != null) {
+        unawaited(Scrollable.ensureVisible(context));
+      }
+    });
   }
 
   Future<void> _setReplyForNativeE2E(String threadId, String body) async {
@@ -697,7 +717,7 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
                 key: Key('feedback-reply-open-${thread.id}'),
                 onPressed: _sending || !_supports('reply')
                     ? null
-                    : () => setState(() => _replying.add(thread.id)),
+                    : () => _openReply(thread),
                 icon: const Icon(Icons.reply_outlined),
                 label: const Text('Reply'),
               ),
@@ -706,6 +726,10 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
             TextField(
               key: Key('feedback-reply-${thread.id}'),
               controller: _replyController(thread),
+              focusNode: _replyFocusNodes.putIfAbsent(
+                thread.id,
+                () => FocusNode(debugLabel: 'feedback-reply-${thread.id}'),
+              ),
               minLines: 1,
               maxLines: 4,
               decoration: const InputDecoration(labelText: 'Reply'),
