@@ -11,14 +11,20 @@ class ProjectWelcomePage extends StatelessWidget {
     super.key,
     required this.recentProjectRoots,
     required this.onOpenProject,
+    this.onChooseProject,
     required this.onClearRecentProjects,
   });
 
   final List<String> recentProjectRoots;
   final Future<void> Function(String projectRoot) onOpenProject;
+  final Future<void> Function()? onChooseProject;
   final Future<void> Function() onClearRecentProjects;
 
   Future<void> _chooseProject() async {
+    if (onChooseProject case final choose?) {
+      await choose();
+      return;
+    }
     final projectRoot = await NativeProjectWindow.chooseProject();
     if (projectRoot != null) await onOpenProject(projectRoot);
   }

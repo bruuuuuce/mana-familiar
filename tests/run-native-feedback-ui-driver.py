@@ -12,11 +12,24 @@ import argparse
 import hashlib
 import http.client
 import json
+import os
+import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any, Callable
+
+
+def producer_result(command):
+    """Use Git Bash for Mana shell commands on Windows, without shell strings."""
+    if os.name == "nt":
+        candidates = [Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe"]
+        bash = next((str(path) for path in candidates if path.is_file()), None) or shutil.which("bash.exe")
+        if not bash:
+            raise RuntimeError("Git Bash is required for the native Windows oracle")
+        command = [bash, "--noprofile", "--norc", *[value.replace("\\", "/") for value in command]]
+    return subprocess.run(command, text=True, capture_output=True, check=False)
 
 
 SECTION_ID = "base-implementation-plan"
@@ -189,7 +202,7 @@ def canonical_entry(mana_root: Path, project_root: Path, target: dict[str, Any])
         SECTION_ID,
         "--json",
     ]
-    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    completed = producer_result(command)
     if completed.returncode:
         raise AssertionError(f"canonical feedback read failed: {completed.stderr.strip()}")
     value = json.loads(completed.stdout)
@@ -241,7 +254,7 @@ def canonical_draft_is_absent(
         SECTION_ID,
         "--json",
     ]
-    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    completed = producer_result(command)
     if completed.returncode:
         raise AssertionError(f"canonical feedback read failed: {completed.stderr.strip()}")
     value = json.loads(completed.stdout)
@@ -277,7 +290,7 @@ def canonical_body_count(
         SECTION_ID,
         "--json",
     ]
-    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    completed = producer_result(command)
     if completed.returncode:
         raise AssertionError(f"canonical feedback read failed: {completed.stderr.strip()}")
     value = json.loads(completed.stdout)
@@ -536,7 +549,7 @@ def publish_decision(args: argparse.Namespace, bridge: Bridge) -> dict[str, obje
         decision_id,
         "--json",
     ]
-    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    completed = producer_result(command)
     if completed.returncode:
         raise AssertionError(f"canonical decision read failed: {completed.stderr.strip()}")
     canonical = json.loads(completed.stdout)

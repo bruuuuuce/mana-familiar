@@ -314,7 +314,7 @@ def main() -> int:
 
     familiar_root = Path(__file__).resolve().parents[1]
     mana_root = args.mana_root.resolve()
-    fixture = mana_root / "tests" / "run-story-start-human-feedback-fixture.sh"
+    fixture = familiar_root / "tests" / "run-story-start-human-feedback-fixture.py"
     gate = familiar_root / "tests" / "run-macos-native-window-e2e.sh"
     if platform.system() != "Darwin":
         parser.error("native feedback smoke requires macOS")

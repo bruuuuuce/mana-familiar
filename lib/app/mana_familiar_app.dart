@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
 
@@ -34,6 +35,7 @@ class ManaFamiliarApp extends StatefulWidget {
 }
 
 class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
+  AppLifecycleListener? _exitListener;
   late String _projectRoot = widget.config.projectRoot;
   late bool _hasOpenProject = widget.config.hasExplicitProjectRoot;
   late final HumanFeedbackDraftStore _feedbackDrafts = HumanFeedbackDraftStore(
@@ -46,8 +48,25 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
       ? NativeE2EBridge(
           port: widget.config.nativeE2EPort!,
           token: widget.config.nativeE2EToken!,
+          openProjectPicker: _chooseProject,
         )
       : null;
+
+  bool _projectPickerPending = false;
+
+  Future<void> _chooseProject() async {
+    if (!mounted || _hasOpenProject) {
+      throw StateError('The project picker belongs to the welcome page.');
+    }
+    if (_projectPickerPending) return;
+    _projectPickerPending = true;
+    try {
+      final root = await NativeProjectWindow.chooseProject();
+      if (root != null) await _openProject(root);
+    } finally {
+      _projectPickerPending = false;
+    }
+  }
 
   Future<void> _openProject(String projectRoot) async {
     await widget.preferences.rememberProjectRoot(projectRoot);
@@ -68,7 +87,14 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
 
   ObservatoryRoute? _initialRoute() {
     final artifactId = widget.config.initialArtifactId;
-    if (artifactId == null || artifactId.isEmpty) return null;
+    if (artifactId == null || artifactId.isEmpty) {
+      for (final destination in ObservatoryDestination.values) {
+        if (destination.name == widget.config.initialDestination) {
+          return ObservatoryRoute(destination: destination);
+        }
+      }
+      return null;
+    }
     return ObservatoryRoute(
       destination: ObservatoryDestination.advanced,
       advancedSection: AdvancedSection.artifacts,
@@ -79,7 +105,27 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
   @override
   void initState() {
     super.initState();
-    NativeProjectWindow.installClosePreparation(_feedbackDrafts.flushAll);
+    Future<void> prepareToClose() async {
+      widget.performanceProbe?.mark('close_preparation_requested');
+      await _feedbackDrafts.flushAll();
+      widget.performanceProbe?.mark('close_preparation_completed');
+    }
+
+    if (Platform.isWindows) {
+      _exitListener = AppLifecycleListener(
+        onExitRequested: () async {
+          try {
+            await prepareToClose();
+            return AppExitResponse.exit;
+          } catch (_) {
+            widget.performanceProbe?.mark('close_preparation_failed');
+            return AppExitResponse.cancel;
+          }
+        },
+      );
+    } else {
+      NativeProjectWindow.installClosePreparation(prepareToClose);
+    }
     final bridge = _nativeE2E;
     if (bridge != null) unawaited(bridge.start());
     if (widget.config.hasExplicitProjectRoot) {
@@ -89,6 +135,7 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
 
   @override
   void dispose() {
+    _exitListener?.dispose();
     // Persist pending local drafts before the app tree releases its panels.
     _feedbackDrafts.dispose();
     final bridge = _nativeE2E;
@@ -119,6 +166,7 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
           ? ProjectWelcomePage(
               recentProjectRoots: widget.preferences.recentProjectRoots,
               onOpenProject: _openProject,
+              onChooseProject: _chooseProject,
               onClearRecentProjects: _clearRecentProjects,
             )
           : ProjectObservatoryPage(

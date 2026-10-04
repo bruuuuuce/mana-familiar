@@ -248,3 +248,27 @@ Questi elementi mantengono aperte le checkbox F5/F6 pertinenti: nessun
 workflow, skip o test widget deve essere promosso a successo per essi.
 
 Non dichiarare la feature completa se uno di questi requisiti rimane aperto. Un impedimento di ambiente va riportato con la prova mancante e l'azione necessaria, conservando i risultati già ottenuti.
+
+## Stato verificato il 4 ottobre 2026
+
+Le implementazioni correnti chiudono il consumo delle decisioni esplicite nel
+public Story Start (prima di Discovery e dopo Governor), la pubblicazione dei
+target stabili, il protocollo Close Windows con flush/retry, il refresh
+Knowledge e il paging Activity oltre 10.000 eventi. Il producer conserva i
+128 bit degli ID NTFS negli indici SQLite senza troncamenti o conversioni REAL.
+
+I controlli locali includono 243 test Flutter passati/7 skip, analyzer pulito,
+23 regressioni Python, release gate Story Start a 16 casi, traversal Activity
+a 12.051 eventi, regressioni producer e un soak API di oltre un'ora. Le
+prove Windows finali di picker, bozze isolate, quattro Close/due restart e
+pubblicazione commento/risposta sono passate. Le destinazioni large hanno
+cinque campioni cold e cinque warm; Activity include la nuova pagina nel tempo
+di refresh. I controlli GitHub vanno verificati sul commit finale prima del
+merge; gli esiti storici non sostituiscono questi gate. La
+prima run desktop-long macOS si è fermata per Accessibilità. Dopo il permesso
+concesso dall'utente a WebStorm, la nuova run esterna è passata: 300 azioni su
+oltre 20 minuti, cinque rigenerazioni, tre restart e dieci recuperi. Sono
+passate anche le prove native macOS di bozze Close/Quit e decisione esplicita.
+La verifica completa con screen reader e navigazione da tastiera resta non
+eseguita; nessun gate di release indipendente viene dichiarato passato.
+Vedere l'handoff per report, revisioni e limiti delle misure.

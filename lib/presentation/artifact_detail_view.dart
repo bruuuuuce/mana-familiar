@@ -715,6 +715,7 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
     super.initState();
     _prepareDocument();
     _scrollController.addListener(_scheduleActiveHeadingUpdate);
+    widget.feedbackRefresh?.addListener(_loadStableFeedbackTargets);
     _loadStableFeedbackTargets();
     _registerNativeE2EDocument();
   }
@@ -722,6 +723,10 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
   @override
   void didUpdateWidget(covariant MarkdownNoteView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.feedbackRefresh != widget.feedbackRefresh) {
+      oldWidget.feedbackRefresh?.removeListener(_loadStableFeedbackTargets);
+      widget.feedbackRefresh?.addListener(_loadStableFeedbackTargets);
+    }
     if (oldWidget.nativeE2E != widget.nativeE2E) {
       final oldBindings = _nativeE2EDocument;
       if (oldBindings != null) {
@@ -850,6 +855,7 @@ class _MarkdownNoteViewState extends State<MarkdownNoteView> {
 
   @override
   void dispose() {
+    widget.feedbackRefresh?.removeListener(_loadStableFeedbackTargets);
     final bindings = _nativeE2EDocument;
     if (bindings != null) widget.nativeE2E?.unregisterDocument(bindings);
     _scrollController

@@ -1,11 +1,112 @@
 # Handoff — Native Feedback / desktop-long E2E
 
-Aggiornato il 13 settembre 2026. Checkout: `/Users/zel/projects/mana-familiar`.
+Aggiornato il 4 ottobre 2026. Checkout: `/Users/zel/projects/mana-familiar`.
 Checkpoint iniziale: `025c3c2 feat: verify native draft recovery`.
 Checkpoint del profilo lungo committato su richiesta dell'utente il 14 settembre
 2026; la verifica nativa finale resta aperta.
 
-## Stato corrente — attesa sessione macOS sbloccata
+## Aggiornamento verificato — 4 ottobre 2026
+
+Le PR di completamento sono Familiar #13 e Mana #16. Familiar usa il protocollo
+ufficiale Flutter `AppLifecycleListener.onExitRequested` su Windows e attende il
+salvataggio delle bozze; un errore annulla Close e conserva il testo per retry.
+Mana pubblica il manifest delle dieci sezioni Story Start e annuncia
+`human_feedback` in Inspect solo quando il producer è presente. Activity usa
+pagine opzionali da massimo 500 eventi e rifiuta i cursori di revisioni superate.
+
+Verifica locale: 243 test Flutter passati, 7 skip; analyzer senza problemi;
+23 regressioni Python passate. Soak producer completato in 3.711,057 secondi,
+1.000 create accettate e 3.358 record canonici, in
+`build/feedback-audit/run-1791096735-013ea83f2c`. È una prova API, non desktop.
+
+La nuova prova desktop-long macOS
+`build/native-feedback-audit/run-1791101833-b87b41fc4e` è **fallita prima delle
+azioni**: `osascript is not allowed assistive access (-25211)`. Il consenso
+all'automazione è stato ricevuto, ma nella run mancava il permesso OS; nessun
+permesso è stato modificato. CUA riesce a leggere la finestra, ma le azioni
+Close e tastiera vanno in timeout. La rilettura sulla sola finestra di test dopo il nuovo tentativo autorizzato
+restituiva ancora `-25211`. Nei log TCC il processo responsabile è WebStorm:
+l'utente ha poi abilitato Accessibilità e la query sul PID Familiar di test
+ha restituito una finestra. La nuova run con build aggiornata è **passata**, compresa la conclusione del
+runner esterno: `build/native-feedback-audit/run-1791106614-54ddd5646e`.
+Durata totale 1.213,997 s; 300 azioni dei widget distribuite su 1.202,051 s,
+cinque rigenerazioni (V0–V5), tre restart Close/Quit/Close e dieci recuperi:
+due conflitti, due perdite ACK, due errori lettura, due errori salvataggio bozza
+e due risposte ritardate. Sono riusciti anche Close e Quit finali.
+Build/source Familiar a9e3d60 (dirty per documentazione/dipendenze generate),
+Mana 1d224f9 clean; nessun esito storico è stato convertito in successo.
+
+Le due prove brevi macOS sono anch'esse passate:
+`run-1791107850-fb574dfef7` per bozze indipendenti A/B, Close/Quit,
+riapertura e assenza dal registro canonico prima di Publish;
+`run-1791107882-406ca381de` per scelta esplicita e stato canonico.
+Il clock del runner bozze registra 19 e 16 ms tra preparazione e avvio della
+richiesta AppleScript di Close/Quit; non misura l'istante interno del click AX.
+Queste prove coprono lifecycle e callback dei widget montati. Non certificano
+ancora una sessione completa con VoiceOver/NVDA né navigazione interamente da
+tastiera.
+
+Il runner `tests/run-windows-native-feedback-e2e.py` verifica due sessioni reali,
+Close tramite Windows UI Automation prima del debounce, riapertura, isolamento
+e assenza delle bozze dal registro canonico. Il composer usa i callback dei
+widget montati del bridge debug; questo non certifica input pixel o screen reader.
+Il picker Windows ha selezionato la fixture e riaperto Overview: il report
+`build/desktop-completion-audit/windows-picker-final.json` verifica PID/focus e
+il percorso salvato nelle preferenze isolate. L'apertura parte dal callback del
+widget; selezione e conferma usano UI Automation e i tasti autorizzati nel solo
+picker di test.
+
+Su Windows Release x64 in Windows ARM64, la fixture large contiene 10.000
+artefatti. Cinque avvii cold e cinque warm misurano queste mediane in secondi:
+
+| Destinazione | Apertura cold / warm | Refresh cold / warm |
+| --- | --- | --- |
+| Overview | 2,270 / 2,242 | 2,099 / 2,080 |
+| Advanced | 3,886 / 3,976 | 3,681 / 3,761 |
+| Knowledge | 3,787 / 3,724 | 2,591 / 2,609 |
+| Activity | 4,362 / 4,266 | 4,127 / 4,102 |
+
+I report includono `overview-windows-final.json`,
+`advanced-windows-verified.json` e
+`knowledge-windows-verified.json` nella stessa directory di audit. Knowledge
+segnala esplicitamente l'indice stale/unavailable dopo la mutazione: la sua
+metrica refresh misura questo esito visibile, non documenti freschi caricati.
+Overview usa la build ca16f8f/runner a16e7aa e Mana 1d224f9. Le dieci
+riconvalide producer hanno exit 0, senza timeout. Il refresh ripubblica
+atomicamente gli stessi byte: Overview conserva il modello visibile invariato,
+mentre Activity ricarica la pagina e Knowledge segnala l'indice stale. Non è
+una misura del caricamento di nuovi contenuti. Un campione warm Overview
+registra un frame critico di 62,194 ms; resta nel report, quindi queste mediane
+non certificano assenza assoluta di frame lenti.
+L'apertura delle destinazioni usa `route_ready_us`; il vecchio campo con nome
+Overview misura soltanto il modello semantico di base. Queste prove usano
+Familiar b9ad4a5 e Mana b0a9ff9; i metadati originali sono conservati.
+Activity usa la build ca16f8f e il runner a16e7aa, con Mana b0a9ff9:
+`activity-windows-final.json` comprende cinque cold e cinque warm, tutte le
+operazioni producer con exit 0 e il modello sostituito su ogni refresh. Il
+cleanup completo dei processi è riuscito. Il probe conserva nei report i retry
+di pubblicazione dovuti al lettore Windows; i campioni finali sono completi.
+
+La run finale `windows-native-feedback-final.json` è passata con Mana 1d224f9:
+due finestre isolate, quattro Close nativi, due restart e due Close prima del
+debounce. La richiesta completa edit→Close richiede 19,926 e 10,138 ms,
+includendo il roundtrip HTTP. Commento e risposta Unicode/multilinea sono
+visibili nei widget e verificati nel registro canonico; le bozze ripristinate
+restano non canoniche prima della pubblicazione. Il composer usa il bridge dei
+widget montati, Close usa Windows UI Automation con PID/eseguibile verificati.
+La build Debug è stata ricostruita a ca16f8f; runner a16e7aa.
+Anche `windows-native-decision-final.json` è passato: apertura del modulo,
+selezione e pubblicazione attraverso i widget montati, seguite dalla lettura
+indipendente dello stato canonico. La prima prova concorrente si era fermata
+per timeout di 30 s; il repository Dart isolato ha poi caricato target e tre
+stati in 6,158 s e la prova nativa isolata è riuscita. Il report fallito è
+conservato nel guest; nessun timeout è stato allungato per far passare il test.
+
+La pubblicazione nativa ha inoltre individuato la conversione LF→CRLF di
+`jq.exe`: Mana 1d224f9 usa output binario su Windows e una regressione verifica
+create/reply/replay con Unicode, LF, CRLF intenzionali e righe finali.
+
+## Stato storico — settembre 2026
 
 Nessuna run attiva. Il 13 settembre alle 23:14 la lettura System Events
 indica `loginwindow` PID 415; `pmset -g assertions` indica UserIsActive 0.
