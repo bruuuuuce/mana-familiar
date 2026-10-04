@@ -7,6 +7,7 @@ class ClosePreparation {
  public:
   void Ready() { ready_ = true; }
   bool ShouldDefer() const { return ready_ && !allowed_; }
+  bool IsPending() const { return alive_ && pending_ && !allowed_; }
   bool Begin() {
     if (!alive_ || pending_) return false;
     pending_ = true;
