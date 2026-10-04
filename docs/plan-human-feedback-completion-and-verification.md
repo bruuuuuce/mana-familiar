@@ -257,10 +257,18 @@ target stabili, il protocollo Close Windows con flush/retry, il refresh
 Knowledge e il paging Activity oltre 10.000 eventi. Il producer conserva i
 128 bit degli ID NTFS negli indici SQLite senza troncamenti o conversioni REAL.
 
-I controlli locali includono 242 test Flutter passati/7 skip, analyzer pulito,
-22 regressioni Python, release gate Story Start a 16 casi, traversal Activity
+I controlli locali includono 243 test Flutter passati/7 skip, analyzer pulito,
+23 regressioni Python, release gate Story Start a 16 casi, traversal Activity
 a 12.051 eventi, regressioni producer e un soak API di oltre un'ora. Le
-prove native finali e i controlli GitHub sul nuovo head restano da verificare
-prima della chiusura; gli esiti storici non sostituiscono questi gate. La
-nuova run desktop-long macOS si è fermata prima delle azioni perché osascript
-non dispone del permesso Accessibilità. Vedere l'handoff per le evidenze.
+prove Windows finali di picker, bozze isolate, quattro Close/due restart e
+pubblicazione commento/risposta sono passate. Le destinazioni large hanno
+cinque campioni cold e cinque warm; Activity include la nuova pagina nel tempo
+di refresh. I controlli GitHub vanno verificati sul commit finale prima del
+merge; gli esiti storici non sostituiscono questi gate. La
+prima run desktop-long macOS si è fermata per Accessibilità. Dopo il permesso
+concesso dall'utente a WebStorm, la nuova run esterna è passata: 300 azioni su
+oltre 20 minuti, cinque rigenerazioni, tre restart e dieci recuperi. Sono
+passate anche le prove native macOS di bozze Close/Quit e decisione esplicita.
+La verifica completa con screen reader e navigazione da tastiera resta non
+eseguita; nessun gate di release indipendente viene dichiarato passato.
+Vedere l'handoff per report, revisioni e limiti delle misure.
