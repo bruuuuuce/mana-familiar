@@ -63,6 +63,41 @@ def load_json(path: Path) -> dict[str, Any] | None:
         return None
 
 
+FRAME_SAMPLE_FIELDS = {
+    "started_at_us", "vsync_start_us", "build_start_us", "build_finish_us",
+    "raster_start_us", "raster_finish_us", "observed_at_us", "vsync_overhead_us",
+    "build_us", "raster_queue_us", "raster_us", "total_us", "frame_number",
+}
+
+
+def frame_evidence(frames: dict[str, Any]) -> dict[str, Any]:
+    """Keep raw numeric phases on success as well as failure, without payloads."""
+    result = {key: frames[key] for key in {
+        "count", "over_50ms", "max_build_us", "max_raster_us", "max_total_us",
+        "interval_clock", "samples_dropped", "last_observed_at_us",
+    } if key in frames and type(frames[key]) is int}
+    if frames.get("interval_clock") == "vsync_start_to_raster_finish":
+        result["interval_clock"] = "vsync_start_to_raster_finish"
+    result["critical_interval"] = {
+        key: value for key, value in frames.get("critical_interval", {}).items()
+        if key in {"count", "raw_count", "producer_io_excluded_count", "over_50ms",
+                   "max_total_us", "raw_max_total_us"} and type(value) is int
+    }
+    result["samples"] = [
+        {key: value for key, value in sample.items()
+         if key in FRAME_SAMPLE_FIELDS and type(value) is int}
+        for sample in frames.get("samples", [])
+    ]
+    return result
+
+
+def frames_delivered(frames: dict[str, Any], milestone: int) -> bool:
+    # Release engine timings can arrive in batches about one second later.
+    # A published lifecycle marker alone cannot certify the final frame batch.
+    return (frames.get("interval_clock") != "vsync_start_to_raster_finish"
+            or frames.get("last_observed_at_us", -1) >= milestone)
+
+
 def stop_test_process(process: subprocess.Popen, *, windows: bool | None = None) -> None:
     windows = os.name == "nt" if windows is None else windows
     if windows:
@@ -146,7 +181,7 @@ def run_once(
             if flutter and native:
                 milestones = flutter.get("milestones_us", {})
                 frames = flutter.get("frames", {})
-                if (destination != "overview" or milestones.get("optional_surfaces_settled") is not None) and milestones.get(route_milestone) is not None and frames.get("count", 0) > 0:
+                if (destination != "overview" or milestones.get("optional_surfaces_settled") is not None) and milestones.get(route_milestone) is not None and frames.get("count", 0) > 0 and frames_delivered(frames, milestones[route_milestone]):
                     break
             time.sleep(0.05)
         else:
@@ -172,6 +207,7 @@ def run_once(
                     milestones.get("workspace_event") is not None
                     and milestones.get("refresh_visible_route") is not None
                     and len(flutter.get("processes", [])) >= initial_process_count + 2
+                    and frames_delivered(flutter.get("frames", {}), milestones["refresh_visible_route"])
                 ):
                     break
             time.sleep(0.05)
@@ -185,6 +221,8 @@ def run_once(
                 f"refresh_visible_route={'refresh_visible_route' in milestones}, "
                 f"refresh_processes={operations})"
             )
+        if flutter and flutter.get("frames", {}).get("samples_dropped", 0) != 0:
+            raise RuntimeError("native performance evidence has truncated frame samples")
     except Exception as error:
         if diagnostic_directory is not None:
             diagnostic_directory.mkdir(parents=True, exist_ok=True)
@@ -207,7 +245,7 @@ def run_once(
                     }} for item in current.get("typed_projection", [])
                 ],
                 "probe_publication_failures": current.get("diagnostics", {}).get("publication_failures", 0),
-                "frames": current.get("frames", {}),
+                "frames": frame_evidence(current.get("frames", {})),
                 "rss_bytes": current.get("rss_bytes", {}),
                 "process_to_window_presented_us": window.get("process_to_window_presented_us"),
             }
@@ -245,10 +283,12 @@ def run_once(
         "optional_surfaces_settled_us": milestones.get("optional_surfaces_settled"),
         "workspace_refresh_us": milestones["refresh_visible_route"] - milestones["workspace_event"],
         "refresh_model_replaced": "refresh_model_replaced" in milestones,
-        "frames": {
-            "count": frames["count"],
-            "critical_interval": frames["critical_interval"],
-            "max_total_us": frames["max_total_us"],
+        "frames": frame_evidence(frames),
+        "probe_publication": {
+            key: value for key, value in flutter.get("diagnostics", {}).items()
+            if key in {"publication_isolate", "published_sequence", "prior_publications_count",
+                       "prior_publication_last_elapsed_us", "prior_publication_max_elapsed_us"}
+            and isinstance(value, (int, str))
         },
         "maximum_observed_rss_bytes": flutter["rss_bytes"]["maximum_observed"],
         "probe_publication_failures": flutter.get("diagnostics", {}).get("publication_failures", 0),
