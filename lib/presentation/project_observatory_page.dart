@@ -113,6 +113,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   var _watchUnavailable = false;
   var _catalogLoading = false;
   var _knowledgeRefreshPending = false;
+  var _activityRefreshPending = false;
   var _supportingLoading = false;
   var _producerInitialLoadComplete = false;
   var _scheduledReviews = false;
@@ -318,6 +319,13 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     } finally {
       if (mounted) {
         setState(() => _activityPageLoading = false);
+        if (request == _semanticRequest && _activityRefreshPending) {
+          if (_activityPageError != null) {
+            _recordAfterFrame('activity_refresh_unavailable');
+          }
+          _activityRefreshPending = false;
+          _recordAfterFrame('refresh_visible_route');
+        }
         _loadSupportingIfNeeded();
       }
     }
@@ -376,8 +384,14 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       final refreshingKnowledge =
           route.destination == ObservatoryDestination.knowledge &&
           widget.knowledgeClient != null;
+      final refreshingPagedActivity =
+          route.destination == ObservatoryDestination.activity &&
+          model.project.supportsActivityPages;
       _knowledgeRefreshPending = fromWorkspaceWatch && refreshingKnowledge;
-      if (fromWorkspaceWatch && !refreshingKnowledge) {
+      _activityRefreshPending = fromWorkspaceWatch && refreshingPagedActivity;
+      if (fromWorkspaceWatch &&
+          !refreshingKnowledge &&
+          !refreshingPagedActivity) {
         if (modelReplaced) {
           _recordAfterFrame('refresh_visible_route');
         } else {
