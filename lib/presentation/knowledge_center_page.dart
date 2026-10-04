@@ -10,10 +10,12 @@ class KnowledgeCenterPage extends StatefulWidget {
     super.key,
     required this.client,
     this.onReady,
+    this.onSettled,
     this.refreshSignal,
   });
   final ManaKnowledgeClient client;
   final VoidCallback? onReady;
+  final ValueChanged<bool>? onSettled;
   final ValueListenable<int>? refreshSignal;
 
   @override
@@ -37,13 +39,21 @@ class _KnowledgeCenterPageState extends State<KnowledgeCenterPage> {
   }
 
   Future<_KnowledgeHome> _load() async {
-    final home = _KnowledgeHome(
-      await widget.client.capabilities(),
-      await widget.client.documents(scope: _scope),
-      await widget.client.learningCandidates(),
-    );
-    if (mounted) widget.onReady?.call();
-    return home;
+    try {
+      final home = _KnowledgeHome(
+        await widget.client.capabilities(),
+        await widget.client.documents(scope: _scope),
+        await widget.client.learningCandidates(),
+      );
+      if (mounted) {
+        widget.onReady?.call();
+        widget.onSettled?.call(true);
+      }
+      return home;
+    } catch (_) {
+      if (mounted) widget.onSettled?.call(false);
+      rethrow;
+    }
   }
 
   @override

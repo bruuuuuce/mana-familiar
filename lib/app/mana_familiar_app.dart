@@ -86,7 +86,11 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
   @override
   void initState() {
     super.initState();
-    NativeProjectWindow.installClosePreparation(_feedbackDrafts.flushAll);
+    NativeProjectWindow.installClosePreparation(() async {
+      widget.performanceProbe?.mark('close_preparation_requested');
+      await _feedbackDrafts.flushAll();
+      widget.performanceProbe?.mark('close_preparation_completed');
+    });
     final bridge = _nativeE2E;
     if (bridge != null) unawaited(bridge.start());
     if (widget.config.hasExplicitProjectRoot) {

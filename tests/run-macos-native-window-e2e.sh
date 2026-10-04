@@ -71,7 +71,7 @@ fail() {
 [ "$(uname -s)" = Darwin ] || fail 'this gate requires macOS'
 [ -d "$app" ] || fail "app bundle not found: $app (run: flutter build macos --debug)"
 [ -d "$project_root" ] || fail "project root not found: $project_root"
-[ -z "$story_start_fixture" ] || [ -x "$story_start_fixture" ] || fail "Story Start fixture is not executable: $story_start_fixture"
+[ -z "$story_start_fixture" ] || [ -f "$story_start_fixture" ] || fail "Story Start fixture is not a file: $story_start_fixture"
 [ -z "$ui_driver" ] || [ -f "$ui_driver" ] || fail "UI driver is not a file: $ui_driver"
 [ -z "$fault_wrapper" ] || [ -f "$fault_wrapper" ] || fail "fault wrapper is not a file: $fault_wrapper"
 if [ -n "$ui_driver" ]; then
@@ -265,7 +265,7 @@ run_regeneration() {
   [ -n "$story_start_fixture" ] || return 0
   local report="$project_root/.mana/features/FEEDBACK-E2E/planning/story-start-scope-v2.md"
   local current
-  "$story_start_fixture" --project-root "$project_root" --generation "$generation" \
+  python3 "$story_start_fixture" --mana-root "$mana_root" --project-root "$project_root" --generation "$generation" \
     >"$evidence_dir/generation-$generation.out" 2>"$evidence_dir/generation-$generation.err" || fail "Story Start regeneration R$generation failed"
   current="$(report_digest "$report")"
   if [ "$generation" -eq 1 ]; then
@@ -359,7 +359,7 @@ initial_report_revision=""
 prepare_initial_generation() {
   [ -n "$story_start_fixture" ] || return 0
   local report="$project_root/.mana/features/FEEDBACK-E2E/planning/story-start-scope-v2.md"
-  "$story_start_fixture" --project-root "$project_root" --generation 0 \
+  python3 "$story_start_fixture" --mana-root "$mana_root" --project-root "$project_root" --generation 0 \
     >"$evidence_dir/generation-0.out" 2>"$evidence_dir/generation-0.err" || fail 'initial Story Start fixture publication failed'
   [ -f "$report" ] || fail 'initial Story Start report is missing'
   initial_report_revision="$(report_digest "$report")"
