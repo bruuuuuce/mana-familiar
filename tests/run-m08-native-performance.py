@@ -87,6 +87,8 @@ def run_once(
         "activity": "activity_page_visible",
     }[destination]
     if destination == "knowledge":
+        checked(["python3", str(mana_root / "scripts" / "mana-catalog.py"),
+                 "--project-root", str(project), "--json", "build"], env=environment)
         checked(["python3", str(mana_root / "scripts" / "mana-knowledge.py"),
                  "--project-root", str(project), "build", "--json"], env=environment)
     process = subprocess.Popen(
