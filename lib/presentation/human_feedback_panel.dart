@@ -292,6 +292,8 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
     });
   }
 
+  Object? _threadReadError;
+
   Future<void> _load() async {
     try {
       final repository = widget.repository;
@@ -301,11 +303,18 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
       if (mounted) {
         setState(() {
           _threads = threads;
-          _error = null;
+          // A watcher read cannot acknowledge a failed publish or draft save.
+          if (identical(_error, _threadReadError)) _error = null;
+          _threadReadError = null;
         });
       }
     } catch (error) {
-      if (mounted) setState(() => _error = error);
+      if (mounted) {
+        setState(() {
+          _threadReadError = error;
+          _error = error;
+        });
+      }
     }
   }
 

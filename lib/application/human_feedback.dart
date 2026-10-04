@@ -995,7 +995,11 @@ class HumanFeedbackDraftStore {
     _pending[key] = draft;
     _timers.remove(key)?.cancel();
     _timers[key] = Timer(debounce, () {
-      unawaited(flush(draft.target, draft.composerId));
+      // The pending draft is retained by flush. Explicit Publish/Close retries
+      // must receive the failure, while the debounce has no awaiting caller.
+      unawaited(
+        flush(draft.target, draft.composerId).catchError((Object _) {}),
+      );
     });
   }
 

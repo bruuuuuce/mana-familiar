@@ -13,6 +13,37 @@ void main() {
     artifactRevision: 'sha256:demo',
   );
 
+  testWidgets('watcher refresh preserves a failed publication', (tester) async {
+    final repository = _FailedPublicationRepository();
+    final signal = ValueNotifier<int>(0);
+    addTearDown(signal.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: HumanFeedbackPanel(
+            repository: repository,
+            target: target,
+            refreshSignal: signal,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('feedback-author')), 'Ada');
+    await tester.enterText(
+      find.byKey(const Key('feedback-body')),
+      'Keep this text',
+    );
+    await tester.ensureVisible(find.byKey(const Key('feedback-publish')));
+    await tester.tap(find.byKey(const Key('feedback-publish')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('synthetic publish failure'), findsOneWidget);
+    signal.value++;
+    await tester.pumpAndSettle();
+    expect(find.textContaining('synthetic publish failure'), findsOneWidget);
+    expect(find.byKey(const Key('feedback-retry')), findsOneWidget);
+  });
+
   testWidgets('publishes a separately owned comment', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -438,4 +469,16 @@ class _Repository implements HumanFeedbackRepository {
     revision: '1',
     entries: created,
   );
+}
+
+class _FailedPublicationRepository extends _Repository {
+  @override
+  Future<HumanFeedbackThread> createThread({
+    required HumanFeedbackTarget target,
+    required String body,
+    required String author,
+    required String idempotencyKey,
+  }) async {
+    throw StateError('synthetic publish failure');
+  }
 }
