@@ -18,8 +18,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: bruuuuuce/mana
-          # Compatible M08 + C03 replanning and Activity paging producer; reproducible across both platforms.
-          ref: 1d224f93452a85e16b126c88861b80a005429ce8
+          # Pinned producer includes portable feedback receipts and batched index recovery.
+          ref: 008d110aa91e96e06ae8626777c6d54fede6fb39
           path: mana
       - name: Verify M08 producer prerequisites
         run: python3 tool/check_mana_producer.py --mana-root ../mana
@@ -83,8 +83,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: bruuuuuce/mana
-          # Compatible M08 + C03 replanning and Activity paging producer; reproducible across both platforms.
-          ref: 1d224f93452a85e16b126c88861b80a005429ce8
+          # Pinned producer includes portable feedback receipts and batched index recovery.
+          ref: 008d110aa91e96e06ae8626777c6d54fede6fb39
           path: mana
       - name: Verify M08 producer prerequisites
         run: python3 tool/check_mana_producer.py --mana-root ../mana
