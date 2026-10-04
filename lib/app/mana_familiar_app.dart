@@ -52,12 +52,20 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
         )
       : null;
 
+  bool _projectPickerPending = false;
+
   Future<void> _chooseProject() async {
     if (!mounted || _hasOpenProject) {
       throw StateError('The project picker belongs to the welcome page.');
     }
-    final root = await NativeProjectWindow.chooseProject();
-    if (root != null) await _openProject(root);
+    if (_projectPickerPending) return;
+    _projectPickerPending = true;
+    try {
+      final root = await NativeProjectWindow.chooseProject();
+      if (root != null) await _openProject(root);
+    } finally {
+      _projectPickerPending = false;
+    }
   }
 
   Future<void> _openProject(String projectRoot) async {
