@@ -50,9 +50,10 @@ $clock=[Diagnostics.Stopwatch]::StartNew()
     if draft:
         script += f'''
 $body=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{encoded}'))
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:{bridge.port}/v1/ui -ContentType application/json -Body ('{{"token":"' + ($body | ConvertFrom-Json).token + '","action":"status"}}') | Out-Null
+$clock.Restart()
 $result=Invoke-RestMethod -Method Post -Uri http://127.0.0.1:{bridge.port}/v1/ui -ContentType application/json -Body $body
 if($result.panel.composer.body -cne ($body | ConvertFrom-Json).body){{throw 'composer did not retain the requested draft'}}
-$clock.Restart()
 '''
     script += '''
 $requested=$clock.Elapsed.TotalMilliseconds
@@ -117,6 +118,7 @@ def main():
         second = start('B', 1)
         driver.observe_comment_draft(second[3], second[1])
         driver.observe_comment_draft(first[3], first[1])
+        report['publishedCommentAndReply'] = driver.publish_comment(first[3], first[1])
         close_and_record('A', first)
         close_and_record('B', second)
         report.update(status='passed', independentSessions=2, nativeCloses=4, verifiedRestarts=2, preDebounceCloses=2, unpublishedDraftsRemainNoncanonical=True, appSha256=hashlib.sha256(app.read_bytes()).hexdigest())

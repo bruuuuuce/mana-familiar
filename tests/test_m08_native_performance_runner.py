@@ -11,6 +11,18 @@ spec.loader.exec_module(runner)
 
 
 class NativePerformanceFailureEvidenceTest(unittest.TestCase):
+    def test_windows_cleanup_stops_only_the_owned_process_tree(self):
+        process = Mock(pid=4321)
+        process.poll.return_value = None
+        with patch.object(runner.subprocess, 'run', return_value=Mock(returncode=0)) as stop:
+            runner.stop_test_process(process, windows=True)
+        self.assertEqual(stop.call_args.args[0], ['taskkill.exe', '/PID', '4321', '/T', '/F'])
+        process.terminate.assert_not_called()
+        process.wait.assert_called_once_with(timeout=5)
+        with patch.object(runner.subprocess, 'run', return_value=Mock(returncode=1)):
+            with self.assertRaisesRegex(RuntimeError, 'process tree'):
+                runner.stop_test_process(process, windows=True)
+
     def test_timeout_retains_payload_free_evidence_after_temp_cleanup(self):
         with tempfile.TemporaryDirectory() as output:
             evidence = Path(output) / 'diagnostics'
