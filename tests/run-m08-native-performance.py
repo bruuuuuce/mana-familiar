@@ -220,6 +220,7 @@ def run_once(
     projections = flutter.get("typed_projection", [])
     processes = flutter.get("processes", [])
     return {
+        "knowledge_refresh_available": "knowledge_refresh_unavailable" not in milestones if destination == "knowledge" else None,
         "destination": destination,
         "route_ready_us": milestones[route_milestone] - milestones["project_loading_shell"],
         "build_mode": flutter["build_mode"],

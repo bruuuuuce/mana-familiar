@@ -2331,9 +2331,12 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       return KnowledgeCenterPage(
         client: client,
         refreshSignal: _feedbackRefresh,
-        onReady: () {
-          _recordAfterFrame('knowledge_visible');
+        onReady: () => _recordAfterFrame('knowledge_visible'),
+        onSettled: (available) {
           if (_knowledgeRefreshPending) {
+            if (!available) {
+              _recordAfterFrame('knowledge_refresh_unavailable');
+            }
             _knowledgeRefreshPending = false;
             _recordAfterFrame('refresh_visible_route');
           }
