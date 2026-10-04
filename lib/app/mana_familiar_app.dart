@@ -68,7 +68,14 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
 
   ObservatoryRoute? _initialRoute() {
     final artifactId = widget.config.initialArtifactId;
-    if (artifactId == null || artifactId.isEmpty) return null;
+    if (artifactId == null || artifactId.isEmpty) {
+      for (final destination in ObservatoryDestination.values) {
+        if (destination.name == widget.config.initialDestination) {
+          return ObservatoryRoute(destination: destination);
+        }
+      }
+      return null;
+    }
     return ObservatoryRoute(
       destination: ObservatoryDestination.advanced,
       advancedSection: AdvancedSection.artifacts,

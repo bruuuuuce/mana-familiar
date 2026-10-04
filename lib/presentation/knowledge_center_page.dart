@@ -1,12 +1,20 @@
 // ignore_for_file: curly_braces_in_flow_control_structures
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../application/mana_knowledge.dart';
 
 class KnowledgeCenterPage extends StatefulWidget {
-  const KnowledgeCenterPage({super.key, required this.client});
+  const KnowledgeCenterPage({
+    super.key,
+    required this.client,
+    this.onReady,
+    this.refreshSignal,
+  });
   final ManaKnowledgeClient client;
+  final VoidCallback? onReady;
+  final ValueListenable<int>? refreshSignal;
 
   @override
   State<KnowledgeCenterPage> createState() => _KnowledgeCenterPageState();
@@ -25,16 +33,31 @@ class _KnowledgeCenterPageState extends State<KnowledgeCenterPage> {
   void initState() {
     super.initState();
     _home = _load();
+    widget.refreshSignal?.addListener(_reload);
   }
 
-  Future<_KnowledgeHome> _load() async => _KnowledgeHome(
-    await widget.client.capabilities(),
-    await widget.client.documents(scope: _scope),
-    await widget.client.learningCandidates(),
-  );
+  Future<_KnowledgeHome> _load() async {
+    final home = _KnowledgeHome(
+      await widget.client.capabilities(),
+      await widget.client.documents(scope: _scope),
+      await widget.client.learningCandidates(),
+    );
+    if (mounted) widget.onReady?.call();
+    return home;
+  }
+
+  @override
+  void didUpdateWidget(covariant KnowledgeCenterPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshSignal != widget.refreshSignal) {
+      oldWidget.refreshSignal?.removeListener(_reload);
+      widget.refreshSignal?.addListener(_reload);
+    }
+  }
 
   @override
   void dispose() {
+    widget.refreshSignal?.removeListener(_reload);
     _query.dispose();
     super.dispose();
   }

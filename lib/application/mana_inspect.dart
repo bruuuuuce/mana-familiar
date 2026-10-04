@@ -16,6 +16,7 @@ const inspectWorkItemsSchema = 'mana.inspect.work-items/v1';
 const inspectWorkItemSchema = 'mana.inspect.work-item/v1';
 const inspectProjectContextSchema = 'mana.inspect.project-context/v1';
 const inspectActivitySchema = 'mana.inspect.activity/v1';
+const inspectActivityPageSchema = 'mana.inspect.activity-page/v1';
 const inspectSemanticSnapshotSchema = 'mana.inspect.semantic-snapshot/v1';
 
 /// Negotiated from the producer's advertised operations; never inferred from
@@ -534,6 +535,50 @@ class ManaActivityTarget {
   }
 }
 
+class ManaActivityPage {
+  const ManaActivityPage({
+    required this.activity,
+    required this.revision,
+    required this.total,
+    required this.nextCursor,
+  });
+  final ManaActivityResponse activity;
+  final String revision;
+  final int total;
+  final String? nextCursor;
+
+  factory ManaActivityPage.fromJson(Map<String, dynamic> json) {
+    _requireSchema(json, inspectActivityPageSchema);
+    final activity = ManaActivityResponse.fromJson({
+      ...json,
+      'schema': inspectActivitySchema,
+    });
+    final revision = _string(json['view_revision'], 'view_revision');
+    final total = json['total_events'];
+    final cursor = json['next_cursor'];
+    if (!RegExp(r'^sha256:[0-9a-f]{64}$').hasMatch(revision) ||
+        total is! int ||
+        total < activity.events.length ||
+        activity.events.length > 500 ||
+        (cursor != null &&
+            (cursor is! String ||
+                !RegExp(r'^[0-9a-f]{64}:[1-9][0-9]{0,9}$').hasMatch(cursor) ||
+                !cursor.startsWith('${revision.substring(7)}:') ||
+                activity.events.isEmpty))) {
+      throw const ManaInspectException(
+        ManaInspectFailure.malformedJson,
+        'Activity pagination metadata is malformed.',
+      );
+    }
+    return ManaActivityPage(
+      activity: activity,
+      revision: revision,
+      total: total,
+      nextCursor: cursor as String?,
+    );
+  }
+}
+
 class ManaActivityResponse {
   const ManaActivityResponse({
     required this.events,
@@ -630,6 +675,8 @@ class ManaInspectProject {
   bool get supportsProjectContext =>
       supports('project-context', inspectProjectContextSchema);
   bool get supportsActivity => supports('activity', inspectActivitySchema);
+  bool get supportsActivityPages =>
+      supports('activity-page', inspectActivityPageSchema);
   bool get supportsSemanticSnapshot =>
       supports('semantic-snapshot', inspectSemanticSnapshotSchema);
 
@@ -1110,6 +1157,23 @@ class ManaInspectClient {
       operation: 'activity',
       schema: inspectActivitySchema,
       decode: ManaActivityResponse.fromJson,
+    );
+  }
+
+  Future<ManaActivityPage> activityPage({
+    required ManaInspectProject capabilities,
+    String? cursor,
+  }) {
+    _requireOperation(capabilities, 'activity-page', inspectActivityPageSchema);
+    return _projection(
+      operation: 'activity-page',
+      schema: inspectActivityPageSchema,
+      options: [
+        '--limit',
+        '500',
+        if (cursor != null) ...['--cursor', cursor],
+      ],
+      decode: ManaActivityPage.fromJson,
     );
   }
 
