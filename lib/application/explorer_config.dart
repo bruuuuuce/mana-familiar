@@ -10,6 +10,7 @@ class ExplorerConfig {
     this.preferencesRoot,
     this.windowSessionId,
     this.initialArtifactId,
+    this.initialDestination,
     this.nativeE2EPort,
     this.nativeE2EToken,
     this.performanceTraceDirectory,
@@ -34,6 +35,9 @@ class ExplorerConfig {
   /// links from a desktop launcher and keeps the target producer-owned rather
   /// than reconstructing it from a local path.
   final String? initialArtifactId;
+
+  /// An explicit desktop destination, also used by native route measurements.
+  final String? initialDestination;
 
   /// Loopback-only debug test transport. Both values are required before the
   /// app exposes it; ordinary product launches never create a listener.
@@ -61,6 +65,7 @@ class ExplorerConfig {
     preferencesRoot: preferencesRoot,
     windowSessionId: windowSessionId,
     initialArtifactId: initialArtifactId,
+    initialDestination: initialDestination,
     nativeE2EPort: nativeE2EPort,
     nativeE2EToken: nativeE2EToken,
     performanceTraceDirectory: performanceTraceDirectory,
@@ -117,6 +122,9 @@ class ExplorerConfig {
           : null,
       initialArtifactId: args.contains('--initial-artifact')
           ? value('--initial-artifact', '')
+          : null,
+      initialDestination: args.contains('--initial-destination')
+          ? value('--initial-destination', '')
           : null,
       nativeE2EPort: args.contains('--native-e2e-port')
           ? int.tryParse(value('--native-e2e-port', ''))

@@ -185,6 +185,61 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('refresh notification reloads Knowledge producer reads', (
+    tester,
+  ) async {
+    final root = Directory.systemTemp.createTempSync(
+      'familiar-knowledge-refresh-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    File('${root.path}/mana').writeAsStringSync('');
+    final refresh = ValueNotifier(0);
+    addTearDown(refresh.dispose);
+    var reads = 0;
+    var ready = 0;
+    final client = ManaKnowledgeClient(
+      projectRoot: root.path,
+      run: (_, arguments, {workingDirectory}) async {
+        reads++;
+        return ProcessResult(
+          1,
+          0,
+          jsonEncode(
+            arguments.contains('capabilities')
+                ? _capabilities
+                : arguments.contains('documents')
+                ? _documents
+                : _queue,
+          ),
+          '',
+        );
+      },
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: KnowledgeCenterPage(
+            client: client,
+            refreshSignal: refresh,
+            onReady: () => ready++,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(reads, 3);
+    expect(ready, 1);
+    refresh.value++;
+    await tester.pumpAndSettle();
+    expect(reads, 6);
+    expect(ready, 2);
+    expect(find.text('Architecture'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    refresh.value++;
+    await tester.pump();
+    expect(reads, 6);
+  });
+
   testWidgets('offers promotion only as a separate explicit user action', (
     tester,
   ) async {

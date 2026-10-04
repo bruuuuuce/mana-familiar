@@ -95,6 +95,10 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   ManaActivityKind? _activityKindFilter;
   String? _activityWorkItemFilter;
   ManaTimestampProvenance? _activityTimeFilter;
+  ManaActivityPage? _activityPage;
+  List<ManaActivityEvent> _pagedEvents = [];
+  var _activityPageLoading = false;
+  Object? _activityPageError;
   String? _advancedFamilyFilter;
   String? _advancedKindFilter;
   String? _advancedStatusFilter;
@@ -108,6 +112,8 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   final ValueNotifier<int> _feedbackRefresh = ValueNotifier(0);
   var _watchUnavailable = false;
   var _catalogLoading = false;
+  var _knowledgeRefreshPending = false;
+  var _activityRefreshPending = false;
   var _supportingLoading = false;
   var _producerInitialLoadComplete = false;
   var _scheduledReviews = false;
@@ -142,6 +148,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       if (!mounted) return;
       _loadWorkDetailIfNeeded();
       _loadDetailIfNeeded();
+      _loadSupportingIfNeeded();
     });
   }
 
@@ -215,6 +222,16 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   void _loadSupportingIfNeeded() {
     final model = _model;
     final destination = _navigation.current.destination;
+    if (model != null &&
+        destination == ObservatoryDestination.activity &&
+        model.project.supportsActivityPages) {
+      if (_activityPage == null &&
+          !_activityPageLoading &&
+          _activityPageError == null) {
+        unawaited(_loadActivityPage());
+      }
+      return;
+    }
     final supportingComplete =
         model != null &&
         (!model.project.supportsProjectContext ||
@@ -255,6 +272,62 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     } finally {
       _supportingLoading = false;
       if (mounted) _loadSupportingIfNeeded();
+    }
+  }
+
+  Future<void> _loadActivityPage({bool restart = false}) async {
+    final model = _model;
+    if (model == null || _activityPageLoading) return;
+    final request = _semanticRequest;
+    setState(() {
+      _activityPageLoading = true;
+      _activityPageError = null;
+      if (restart) {
+        _activityPage = null;
+        _pagedEvents = [];
+      }
+    });
+    try {
+      final page = await widget.client.activityPage(
+        capabilities: model.project,
+        cursor: _activityPage?.nextCursor,
+      );
+      if (!mounted || request != _semanticRequest) return;
+      if (_activityPage != null && page.revision != _activityPage!.revision) {
+        throw const ManaInspectException(
+          ManaInspectFailure.partialCatalog,
+          'Activity changed during pagination. Reload the activity view.',
+        );
+      }
+      final combined = [..._pagedEvents, ...page.activity.events];
+      if (combined.map((event) => event.id).toSet().length != combined.length ||
+          combined.length > page.total) {
+        throw const ManaInspectException(
+          ManaInspectFailure.malformedJson,
+          'Activity pages overlap or exceed the producer total.',
+        );
+      }
+      setState(() {
+        _activityPage = page;
+        _pagedEvents = combined;
+      });
+      _recordAfterFrame('activity_page_visible');
+    } catch (error) {
+      if (mounted && request == _semanticRequest) {
+        setState(() => _activityPageError = error);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _activityPageLoading = false);
+        if (request == _semanticRequest && _activityRefreshPending) {
+          if (_activityPageError != null) {
+            _recordAfterFrame('activity_refresh_unavailable');
+          }
+          _activityRefreshPending = false;
+          _recordAfterFrame('refresh_visible_route');
+        }
+        _loadSupportingIfNeeded();
+      }
     }
   }
 
@@ -308,7 +381,17 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         setState(() => _model = model);
         widget.performanceMilestone?.call('refresh_model_replaced');
       }
-      if (fromWorkspaceWatch) {
+      final refreshingKnowledge =
+          route.destination == ObservatoryDestination.knowledge &&
+          widget.knowledgeClient != null;
+      final refreshingPagedActivity =
+          route.destination == ObservatoryDestination.activity &&
+          model.project.supportsActivityPages;
+      _knowledgeRefreshPending = fromWorkspaceWatch && refreshingKnowledge;
+      _activityRefreshPending = fromWorkspaceWatch && refreshingPagedActivity;
+      if (fromWorkspaceWatch &&
+          !refreshingKnowledge &&
+          !refreshingPagedActivity) {
         if (modelReplaced) {
           _recordAfterFrame('refresh_visible_route');
         } else {
@@ -318,6 +401,11 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
           widget.performanceMilestone?.call('refresh_visible_route');
         }
       }
+      setState(() {
+        _activityPage = null;
+        _pagedEvents = [];
+        _activityPageError = null;
+      });
       _feedbackRefresh.value++;
       _loadDetailIfNeeded();
     } catch (error) {
@@ -330,6 +418,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       // event. One extra pass consumes a change observed during the current
       // read without starting a recursive refresh loop.
       if (mounted && _refreshPending) _scheduleWorkspaceRefresh();
+      if (mounted) _loadSupportingIfNeeded();
     }
   }
 
@@ -387,6 +476,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
             // An initial deep link can name a catalog-only artifact. Its
             // detail cannot load until this asynchronous catalog lookup makes
             // the producer-owned summary available.
+            _recordAfterFrame('advanced_catalog_visible');
             _loadDetailIfNeeded();
           }
         })
@@ -2252,7 +2342,20 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
 
   Widget _knowledge(ManaSemanticReadModel model) {
     if (widget.knowledgeClient case final client?) {
-      return KnowledgeCenterPage(client: client);
+      return KnowledgeCenterPage(
+        client: client,
+        refreshSignal: _feedbackRefresh,
+        onReady: () => _recordAfterFrame('knowledge_visible'),
+        onSettled: (available) {
+          if (_knowledgeRefreshPending) {
+            if (!available) {
+              _recordAfterFrame('knowledge_refresh_unavailable');
+            }
+            _knowledgeRefreshPending = false;
+            _recordAfterFrame('refresh_visible_route');
+          }
+        },
+      );
     }
     if (model.mode == ManaSemanticMode.legacyCatalog) {
       return ListView(
@@ -2462,27 +2565,80 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
         'Activity',
         'Semantic activity is unavailable for this capability mode.',
       );
-    return ListView(
+    final events = _filteredActivityEvents(model);
+    return ListView.builder(
       padding: const EdgeInsets.fromLTRB(32, 18, 32, 36),
-      children: [
-        Text('Activity', style: Theme.of(context).textTheme.headlineMedium),
-        const SizedBox(height: 4),
-        Text(
-          'Mana-reported project activity, kept in producer order.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 18),
-        _activityFilters(model),
-        const SizedBox(height: 14),
-        ..._activityTimeline(model),
-      ],
+      itemCount: events.length + 2,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Activity',
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Mana-reported project activity, kept in producer order.',
+              ),
+              if (_activityPage != null)
+                Text(
+                  '${_pagedEvents.length} of ${_activityPage!.total} events loaded. Filters apply to loaded events.',
+                ),
+              const SizedBox(height: 18),
+              _activityFilters(model),
+              const SizedBox(height: 14),
+            ],
+          );
+        }
+        if (index == events.length + 1) {
+          return Column(
+            children: [
+              if (events.isEmpty && !_activityPageLoading)
+                const _ObservatoryEmptyState(
+                  icon: Icons.bolt_outlined,
+                  title: 'No matching activity',
+                  message:
+                      'Mana has not reported activity matching these filters.',
+                ),
+              if (_activityPageLoading) const LinearProgressIndicator(),
+              if (_activityPageError != null) ...[
+                const Text(
+                  'Activity changed or could not be loaded. Reload to read the current view.',
+                ),
+                TextButton(
+                  onPressed: () => _loadActivityPage(restart: true),
+                  child: const Text('Reload activity'),
+                ),
+              ] else if (_activityPage?.nextCursor != null)
+                TextButton(
+                  onPressed: _activityPageLoading ? null : _loadActivityPage,
+                  child: const Text('Load more activity'),
+                ),
+            ],
+          );
+        }
+        final eventIndex = index - 1;
+        final event = events[eventIndex];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (eventIndex == 0 ||
+                _activityDayLabel(event) !=
+                    _activityDayLabel(events[eventIndex - 1]))
+              _activityDayHeading(_activityDayLabel(event)),
+            _activityTimelineRow(model, event),
+          ],
+        );
+      },
     );
   }
 
   Widget _activityFilters(ManaSemanticReadModel model) {
-    final events = model.activity?.events ?? const <ManaActivityEvent>[];
+    final events = _activityPage?.activity != null
+        ? _pagedEvents
+        : model.activity?.events ?? const <ManaActivityEvent>[];
     final kinds = events.map((event) => event.kind).toSet().toList();
     final workIds = events
         .map((event) => event.workItemId)
@@ -2559,36 +2715,22 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     );
   }
 
-  List<Widget> _activityTimeline(ManaSemanticReadModel model) {
-    final events = (model.activity?.events ?? const <ManaActivityEvent>[])
-        .where(
-          (event) =>
-              (_activityKindFilter == null ||
-                  event.kind == _activityKindFilter) &&
-              (_activityWorkItemFilter == null ||
-                  event.workItemId == _activityWorkItemFilter) &&
-              (_activityTimeFilter == null ||
-                  event.timestampProvenance == _activityTimeFilter),
-        )
-        .toList();
-    if (events.isEmpty) {
-      return const [
-        _ObservatoryEmptyState(
-          icon: Icons.bolt_outlined,
-          title: 'No matching activity',
-          message: 'Mana has not reported activity matching these filters.',
-        ),
-      ];
-    }
-    String? previousDay;
-    return [
-      for (final event in events) ...[
-        if (_activityDayLabel(event) != previousDay)
-          _activityDayHeading(previousDay = _activityDayLabel(event)),
-        _activityTimelineRow(model, event),
-      ],
-    ];
-  }
+  List<ManaActivityEvent> _filteredActivityEvents(
+    ManaSemanticReadModel model,
+  ) =>
+      (_activityPage != null
+              ? _pagedEvents
+              : model.activity?.events ?? const <ManaActivityEvent>[])
+          .where(
+            (event) =>
+                (_activityKindFilter == null ||
+                    event.kind == _activityKindFilter) &&
+                (_activityWorkItemFilter == null ||
+                    event.workItemId == _activityWorkItemFilter) &&
+                (_activityTimeFilter == null ||
+                    event.timestampProvenance == _activityTimeFilter),
+          )
+          .toList(growable: false);
 
   Widget _activityDayHeading(String day) => Padding(
     padding: const EdgeInsets.only(top: 8, bottom: 6),

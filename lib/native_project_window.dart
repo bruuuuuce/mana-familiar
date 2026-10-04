@@ -13,8 +13,9 @@ class NativeProjectWindow {
   static const _channel = MethodChannel('mana_familiar/project_window');
   static Future<void> Function()? _prepareToClose;
 
-  /// Installs the Flutter half of the native close handshake. The macOS
-  /// window delegate keeps Close/Quit pending until this future completes.
+  /// Installs the Flutter half of the native close handshake. The macOS runner
+  /// keeps Close/Quit pending until this future completes. Windows uses
+  /// Flutter AppLifecycleListener for its native exit request.
   /// This is intentionally process-local: each Runner owns one window and
   /// one draft session.
   static void installClosePreparation(Future<void> Function() callback) {

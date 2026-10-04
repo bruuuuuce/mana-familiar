@@ -904,10 +904,12 @@ class HumanFeedbackDraftStore {
     this.root, {
     this.debounce = const Duration(milliseconds: 350),
     String sessionId = 'default',
+    this.persistDraft,
   }) : sessionId = _validateSessionId(sessionId);
   final Directory root;
   final Duration debounce;
   final String sessionId;
+  final Future<void> Function(File, HumanFeedbackDraft)? persistDraft;
   final Map<String, Timer> _timers = {};
   final Map<String, HumanFeedbackDraft> _pending = {};
   final Map<String, Future<void>> _writes = {};
@@ -995,7 +997,13 @@ class HumanFeedbackDraftStore {
     await _enqueue(key, () async {
       final draft = _pending.remove(key);
       if (draft == null) return;
-      await _write(_file(target, draft.composerId), draft);
+      try {
+        await (persistDraft ?? _write)(_file(target, draft.composerId), draft);
+      } catch (_) {
+        // Retain failed text for a retry without replacing a newer edit.
+        _pending.putIfAbsent(key, () => draft);
+        rethrow;
+      }
     });
   }
 
@@ -1015,9 +1023,15 @@ class HumanFeedbackDraftStore {
   }
 
   Future<void> flushAll() async {
-    final drafts = _pending.values.toList(growable: false);
-    for (final draft in drafts) {
-      await flush(draft.target, draft.composerId);
+    while (_pending.isNotEmpty || _writes.isNotEmpty) {
+      // Capture running writes before yielding: a failed write can restore
+      // _pending and remove itself from _writes while another draft is saved.
+      final writes = _writes.values.toList(growable: false);
+      final drafts = _pending.values.toList(growable: false);
+      for (final draft in drafts) {
+        await flush(draft.target, draft.composerId);
+      }
+      await Future.wait(writes);
     }
   }
 

@@ -63,6 +63,24 @@ def load_json(path: Path) -> dict[str, Any] | None:
         return None
 
 
+def stop_test_process(process: subprocess.Popen, *, windows: bool | None = None) -> None:
+    windows = os.name == "nt" if windows is None else windows
+    if windows:
+        # Killing only the desktop parent leaves its read-only Git Bash/Python
+        # children holding fixture files open. Scope termination to this Popen PID.
+        result = subprocess.run(["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+                                capture_output=True, timeout=10, check=False)
+        if result.returncode != 0 and process.poll() is None:
+            raise RuntimeError("owned desktop test process tree could not be stopped")
+    else:
+        process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
 def run_once(
     app: Path,
     project: Path,
@@ -71,6 +89,7 @@ def run_once(
     run_root: Path,
     timeout: float,
     diagnostic_directory: Path | None = None,
+    destination: str = "overview",
 ) -> dict[str, Any]:
     trace = run_root / "trace"
     preferences = run_root / "preferences"
@@ -79,9 +98,22 @@ def run_once(
     preferences.mkdir(parents=True)
     environment = dict(os.environ)
     environment["MANA_CACHE_HOME"] = str(cache)
+    route_milestone = {
+        "overview": "first_meaningful_overview",
+        "advanced": "advanced_catalog_visible",
+        "knowledge": "knowledge_visible",
+        "activity": "activity_page_visible",
+    }[destination]
+    if destination == "knowledge":
+        checked(["python3", str(mana_root / "scripts" / "mana-catalog.py"),
+                 "--project-root", str(project), "--json", "build"], env=environment)
+        checked(["python3", str(mana_root / "scripts" / "mana-knowledge.py"),
+                 "--project-root", str(project), "build", "--json"], env=environment)
     process = subprocess.Popen(
         [
             str(app),
+            "--initial-destination",
+            destination,
             "--project-root",
             str(project),
             "--mana-root",
@@ -114,7 +146,7 @@ def run_once(
             if flutter and native:
                 milestones = flutter.get("milestones_us", {})
                 frames = flutter.get("frames", {})
-                if milestones.get("optional_surfaces_settled") is not None and frames.get("count", 0) > 0:
+                if (destination != "overview" or milestones.get("optional_surfaces_settled") is not None) and milestones.get(route_milestone) is not None and frames.get("count", 0) > 0:
                     break
             time.sleep(0.05)
         else:
@@ -185,12 +217,7 @@ def run_once(
         raise
     finally:
         if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
+            stop_test_process(process)
         if process.stdout:
             process.stdout.close()
         if process.stderr:
@@ -206,13 +233,16 @@ def run_once(
     projections = flutter.get("typed_projection", [])
     processes = flutter.get("processes", [])
     return {
+        "knowledge_refresh_available": "knowledge_refresh_unavailable" not in milestones if destination == "knowledge" else None,
+        "destination": destination,
+        "route_ready_us": milestones[route_milestone] - milestones["project_loading_shell"],
         "build_mode": flutter["build_mode"],
         "native_window_us": native["process_to_window_presented_us"],
         "binding_to_first_frame_us": milestones["first_application_frame"] - milestones["binding_ready"],
         "project_to_loading_shell_us": milestones["project_loading_shell"] - milestones["binding_ready"],
         "loading_shell_to_meaningful_overview_us": milestones["first_meaningful_overview"] - milestones["project_loading_shell"],
         "visible_route_populated_us": milestones["visible_route_populated"],
-        "optional_surfaces_settled_us": milestones["optional_surfaces_settled"],
+        "optional_surfaces_settled_us": milestones.get("optional_surfaces_settled"),
         "workspace_refresh_us": milestones["refresh_visible_route"] - milestones["workspace_event"],
         "refresh_model_replaced": "refresh_model_replaced" in milestones,
         "frames": {
@@ -250,6 +280,7 @@ def main() -> int:
     parser.add_argument("--cold-runs", type=int, default=5)
     parser.add_argument("--warm-runs", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=45.0)
+    parser.add_argument("--destination", choices=("overview", "advanced", "knowledge", "activity"), default="overview")
     args = parser.parse_args()
     if args.cold_runs < 1 or args.warm_runs < 1 or args.timeout <= 0:
         parser.error("run counts and timeout must be positive")
@@ -263,7 +294,7 @@ def main() -> int:
     diagnostic_directory = args.output.parent / f"{args.output.stem}.diagnostics"
 
     def measured_run(*run_arguments: Any) -> dict[str, Any]:
-        result = run_once(*run_arguments, diagnostic_directory=diagnostic_directory)
+        result = run_once(*run_arguments, diagnostic_directory=diagnostic_directory, destination=args.destination)
         diagnostic_directory.mkdir(parents=True, exist_ok=True)
         run_root = run_arguments[4]
         (diagnostic_directory / f"{run_root.name}-sample.json").write_text(
@@ -314,7 +345,7 @@ def main() -> int:
         ]
 
     report = {
-        "schema": "mana-familiar.c04.native-performance-matrix/v1",
+        "schema": "mana-familiar.c04.native-performance-matrix/v1" if args.destination == "overview" else "mana-familiar.c04.native-route-performance-matrix/v1",
         "environment": {
             "os": platform.platform(),
             "machine": platform.machine(),
@@ -325,6 +356,7 @@ def main() -> int:
             "familiar_revision": revision(familiar_root),
             "familiar_dirty": dirty(familiar_root),
         },
+        "destination": args.destination,
         "fixture": {
             "class": manifest["fixture_class"],
             "digest": manifest["fixture_digest"],
@@ -343,6 +375,7 @@ def main() -> int:
             phase: {
                 field: median(runs, field)
                 for field in (
+                    "route_ready_us",
                     "native_window_us",
                     "binding_to_first_frame_us",
                     "project_to_loading_shell_us",
@@ -354,6 +387,7 @@ def main() -> int:
                     "max_offloaded_decode_us",
                     "max_typed_projection_us",
                 )
+                if field != "optional_surfaces_settled_us" or args.destination == "overview"
             }
             for phase, runs in (("cold", cold), ("warm", warm))
         },

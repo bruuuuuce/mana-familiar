@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 
@@ -24,7 +26,10 @@ Future<void> main(List<String> args) async {
   // authoring controls. Keep the semantic tree available to macOS assistive
   // technology (and to the native acceptance driver) instead of relying on a
   // screen-reader process to happen to enable it after launch.
-  SemanticsBinding.instance.ensureSemantics();
+  // Windows creates its native accessibility bridge only after a UIA/MSAA
+  // request. Emitting the tree before that bridge exists loses the initial
+  // nodes and leaves assistive technology with an empty pane.
+  if (!Platform.isWindows) SemanticsBinding.instance.ensureSemantics();
   final config = ExplorerConfig.parse(args);
   final probe = config.performanceTraceDirectory == null
       ? null
