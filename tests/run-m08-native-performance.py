@@ -63,6 +63,24 @@ def load_json(path: Path) -> dict[str, Any] | None:
         return None
 
 
+def stop_test_process(process: subprocess.Popen, *, windows: bool | None = None) -> None:
+    windows = os.name == "nt" if windows is None else windows
+    if windows:
+        # Killing only the desktop parent leaves its read-only Git Bash/Python
+        # children holding fixture files open. Scope termination to this Popen PID.
+        result = subprocess.run(["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+                                capture_output=True, timeout=10, check=False)
+        if result.returncode != 0 and process.poll() is None:
+            raise RuntimeError("owned desktop test process tree could not be stopped")
+    else:
+        process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
 def run_once(
     app: Path,
     project: Path,
@@ -199,12 +217,7 @@ def run_once(
         raise
     finally:
         if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
+            stop_test_process(process)
         if process.stdout:
             process.stdout.close()
         if process.stderr:
