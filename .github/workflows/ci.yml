@@ -19,7 +19,7 @@ jobs:
         with:
           repository: bruuuuuce/mana
           # Compatible M08 + C03 replanning and Activity paging producer; reproducible across both platforms.
-          ref: b0a9ff9ccc851b7728ad256c9f5e07a86049a969
+          ref: 1d224f93452a85e16b126c88861b80a005429ce8
           path: mana
       - name: Verify M08 producer prerequisites
         run: python3 tool/check_mana_producer.py --mana-root ../mana
@@ -84,7 +84,7 @@ jobs:
         with:
           repository: bruuuuuce/mana
           # Compatible M08 + C03 replanning and Activity paging producer; reproducible across both platforms.
-          ref: b0a9ff9ccc851b7728ad256c9f5e07a86049a969
+          ref: 1d224f93452a85e16b126c88861b80a005429ce8
           path: mana
       - name: Verify M08 producer prerequisites
         run: python3 tool/check_mana_producer.py --mana-root ../mana
