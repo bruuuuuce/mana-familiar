@@ -267,7 +267,7 @@ def main() -> int:
     parser.add_argument("--cold-runs", type=int, default=5)
     parser.add_argument("--warm-runs", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=45.0)
-    parser.add_argument("--destination", choices=("overview", "advanced", "knowledge"), default="overview")
+    parser.add_argument("--destination", choices=("overview", "advanced", "knowledge", "activity"), default="overview")
     args = parser.parse_args()
     if args.cold_runs < 1 or args.warm_runs < 1 or args.timeout <= 0:
         parser.error("run counts and timeout must be positive")
