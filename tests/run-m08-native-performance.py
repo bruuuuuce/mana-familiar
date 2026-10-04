@@ -126,7 +126,7 @@ def run_once(
             if flutter and native:
                 milestones = flutter.get("milestones_us", {})
                 frames = flutter.get("frames", {})
-                if milestones.get("optional_surfaces_settled") is not None and milestones.get(route_milestone) is not None and frames.get("count", 0) > 0:
+                if (destination != "overview" or milestones.get("optional_surfaces_settled") is not None) and milestones.get(route_milestone) is not None and frames.get("count", 0) > 0:
                     break
             time.sleep(0.05)
         else:
@@ -226,7 +226,7 @@ def run_once(
         "project_to_loading_shell_us": milestones["project_loading_shell"] - milestones["binding_ready"],
         "loading_shell_to_meaningful_overview_us": milestones["first_meaningful_overview"] - milestones["project_loading_shell"],
         "visible_route_populated_us": milestones["visible_route_populated"],
-        "optional_surfaces_settled_us": milestones["optional_surfaces_settled"],
+        "optional_surfaces_settled_us": milestones.get("optional_surfaces_settled"),
         "workspace_refresh_us": milestones["refresh_visible_route"] - milestones["workspace_event"],
         "refresh_model_replaced": "refresh_model_replaced" in milestones,
         "frames": {
@@ -264,7 +264,7 @@ def main() -> int:
     parser.add_argument("--cold-runs", type=int, default=5)
     parser.add_argument("--warm-runs", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=45.0)
-    parser.add_argument("--destination", choices=("overview", "advanced", "knowledge", "activity"), default="overview")
+    parser.add_argument("--destination", choices=("overview", "advanced", "knowledge"), default="overview")
     args = parser.parse_args()
     if args.cold_runs < 1 or args.warm_runs < 1 or args.timeout <= 0:
         parser.error("run counts and timeout must be positive")
@@ -329,7 +329,7 @@ def main() -> int:
         ]
 
     report = {
-        "schema": "mana-familiar.c04.native-performance-matrix/v1",
+        "schema": "mana-familiar.c04.native-performance-matrix/v1" if args.destination == "overview" else "mana-familiar.c04.native-route-performance-matrix/v1",
         "environment": {
             "os": platform.platform(),
             "machine": platform.machine(),
@@ -371,6 +371,7 @@ def main() -> int:
                     "max_offloaded_decode_us",
                     "max_typed_projection_us",
                 )
+                if field != "optional_surfaces_settled_us" or args.destination == "overview"
             }
             for phase, runs in (("cold", cold), ("warm", warm))
         },
