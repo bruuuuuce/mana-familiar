@@ -723,16 +723,19 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
               ),
             )
           else ...[
-            TextField(
-              key: Key('feedback-reply-${thread.id}'),
-              controller: _replyController(thread),
-              focusNode: _replyFocusNodes.putIfAbsent(
-                thread.id,
-                () => FocusNode(debugLabel: 'feedback-reply-${thread.id}'),
+            Semantics(
+              container: true,
+              child: TextField(
+                key: Key('feedback-reply-${thread.id}'),
+                controller: _replyController(thread),
+                focusNode: _replyFocusNodes.putIfAbsent(
+                  thread.id,
+                  () => FocusNode(debugLabel: 'feedback-reply-${thread.id}'),
+                ),
+                minLines: 1,
+                maxLines: 4,
+                decoration: const InputDecoration(labelText: 'Reply'),
               ),
-              minLines: 1,
-              maxLines: 4,
-              decoration: const InputDecoration(labelText: 'Reply'),
             ),
             Align(
               alignment: Alignment.centerRight,
