@@ -194,11 +194,13 @@ class HumanDecisionTarget {
     required this.question,
     required this.status,
     required this.options,
+    this.selectedOptionId,
   });
   final String id;
   final String question;
   final String status;
   final List<HumanDecisionOption> options;
+  final String? selectedOptionId;
 }
 
 class HumanDecisionTargets {
@@ -307,12 +309,21 @@ class ManaHumanFeedbackRepository implements HumanFeedbackRepository {
           ),
         );
       }
+      final selectedOptionId = item['selectedOptionId'];
+      if (selectedOptionId != null &&
+          (selectedOptionId is! String ||
+              !options.any((option) => option.id == selectedOptionId))) {
+        throw const FormatException(
+          'Mana returned an unavailable selected option.',
+        );
+      }
       decisions.add(
         HumanDecisionTarget(
           id: item['decisionId'] as String,
           question: item['question'] as String,
           status: item['status'] as String,
           options: options,
+          selectedOptionId: selectedOptionId as String?,
         ),
       );
     }

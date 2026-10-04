@@ -883,6 +883,7 @@ class _HumanDecisionPanelState extends State<HumanDecisionPanel> {
           (decision) => {
             'id': decision.id,
             'status': decision.status,
+            'selectedOptionId': decision.selectedOptionId,
             'options': decision.options
                 .map((option) => {'id': option.id})
                 .toList(growable: false),
@@ -1100,6 +1101,29 @@ class _HumanDecisionPanelState extends State<HumanDecisionPanel> {
               if (targets == null && _error == null)
                 const Center(child: CircularProgressIndicator()),
               if (targets != null) ...[
+                if (targets.decisions.any(
+                  (item) => item.status == 'resolved',
+                )) ...[
+                  const Text('Resolved decisions in the current plan'),
+                  for (final resolved in targets.decisions.where(
+                    (item) => item.status == 'resolved',
+                  ))
+                    ListTile(
+                      title: Text(resolved.question),
+                      subtitle: Text(
+                        resolved.options
+                                .where(
+                                  (option) =>
+                                      option.id == resolved.selectedOptionId,
+                                )
+                                .firstOrNull
+                                ?.label ??
+                            'Resolved by the producer',
+                      ),
+                      leading: const Icon(Icons.check_circle_outline),
+                    ),
+                  const SizedBox(height: 12),
+                ],
                 DropdownButtonFormField<String>(
                   key: const Key('decision-target'),
                   initialValue: _decisionId,
