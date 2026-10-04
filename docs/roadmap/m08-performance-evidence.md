@@ -1,5 +1,35 @@
 # M08 Familiar performance evidence
 
+## Probe publication and frame provenance (2026-10-04)
+
+The opt-in native probe collects timestamped numeric observations on the UI
+isolate. A persistent worker receives batches (16 ms coalescing, at most one
+publication in flight), aggregates the report, encodes JSON and publishes it
+with bounded Windows replacement retries. Acknowledgements identify the
+published observation sequence; `flush()` waits for all preceding observations
+and reports failure without changing the product read model. Close preparation
+awaits this flush; disposal stops collection and releases the worker after its
+last publication.
+
+Frame intervals now use `vsyncStart` through `rasterFinish` consistently for
+critical-window membership and producer overlap. Every retained frame records
+vsync, build and raster timestamps, vsync overhead, raster queue duration,
+build/raster/total durations, callback observation time and frame number. The
+successful native matrix retains these numeric samples, including raw producer-
+overlapping frames, rather than only their maximum. The 10,000-sample limit is
+explicit in `samples_dropped`; the native runner rejects truncated evidence.
+It also waits for an engine timing callback delivered after each visible-route
+milestone, since Release timings can arrive about one second after rendering.
+
+`diagnostics.publication_isolate` is `dedicated`; publication durations describe
+completed *prior* attempts, not the write containing the duration fields.
+Scheduled native jobs upload both the matrix and per-sample/failure diagnostics.
+Older committed matrices remain historical evidence from the previous probe;
+these changes do not retrospectively explain or fix the historical 62.194 ms
+Windows critical frame.
+
+## Historical reference matrices
+
 The committed `m08-familiar-performance-matrix.json` report is generated from
 the deterministic Mana fixture generator and AOT-compiled Dart harness. It
 contains five cache-isolated cold runs and five post-prime warm runs for each

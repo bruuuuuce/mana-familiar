@@ -170,6 +170,30 @@ void main() {
           lessThanOrEqualTo(256 * 1024 * 1024),
         );
         final frames = sample['frames'] as Map<String, dynamic>;
+        if (frames['interval_clock'] == 'vsync_start_to_raster_finish') {
+          expect(frames['samples_dropped'], 0);
+          final rawSamples = (frames['samples'] as List)
+              .cast<Map<String, dynamic>>();
+          expect(rawSamples, hasLength(frames['count'] as int));
+          for (final frame in rawSamples) {
+            expect(
+              frame['total_us'],
+              (frame['raster_finish_us'] as int) -
+                  (frame['vsync_start_us'] as int),
+            );
+            expect(
+              frame['total_us'],
+              (frame['vsync_overhead_us'] as int) +
+                  (frame['build_us'] as int) +
+                  (frame['raster_queue_us'] as int) +
+                  (frame['raster_us'] as int),
+            );
+          }
+          expect(
+            sample['probe_publication']['publication_isolate'],
+            'dedicated',
+          );
+        }
         final critical = frames['critical_interval'] as Map<String, dynamic>;
         evaluatedCriticalFrames += critical['count'] as int;
         expect(critical['count'], greaterThanOrEqualTo(0));

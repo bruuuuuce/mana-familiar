@@ -109,6 +109,7 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
       widget.performanceProbe?.mark('close_preparation_requested');
       await _feedbackDrafts.flushAll();
       widget.performanceProbe?.mark('close_preparation_completed');
+      await widget.performanceProbe?.flush();
     }
 
     if (Platform.isWindows) {
@@ -140,7 +141,7 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
     _feedbackDrafts.dispose();
     final bridge = _nativeE2E;
     if (bridge != null) unawaited(bridge.dispose());
-    widget.performanceProbe?.dispose();
+    unawaited(widget.performanceProbe?.dispose());
     super.dispose();
   }
 
