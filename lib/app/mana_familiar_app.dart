@@ -48,8 +48,17 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
       ? NativeE2EBridge(
           port: widget.config.nativeE2EPort!,
           token: widget.config.nativeE2EToken!,
+          openProjectPicker: _chooseProject,
         )
       : null;
+
+  Future<void> _chooseProject() async {
+    if (!mounted || _hasOpenProject) {
+      throw StateError('The project picker belongs to the welcome page.');
+    }
+    final root = await NativeProjectWindow.chooseProject();
+    if (root != null) await _openProject(root);
+  }
 
   Future<void> _openProject(String projectRoot) async {
     await widget.preferences.rememberProjectRoot(projectRoot);
@@ -149,6 +158,7 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
           ? ProjectWelcomePage(
               recentProjectRoots: widget.preferences.recentProjectRoots,
               onOpenProject: _openProject,
+              onChooseProject: _chooseProject,
               onClearRecentProjects: _clearRecentProjects,
             )
           : ProjectObservatoryPage(

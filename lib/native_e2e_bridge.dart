@@ -15,10 +15,12 @@ class NativeE2EBridge {
   NativeE2EBridge({
     required this.port,
     required this.token,
+    this.openProjectPicker,
     Future<void> Function()? settleFrame,
   }) : _settleFrame = settleFrame ?? _settleMountedWidgets;
 
   final Future<void> Function() _settleFrame;
+  final Future<void> Function()? openProjectPicker;
 
   static Future<void> _settleMountedWidgets() async {
     final binding = SchedulerBinding.instance;
@@ -141,6 +143,12 @@ class NativeE2EBridge {
     Map<String, dynamic> input,
   ) async {
     switch (action) {
+      case 'openProjectPicker':
+        final picker = openProjectPicker;
+        if (picker == null) throw StateError('project picker is not ready');
+        await picker();
+        await _settleFrame();
+        return _status();
       case 'status':
         await _settleFrame();
         return _status();
