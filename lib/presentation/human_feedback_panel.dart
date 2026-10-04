@@ -44,6 +44,7 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
   final _authorFocus = FocusNode();
   final _bodyFocus = FocusNode();
   final Map<String, TextEditingController> _replies = {};
+  final Map<String, FocusNode> _replyFocusNodes = {};
   final Map<String, String> _replyIdempotencyKeys = {};
   final Set<String> _replying = {};
   late String _idempotencyKey;
@@ -107,6 +108,9 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
     _author.dispose();
     _authorFocus.dispose();
     _bodyFocus.dispose();
+    for (final node in _replyFocusNodes.values) {
+      node.dispose();
+    }
     for (final reply in _replies.values) {
       reply.dispose();
     }
@@ -240,6 +244,22 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
     return thread;
   }
 
+  void _openReply(HumanFeedbackThread thread) {
+    final node = _replyFocusNodes.putIfAbsent(
+      thread.id,
+      () => FocusNode(debugLabel: 'feedback-reply-${thread.id}'),
+    );
+    setState(() => _replying.add(thread.id));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_replying.contains(thread.id)) return;
+      node.requestFocus();
+      final context = node.context;
+      if (context != null) {
+        unawaited(Scrollable.ensureVisible(context));
+      }
+    });
+  }
+
   Future<void> _setReplyForNativeE2E(String threadId, String body) async {
     if (!mounted) throw StateError('comment panel is no longer mounted');
     final thread = _threadForNativeE2E(threadId);
@@ -292,6 +312,8 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
     });
   }
 
+  Object? _threadReadError;
+
   Future<void> _load() async {
     try {
       final repository = widget.repository;
@@ -301,11 +323,18 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
       if (mounted) {
         setState(() {
           _threads = threads;
-          _error = null;
+          // A watcher read cannot acknowledge a failed publish or draft save.
+          if (identical(_error, _threadReadError)) _error = null;
+          _threadReadError = null;
         });
       }
     } catch (error) {
-      if (mounted) setState(() => _error = error);
+      if (mounted) {
+        setState(() {
+          _threadReadError = error;
+          _error = error;
+        });
+      }
     }
   }
 
@@ -688,18 +717,25 @@ class _HumanFeedbackPanelState extends State<HumanFeedbackPanel> {
                 key: Key('feedback-reply-open-${thread.id}'),
                 onPressed: _sending || !_supports('reply')
                     ? null
-                    : () => setState(() => _replying.add(thread.id)),
+                    : () => _openReply(thread),
                 icon: const Icon(Icons.reply_outlined),
                 label: const Text('Reply'),
               ),
             )
           else ...[
-            TextField(
-              key: Key('feedback-reply-${thread.id}'),
-              controller: _replyController(thread),
-              minLines: 1,
-              maxLines: 4,
-              decoration: const InputDecoration(labelText: 'Reply'),
+            Semantics(
+              container: true,
+              child: TextField(
+                key: Key('feedback-reply-${thread.id}'),
+                controller: _replyController(thread),
+                focusNode: _replyFocusNodes.putIfAbsent(
+                  thread.id,
+                  () => FocusNode(debugLabel: 'feedback-reply-${thread.id}'),
+                ),
+                minLines: 1,
+                maxLines: 4,
+                decoration: const InputDecoration(labelText: 'Reply'),
+              ),
             ),
             Align(
               alignment: Alignment.centerRight,
@@ -883,6 +919,7 @@ class _HumanDecisionPanelState extends State<HumanDecisionPanel> {
           (decision) => {
             'id': decision.id,
             'status': decision.status,
+            'selectedOptionId': decision.selectedOptionId,
             'options': decision.options
                 .map((option) => {'id': option.id})
                 .toList(growable: false),
@@ -1100,8 +1137,33 @@ class _HumanDecisionPanelState extends State<HumanDecisionPanel> {
               if (targets == null && _error == null)
                 const Center(child: CircularProgressIndicator()),
               if (targets != null) ...[
+                if (targets.decisions.any(
+                  (item) => item.status == 'resolved',
+                )) ...[
+                  const Text('Resolved decisions in the current plan'),
+                  for (final resolved in targets.decisions.where(
+                    (item) => item.status == 'resolved',
+                  ))
+                    ListTile(
+                      title: Text(resolved.question),
+                      subtitle: Text(
+                        resolved.options
+                                .where(
+                                  (option) =>
+                                      option.id == resolved.selectedOptionId,
+                                )
+                                .firstOrNull
+                                ?.label ??
+                            'Resolved by the producer',
+                      ),
+                      leading: const Icon(Icons.check_circle_outline),
+                    ),
+                  const SizedBox(height: 12),
+                ],
                 DropdownButtonFormField<String>(
                   key: const Key('decision-target'),
+                  isExpanded: true,
+                  itemHeight: null,
                   initialValue: _decisionId,
                   decoration: const InputDecoration(labelText: 'Open decision'),
                   items: targets.decisions
@@ -1109,7 +1171,14 @@ class _HumanDecisionPanelState extends State<HumanDecisionPanel> {
                       .map(
                         (item) => DropdownMenuItem(
                           value: item.id,
-                          child: Text(item.question),
+                          child: Tooltip(
+                            message: item.question,
+                            child: Text(
+                              item.question,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ),
                       )
                       .toList(),

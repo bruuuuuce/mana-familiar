@@ -194,11 +194,13 @@ class HumanDecisionTarget {
     required this.question,
     required this.status,
     required this.options,
+    this.selectedOptionId,
   });
   final String id;
   final String question;
   final String status;
   final List<HumanDecisionOption> options;
+  final String? selectedOptionId;
 }
 
 class HumanDecisionTargets {
@@ -307,12 +309,21 @@ class ManaHumanFeedbackRepository implements HumanFeedbackRepository {
           ),
         );
       }
+      final selectedOptionId = item['selectedOptionId'];
+      if (selectedOptionId != null &&
+          (selectedOptionId is! String ||
+              !options.any((option) => option.id == selectedOptionId))) {
+        throw const FormatException(
+          'Mana returned an unavailable selected option.',
+        );
+      }
       decisions.add(
         HumanDecisionTarget(
           id: item['decisionId'] as String,
           question: item['question'] as String,
           status: item['status'] as String,
           options: options,
+          selectedOptionId: selectedOptionId as String?,
         ),
       );
     }
@@ -984,7 +995,11 @@ class HumanFeedbackDraftStore {
     _pending[key] = draft;
     _timers.remove(key)?.cancel();
     _timers[key] = Timer(debounce, () {
-      unawaited(flush(draft.target, draft.composerId));
+      // The pending draft is retained by flush. Explicit Publish/Close retries
+      // must receive the failure, while the debounce has no awaiting caller.
+      unawaited(
+        flush(draft.target, draft.composerId).catchError((Object _) {}),
+      );
     });
   }
 

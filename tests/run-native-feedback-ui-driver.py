@@ -9,6 +9,7 @@ control through that bridge.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import http.client
 import json
@@ -184,31 +185,42 @@ def visible_thread_id(
     return None
 
 
-def canonical_entry(mana_root: Path, project_root: Path, target: dict[str, Any]) -> str:
+def canonical_threads(mana_root: Path, project_root: Path, target: dict[str, Any]) -> list[dict[str, Any]]:
     artifact_id = target.get("artifactId")
     revision = target.get("artifactRevision")
     if not isinstance(artifact_id, str) or not isinstance(revision, str):
         raise AssertionError("mounted panel has no canonical artifact target")
-    command = [
-        str(mana_root / "scripts" / "mana-human-feedback.sh"),
-        "--project-root",
-        str(project_root),
-        "list-history",
-        "--artifact-id",
-        artifact_id,
-        "--artifact-revision",
-        revision,
-        "--section-id",
-        SECTION_ID,
-        "--json",
-    ]
-    completed = producer_result(command)
-    if completed.returncode:
-        raise AssertionError(f"canonical feedback read failed: {completed.stderr.strip()}")
-    value = json.loads(completed.stdout)
-    threads = value.get("threads")
-    if not isinstance(threads, list):
-        raise AssertionError("canonical feedback response has no thread list")
+    command = [str(mana_root / "scripts/mana-human-feedback.sh"), "--project-root", str(project_root),
+               "list-history", "--artifact-id", artifact_id, "--artifact-revision", revision,
+               "--section-id", SECTION_ID, "--limit", "200", "--json"]
+    threads = []; seen = set(); cursor = None; view = None
+    while True:
+        completed = producer_result(command + (["--cursor", cursor] if cursor else []))
+        if completed.returncode:
+            raise AssertionError(f"canonical feedback read failed: {completed.stderr.strip()}")
+        value = json.loads(completed.stdout)
+        page = value.get("threads")
+        if not isinstance(page, list):
+            raise AssertionError("canonical feedback response has no thread list")
+        if view is None:
+            view = value.get("viewRevision")
+        if value.get("viewRevision") != view:
+            raise AssertionError("canonical feedback changed during pagination")
+        for thread in page:
+            identifier = thread.get("threadId") if isinstance(thread, dict) else None
+            if not isinstance(identifier, str) or identifier in seen:
+                raise AssertionError("canonical pagination has an invalid or duplicate thread")
+            seen.add(identifier); threads.append(thread)
+        next_cursor = value.get("nextCursor")
+        if next_cursor is None:
+            return threads
+        if not isinstance(next_cursor, str) or not page or next_cursor != page[-1]["threadId"] or (cursor and next_cursor <= cursor):
+            raise AssertionError("canonical pagination cursor did not advance")
+        cursor = next_cursor
+
+
+def canonical_entry(mana_root: Path, project_root: Path, target: dict[str, Any]) -> str:
+    threads = canonical_threads(mana_root, project_root, target)
     for thread in threads:
         if not isinstance(thread, dict) or thread.get("linkState") != "valid":
             continue
@@ -273,30 +285,7 @@ def canonical_draft_is_absent(
 def canonical_body_count(
     mana_root: Path, project_root: Path, target: dict[str, Any], *, body: str
 ) -> int:
-    artifact_id = target.get("artifactId")
-    revision = target.get("artifactRevision")
-    if not isinstance(artifact_id, str) or not isinstance(revision, str):
-        raise AssertionError("mounted panel has no canonical artifact target")
-    command = [
-        str(mana_root / "scripts" / "mana-human-feedback.sh"),
-        "--project-root",
-        str(project_root),
-        "list-history",
-        "--artifact-id",
-        artifact_id,
-        "--artifact-revision",
-        revision,
-        "--section-id",
-        SECTION_ID,
-        "--json",
-    ]
-    completed = producer_result(command)
-    if completed.returncode:
-        raise AssertionError(f"canonical feedback read failed: {completed.stderr.strip()}")
-    value = json.loads(completed.stdout)
-    threads = value.get("threads")
-    if not isinstance(threads, list):
-        raise AssertionError("canonical feedback response has no thread list")
+    threads = canonical_threads(mana_root, project_root, target)
     return sum(
         1
         for thread in threads
@@ -857,6 +846,9 @@ def fault_conflict(args: argparse.Namespace, bridge: Bridge) -> dict[str, object
     other = Bridge(args.other_port, args.other_token)
     primary_target = mounted_panel_target(bridge)
     mounted_panel_target(other)
+    # Establish the same current view before creating the intentional race.
+    bridge.call("retryFeedback")
+    other.call("retryFeedback")
     status = wait_for(
         bridge,
         lambda current: any(
@@ -876,21 +868,35 @@ def fault_conflict(args: argparse.Namespace, bridge: Bridge) -> dict[str, object
     second_body = fault_body("conflict-secondary", args.fault_label)
     bridge.call("setReply", threadId=thread_id, body=first_body)
     other.call("setReply", threadId=thread_id, body=second_body)
-    other.call("publishReply", threadId=thread_id)
-    wait_for(
-        other,
-        lambda current: visible_entry(
-            current, body=second_body, author=LONG_AUTHOR,
-            link_states=("valid", "changed"),
-        ),
-        f"the accepted conflicting reply {args.fault_label}",
-    )
-    bridge.call("publishReply", threadId=thread_id)
-    wait_for(
-        bridge,
-        lambda current: panel(current) is not None and panel(current).get("error") is not None,
-        f"the visible conflict {args.fault_label}",
-    )
+    markers = args.project_root / ".native-e2e-faults"
+    markers.mkdir(exist_ok=True)
+    entered = markers / "reply-barrier-entered"
+    release = markers / "reply-barrier-release"
+    assert not entered.exists() and not release.exists(), "old reply barrier"
+    (markers / "next-reply-barrier").touch()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        pending = executor.submit(bridge.call, "publishReply", threadId=thread_id)
+        try:
+            deadline = time.monotonic() + 15
+            while not entered.exists():
+                if pending.done():
+                    pending.result()
+                    raise AssertionError("primary reply did not enter the real producer barrier")
+                if time.monotonic() >= deadline:
+                    raise AssertionError("primary reply barrier did not start")
+                time.sleep(0.05)
+            other.call("publishReply", threadId=thread_id)
+            wait_for(
+                other,
+                lambda current: visible_entry(current, body=second_body, author=LONG_AUTHOR,
+                                              link_states=("valid", "changed")),
+                f"the accepted conflicting reply {args.fault_label}",
+            )
+        finally:
+            release.touch()
+        conflicted = pending.result(timeout=15)
+    if panel(conflicted) is None or panel(conflicted).get("error") is None:
+        raise AssertionError("the stale primary reply did not expose a conflict")
     bridge.call("retryFeedback")
     bridge.call("publishReply", threadId=thread_id)
     status = wait_for(

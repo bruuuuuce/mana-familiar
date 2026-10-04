@@ -149,13 +149,20 @@ wait_for_process() {
 }
 
 focus_and_assert() {
-  local pid="$1"
-  osascript \
-    -e "tell application \"System Events\" to tell (first application process whose unix id is $pid) to set frontmost to true" \
-    -e 'delay 0.25' \
-    -e 'tell application "System Events" to return unix id of first application process whose frontmost is true' \
-    >"$evidence_dir/focus-$pid.txt" 2>>"$evidence_dir/accessibility-$pid.err" || fail "could not focus native window for $pid"
-  [ "$(tr -d '[:space:]' < "$evidence_dir/focus-$pid.txt")" = "$pid" ] || fail "native window $pid did not become frontmost"
+  local pid="$1" deadline=$((SECONDS + 10)) attempt=0 observed=""
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    attempt=$((attempt + 1))
+    osascript \
+      -e "tell application \"System Events\" to tell (first application process whose unix id is $pid) to set frontmost to true" \
+      -e 'delay 0.1' \
+      -e 'tell application "System Events" to return unix id of first application process whose frontmost is true' \
+      >"$evidence_dir/focus-$pid.txt" 2>>"$evidence_dir/accessibility-$pid.err" || fail "could not focus native window for $pid"
+    observed="$(tr -d '[:space:]' < "$evidence_dir/focus-$pid.txt")"
+    printf 'attempt=%s foreground_pid=%s\n' "$attempt" "$observed" >> "$evidence_dir/focus-$pid-attempts.txt"
+    [ "$observed" = "$pid" ] && return
+    sleep 0.1
+  done
+  fail "native window $pid did not become frontmost within 10 seconds"
 }
 
 epoch_milliseconds() {

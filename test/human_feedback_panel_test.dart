@@ -13,57 +13,106 @@ void main() {
     artifactRevision: 'sha256:demo',
   );
 
-  testWidgets('publishes a separately owned comment', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final repository = _Repository();
+  testWidgets('watcher refresh preserves a failed publication', (tester) async {
+    final repository = _FailedPublicationRepository();
+    final signal = ValueNotifier<int>(0);
+    addTearDown(signal.dispose);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: HumanFeedbackPanel(repository: repository, target: target),
+          body: HumanFeedbackPanel(
+            repository: repository,
+            target: target,
+            refreshSignal: signal,
+          ),
         ),
       ),
     );
-    await tester.pump();
-    await tester.pump();
-
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('feedback-author')), 'Ada');
     await tester.enterText(
       find.byKey(const Key('feedback-body')),
-      'Choose option B.',
+      'Keep this text',
     );
+    await tester.ensureVisible(find.byKey(const Key('feedback-publish')));
     await tester.tap(find.byKey(const Key('feedback-publish')));
-    await tester.pump();
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('synthetic publish failure'), findsOneWidget);
+    signal.value++;
+    await tester.pumpAndSettle();
+    expect(find.textContaining('synthetic publish failure'), findsOneWidget);
+    expect(find.byKey(const Key('feedback-retry')), findsOneWidget);
+  });
 
-    expect(repository.created, hasLength(1));
-    expect(repository.created.single.body, 'Choose option B.');
-    expect(repository.created.single.author, 'Ada');
-    expect(
-      repository.idempotencyKeys.single,
-      matches(r'^[A-Za-z0-9._:-]{1,128}$'),
-    );
-    expect(find.textContaining('Ada: Choose option B.'), findsOneWidget);
+  testWidgets('publishes a separately owned comment', (tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _Repository();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: HumanFeedbackPanel(repository: repository, target: target),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
 
-    await tester.tap(find.byKey(const Key('feedback-reply-open-thread-1')));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const Key('feedback-reply-thread-1')),
-      'Confirmed with the team.',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    final replySubmit = find.byKey(const Key('feedback-reply-submit-thread-1'));
-    await tester.ensureVisible(replySubmit);
-    await tester.tap(replySubmit);
-    await tester.pumpAndSettle();
-    expect(repository.created, hasLength(2));
+      await tester.enterText(find.byKey(const Key('feedback-author')), 'Ada');
+      await tester.enterText(
+        find.byKey(const Key('feedback-body')),
+        'Choose option B.',
+      );
+      await tester.tap(find.byKey(const Key('feedback-publish')));
+      await tester.pump();
+      await tester.pump();
 
-    await tester.tap(find.text('Resolve'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('All (1)'));
-    await tester.pumpAndSettle();
-    expect(find.text('Resolved'), findsOneWidget);
+      expect(repository.created, hasLength(1));
+      expect(repository.created.single.body, 'Choose option B.');
+      expect(repository.created.single.author, 'Ada');
+      expect(
+        repository.idempotencyKeys.single,
+        matches(r'^[A-Za-z0-9._:-]{1,128}$'),
+      );
+      expect(find.textContaining('Ada: Choose option B.'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('feedback-reply-open-thread-1')));
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'feedback-reply-thread-1',
+      );
+      expect(
+        tester
+            .getSemantics(find.byKey(const Key('feedback-reply-thread-1')))
+            .getSemanticsData()
+            .label,
+        'Reply',
+      );
+      await tester.enterText(
+        find.byKey(const Key('feedback-reply-thread-1')),
+        'Confirmed with the team.',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      final replySubmit = find.byKey(
+        const Key('feedback-reply-submit-thread-1'),
+      );
+      await tester.ensureVisible(replySubmit);
+      await tester.tap(replySubmit);
+      await tester.pumpAndSettle();
+      expect(repository.created, hasLength(2));
+
+      await tester.tap(find.text('Resolve'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('All (1)'));
+      await tester.pumpAndSettle();
+      expect(find.text('Resolved'), findsOneWidget);
+    } finally {
+      semantics.dispose();
+    }
   });
 
   testWidgets('a late publish acknowledgement keeps newer typed text', (
@@ -438,4 +487,16 @@ class _Repository implements HumanFeedbackRepository {
     revision: '1',
     entries: created,
   );
+}
+
+class _FailedPublicationRepository extends _Repository {
+  @override
+  Future<HumanFeedbackThread> createThread({
+    required HumanFeedbackTarget target,
+    required String body,
+    required String author,
+    required String idempotencyKey,
+  }) async {
+    throw StateError('synthetic publish failure');
+  }
 }

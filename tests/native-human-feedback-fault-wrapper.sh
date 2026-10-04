@@ -42,6 +42,17 @@ consume() {
 }
 
 case "$operation" in
+  reply)
+    if consume next-reply-barrier; then
+      : > "$fault_root/reply-barrier-entered"
+      deadline=$((SECONDS + 60))
+      while [ ! -f "$fault_root/reply-barrier-release" ]; do
+        [ "$SECONDS" -lt "$deadline" ] || { echo 'native reply barrier timed out' >&2; exit 70; }
+        sleep 0.05
+      done
+      rm -f "$fault_root/reply-barrier-entered" "$fault_root/reply-barrier-release"
+    fi
+    ;;
   create)
     if consume next-create-after-record; then
       export MANA_HUMAN_FEEDBACK_TEST_ABORT_AFTER_RECORD=1
