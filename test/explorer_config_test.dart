@@ -6,6 +6,8 @@ void main() {
     'retains an explicit initial artifact when a project window is opened',
     () {
       final config = ExplorerConfig.parse(const [
+        '--initial-destination',
+        'knowledge',
         '--project-root',
         '/synthetic',
         '--mana-root',
@@ -14,6 +16,7 @@ void main() {
         'file:.mana/features/FEEDBACK-E2E/planning/story-start-scope-v2.md',
       ]);
 
+      expect(config.withProjectRoot('/other').initialDestination, 'knowledge');
       expect(
         config.initialArtifactId,
         'file:.mana/features/FEEDBACK-E2E/planning/story-start-scope-v2.md',

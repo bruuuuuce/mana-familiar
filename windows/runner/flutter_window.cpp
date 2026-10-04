@@ -4,6 +4,8 @@
 #include <fstream>
 #include <optional>
 #include <utility>
+#include <flutter/method_result_functions.h>
+#include <flutter/standard_method_codec.h>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -34,6 +36,20 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  project_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(),
+          "mana_familiar/project_window",
+          &flutter::StandardMethodCodec::GetInstance());
+  project_channel_->SetMethodCallHandler(
+      [state = close_preparation_](const auto& call, auto result) {
+        if (call.method_name() == "closePreparationReady") {
+          state->Ready();
+          result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -90,6 +106,8 @@ void FlutterWindow::WriteNativeWindowPerformance() {
 }
 
 void FlutterWindow::OnDestroy() {
+  close_preparation_->Destroyed();
+  project_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -101,6 +119,21 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (message == WM_CLOSE && close_preparation_->ShouldDefer()) {
+    if (close_preparation_->Begin()) {
+      auto state = close_preparation_;
+      project_channel_->InvokeMethod(
+          "prepareToClose", nullptr,
+          std::make_unique<flutter::MethodResultFunctions<flutter::EncodableValue>>(
+              [state, hwnd](const auto*) {
+                // Post rather than destroy the engine from its own callback.
+                if (state->Succeeded()) ::PostMessage(hwnd, WM_CLOSE, 0, 0);
+              },
+              [state](const auto&, const auto&, const auto*) { state->Failed(); },
+              [state]() { state->Failed(); }));
+    }
+    return 0;
+  }
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
