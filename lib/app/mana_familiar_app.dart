@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
 
@@ -34,6 +35,7 @@ class ManaFamiliarApp extends StatefulWidget {
 }
 
 class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
+  AppLifecycleListener? _exitListener;
   late String _projectRoot = widget.config.projectRoot;
   late bool _hasOpenProject = widget.config.hasExplicitProjectRoot;
   late final HumanFeedbackDraftStore _feedbackDrafts = HumanFeedbackDraftStore(
@@ -86,11 +88,27 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
   @override
   void initState() {
     super.initState();
-    NativeProjectWindow.installClosePreparation(() async {
+    Future<void> prepareToClose() async {
       widget.performanceProbe?.mark('close_preparation_requested');
       await _feedbackDrafts.flushAll();
       widget.performanceProbe?.mark('close_preparation_completed');
-    });
+    }
+
+    if (Platform.isWindows) {
+      _exitListener = AppLifecycleListener(
+        onExitRequested: () async {
+          try {
+            await prepareToClose();
+            return AppExitResponse.exit;
+          } catch (_) {
+            widget.performanceProbe?.mark('close_preparation_failed');
+            return AppExitResponse.cancel;
+          }
+        },
+      );
+    } else {
+      NativeProjectWindow.installClosePreparation(prepareToClose);
+    }
     final bridge = _nativeE2E;
     if (bridge != null) unawaited(bridge.start());
     if (widget.config.hasExplicitProjectRoot) {
@@ -100,6 +118,7 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
 
   @override
   void dispose() {
+    _exitListener?.dispose();
     // Persist pending local drafts before the app tree releases its panels.
     _feedbackDrafts.dispose();
     final bridge = _nativeE2E;
