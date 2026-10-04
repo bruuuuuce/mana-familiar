@@ -100,7 +100,7 @@ def main():
     def close_and_record(label, values, draft=None):
         process, bridge, trace, _ = values
         evidence = close_window(process, app, bridge, draft)
-        marks = json.loads((trace / 'flutter-performance.json').read_text())['milestones']
+        marks = json.loads((trace / 'flutter-performance.json').read_text())['milestones_us']
         assert marks['close_preparation_completed'] >= marks['close_preparation_requested']
         report['lifecycle'].append({'windowSession': label, 'oldPid': process.pid, 'draftFlushCompleted': True, **evidence})
     try:
