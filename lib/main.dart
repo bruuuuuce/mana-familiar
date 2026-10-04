@@ -1,6 +1,3 @@
-import 'dart:io';
-
-import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 
 import 'app/mana_familiar_app.dart';
@@ -22,14 +19,10 @@ export 'presentation/explorer_page.dart'
 /// The composition root intentionally contains only process startup.
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Familiar is a desktop reader with meaningful document navigation and
-  // authoring controls. Keep the semantic tree available to macOS assistive
-  // technology (and to the native acceptance driver) instead of relying on a
-  // screen-reader process to happen to enable it after launch.
-  // Windows creates its native accessibility bridge only after a UIA/MSAA
-  // request. Emitting the tree before that bridge exists loses the initial
-  // nodes and leaves assistive technology with an empty pane.
-  if (!Platform.isWindows) SemanticsBinding.instance.ensureSemantics();
+  // Let the desktop embedder enable semantics after its native accessibility
+  // bridge exists. Forcing Dart semantics early also loses the initial nodes
+  // on macOS: enabling VoiceOver later then sends a partial tree to a new
+  // bridge, which can reject the update and crash on subsequent reparenting.
   final config = ExplorerConfig.parse(args);
   final probe = config.performanceTraceDirectory == null
       ? null
