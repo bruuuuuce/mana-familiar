@@ -219,25 +219,39 @@ class _KnowledgeCenterPageState extends State<KnowledgeCenterPage> {
     return ListView(
       padding: const EdgeInsets.all(28),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                document.summary.title ?? document.summary.reference,
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-            ),
-            if (document.editable)
-              FilledButton.tonalIcon(
-                onPressed: () => _edit(document),
-                icon: const Icon(Icons.edit_outlined),
-                label: Text(
-                  document.summary.scope == 'user'
-                      ? 'Edit external source'
-                      : 'Edit with revision check',
-                ),
-              ),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final title = Text(
+              document.summary.title ?? document.summary.reference,
+              style: Theme.of(context).textTheme.headlineSmall,
+            );
+            final edit = document.editable
+                ? FilledButton.tonalIcon(
+                    onPressed: () => _edit(document),
+                    icon: const Icon(Icons.edit_outlined),
+                    label: Text(
+                      document.summary.scope == 'user'
+                          ? 'Edit external source'
+                          : 'Edit with revision check',
+                    ),
+                  )
+                : null;
+            if (constraints.maxWidth < 560) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  title,
+                  if (edit != null) ...[const SizedBox(height: 8), edit],
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: title),
+                ?edit,
+              ],
+            );
+          },
         ),
         const SizedBox(height: 6),
         SelectableText(

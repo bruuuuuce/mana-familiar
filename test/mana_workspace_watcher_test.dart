@@ -74,11 +74,25 @@ void main() {
       debounce: const Duration(milliseconds: 30),
     );
     final events = <ManaWorkspaceWatchEvent>[];
-    final subscription = watcher.events.listen(events.add);
+    var lastEventAt = DateTime.now();
+    final subscription = watcher.events.listen((event) {
+      events.add(event);
+      lastEventAt = DateTime.now();
+    });
     await watcher.start();
-    // macOS may deliver the directory creation from setup after registration.
-    // It is not part of the root-level write this test is exercising.
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+    // Observe a real in-scope event, then wait for the startup batch to drain.
+    // A fixed delay cannot distinguish delayed FSEvents setup notifications
+    // from the unrelated write tested below.
+    await File('${root.path}/.mana/watcher-ready.json').writeAsString('{}');
+    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    while (events.isEmpty ||
+        DateTime.now().difference(lastEventAt) <
+            const Duration(milliseconds: 500)) {
+      if (DateTime.now().isAfter(deadline)) {
+        fail('watcher startup did not become quiescent');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
     events.clear();
 
     await File(
