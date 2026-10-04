@@ -19,7 +19,7 @@ jobs:
         with:
           repository: bruuuuuce/mana
           # Compatible M08 + C03 producer; reproducible across both platforms.
-          ref: 779aa8d9ff16ea5861fccbe7b6295d26c0ec6b46
+          ref: 1d224f93452a85e16b126c88861b80a005429ce8
           path: mana
       - name: Verify M08 producer prerequisites
         run: python3 tool/check_mana_producer.py --mana-root ../mana
@@ -83,7 +83,7 @@ jobs:
         with:
           repository: bruuuuuce/mana
           # Compatible M08 + C03 producer; reproducible across both platforms.
-          ref: 779aa8d9ff16ea5861fccbe7b6295d26c0ec6b46
+          ref: 1d224f93452a85e16b126c88861b80a005429ce8
           path: mana
       - name: Verify M08 producer prerequisites
         run: python3 tool/check_mana_producer.py --mana-root ../mana
@@ -114,5 +114,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: m08-native-${{ matrix.artifact }}-performance
-          path: mana-familiar/build/m08-native-${{ matrix.artifact }}.json
+          path: |
+            mana-familiar/build/m08-native-${{ matrix.artifact }}.json
+            mana-familiar/build/m08-native-${{ matrix.artifact }}.diagnostics
           if-no-files-found: error

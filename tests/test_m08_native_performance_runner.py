@@ -11,6 +11,32 @@ spec.loader.exec_module(runner)
 
 
 class NativePerformanceFailureEvidenceTest(unittest.TestCase):
+    def test_waits_for_delayed_engine_frame_delivery_after_lifecycle_marker(self):
+        self.assertFalse(runner.frames_delivered({'interval_clock': 'vsync_start_to_raster_finish',
+                                                 'last_observed_at_us': 200}, 300))
+        self.assertTrue(runner.frames_delivered({'interval_clock': 'vsync_start_to_raster_finish',
+                                                'last_observed_at_us': 301}, 300))
+        self.assertTrue(runner.frames_delivered({'count': 10}, 300))  # legacy report
+
+    def test_raw_frame_phases_survive_success_summary_without_payloads(self):
+        raw = {
+            'count': 1, 'max_build_us': 1000, 'max_raster_us': 2000,
+            'interval_clock': 'vsync_start_to_raster_finish', 'samples_dropped': 0,
+            'critical_interval': {'count': 1, 'over_50ms': 1, 'response': 'private'},
+            'samples': [{'vsync_start_us': 1, 'build_start_us': 60000,
+                         'raster_finish_us': 65000, 'total_us': 64999,
+                         'vsync_overhead_us': 59999, 'source': 'private',
+                         'frame_number': 'private', 'build_us': 1000}],
+            'response': 'private',
+        }
+        result = runner.frame_evidence(raw)
+        self.assertEqual(result['samples'], [{'vsync_start_us': 1, 'build_start_us': 60000,
+            'raster_finish_us': 65000, 'total_us': 64999, 'vsync_overhead_us': 59999,
+            'build_us': 1000}])
+        self.assertEqual(result['critical_interval'], {'count': 1, 'over_50ms': 1})
+        self.assertEqual(result['samples_dropped'], 0)
+        self.assertNotIn('private', json.dumps(result))
+
     def test_windows_cleanup_stops_only_the_owned_process_tree(self):
         process = Mock(pid=4321)
         process.poll.return_value = None
