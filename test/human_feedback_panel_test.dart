@@ -78,6 +78,10 @@ void main() {
 
     await tester.tap(find.byKey(const Key('feedback-reply-open-thread-1')));
     await tester.pumpAndSettle();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'feedback-reply-thread-1',
+    );
     await tester.enterText(
       find.byKey(const Key('feedback-reply-thread-1')),
       'Confirmed with the team.',
