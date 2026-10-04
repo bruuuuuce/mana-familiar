@@ -5,7 +5,35 @@ Checkpoint iniziale: `025c3c2 feat: verify native draft recovery`.
 Checkpoint del profilo lungo committato su richiesta dell'utente il 14 settembre
 2026; la verifica nativa finale resta aperta.
 
-## Stato corrente — attesa sessione macOS sbloccata
+## Aggiornamento verificato — 4 ottobre 2026
+
+Le PR di completamento sono Familiar #13 e Mana #16. Familiar usa il protocollo
+ufficiale Flutter `AppLifecycleListener.onExitRequested` su Windows e attende il
+salvataggio delle bozze; un errore annulla Close e conserva il testo per retry.
+Mana pubblica il manifest delle dieci sezioni Story Start e annuncia
+`human_feedback` in Inspect solo quando il producer è presente. Activity usa
+pagine opzionali da massimo 500 eventi e rifiuta i cursori di revisioni superate.
+
+Verifica locale: 242 test Flutter passati, 7 skip; analyzer senza problemi;
+22 regressioni Python passate. Soak producer completato in 3.711,057 secondi,
+1.000 create accettate e 3.358 record canonici, in
+`build/feedback-audit/run-1791096735-013ea83f2c`. È una prova API, non desktop.
+
+La nuova prova desktop-long macOS
+`build/native-feedback-audit/run-1791101833-b87b41fc4e` è **fallita prima delle
+azioni**: `osascript is not allowed assistive access (-25211)`. Il consenso
+all'automazione è stato ricevuto, ma il permesso OS non è disponibile; nessun
+permesso è stato modificato. CUA riesce a leggere la finestra, ma le azioni
+Close e tastiera vanno in timeout. Le precedenti prove non chiudono questo gate.
+
+Il runner `tests/run-windows-native-feedback-e2e.py` verifica due sessioni reali,
+Close tramite Windows UI Automation prima del debounce, riapertura, isolamento
+e assenza delle bozze dal registro canonico. Il composer usa i callback dei
+widget montati del bridge debug; questo non certifica input pixel o screen reader.
+Gli esiti Windows finali devono essere associati al report effettivo, senza
+interpretare un build o la sola apertura del picker come prova di selezione.
+
+## Stato storico — settembre 2026
 
 Nessuna run attiva. Il 13 settembre alle 23:14 la lettura System Events
 indica `loginwindow` PID 415; `pmset -g assertions` indica UserIsActive 0.
