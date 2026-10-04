@@ -10,6 +10,8 @@
 #include "flutter/generated_plugin_registrant.h"
 
 namespace {
+constexpr UINT kPrepareClose = WM_APP + 0x431;
+
 void RecordLifecycle(const std::string& directory, const char* event) {
   if (directory.empty()) return;
   try {
@@ -137,7 +139,12 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               LPARAM const lparam) noexcept {
   if (message == WM_CLOSE && close_preparation_->ShouldDefer()) {
     RecordLifecycle(performance_trace_directory_, "close-requested");
-    if (close_preparation_->Begin()) {
+    if (close_preparation_->Begin()) ::PostMessage(hwnd, kPrepareClose, 0, 0);
+    return 0;
+  }
+  if (message == kPrepareClose) {
+    if (close_preparation_->IsPending()) {
+      RecordLifecycle(performance_trace_directory_, "close-preparation-dispatched");
       auto state = close_preparation_;
       auto trace = performance_trace_directory_;
       project_channel_->InvokeMethod(
