@@ -3,13 +3,11 @@
 
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
-#include <flutter/method_channel.h>
 
 #include <memory>
 #include <string>
 
 #include "win32_window.h"
-#include "close_preparation.h"
 
 // A window that does nothing but host a Flutter view.
 class FlutterWindow : public Win32Window {
@@ -36,9 +34,6 @@ class FlutterWindow : public Win32Window {
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
-  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> project_channel_;
-  std::shared_ptr<ClosePreparation> close_preparation_ =
-      std::make_shared<ClosePreparation>();
   std::string performance_trace_directory_;
   long long process_started_counter_;
   long long performance_counter_frequency_;

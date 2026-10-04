@@ -32,10 +32,6 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed .
       - run: flutter analyze
       - run: flutter test
-      - name: Windows close state regression
-        run: |
-          c++ -std=c++17 -Wall -Wextra -Werror tests/windows_close_preparation_test.cpp -o /tmp/familiar-windows-close
-          /tmp/familiar-windows-close
       - name: Native performance failure evidence tests
         run: python3 tests/test_m08_native_performance_runner.py
       - name: Build M08 release performance harnesses
