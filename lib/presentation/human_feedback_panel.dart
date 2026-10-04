@@ -1126,6 +1126,8 @@ class _HumanDecisionPanelState extends State<HumanDecisionPanel> {
                 ],
                 DropdownButtonFormField<String>(
                   key: const Key('decision-target'),
+                  isExpanded: true,
+                  itemHeight: null,
                   initialValue: _decisionId,
                   decoration: const InputDecoration(labelText: 'Open decision'),
                   items: targets.decisions
@@ -1133,7 +1135,14 @@ class _HumanDecisionPanelState extends State<HumanDecisionPanel> {
                       .map(
                         (item) => DropdownMenuItem(
                           value: item.id,
-                          child: Text(item.question),
+                          child: Tooltip(
+                            message: item.question,
+                            child: Text(
+                              item.question,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ),
                       )
                       .toList(),

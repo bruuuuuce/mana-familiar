@@ -69,6 +69,39 @@ void main() {
       );
     },
   );
+  testWidgets('long decision remains bounded at 200 percent', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 600);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: SizedBox(
+            width: 640,
+            child: HumanDecisionPanel(
+              repository: _LongDecisionRepository(),
+              sourcePath: 'plan.json',
+              target: const HumanFeedbackTarget(
+                projectId: 'project:test',
+                artifactId: 'file:plan.json',
+                artifactRevision: 'sha256:plan',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('decision-target')), findsOneWidget);
+  });
 }
 
 class _ResolvedRepository extends Fake implements ManaHumanFeedbackRepository {
@@ -96,4 +129,29 @@ class _ResolvedRepository extends Fake implements ManaHumanFeedbackRepository {
         revision: '0',
         selectedOptionId: null,
       );
+}
+
+class _LongDecisionRepository extends _ResolvedRepository {
+  @override
+  Future<HumanDecisionTargets> decisionTargets(
+    String sourcePath,
+  ) async => const HumanDecisionTargets(
+    sourcePath: 'plan.json',
+    sourceRevision: 'sha256:plan',
+    decisions: [
+      HumanDecisionTarget(
+        id: 'open',
+        question:
+            'Which solution should preserve draft text and reconcile the selected alternative in the regenerated implementation plan?',
+        status: 'open',
+        options: [
+          HumanDecisionOption(
+            id: 'a',
+            label: 'Alternative A',
+            summary: 'Preserve the local draft.',
+          ),
+        ],
+      ),
+    ],
+  );
 }
