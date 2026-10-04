@@ -9,6 +9,21 @@
 
 #include "flutter/generated_plugin_registrant.h"
 
+namespace {
+void RecordLifecycle(const std::string& directory, const char* event) {
+  if (directory.empty()) return;
+  try {
+    auto root = std::filesystem::u8path(directory);
+    if (!root.is_absolute()) return;
+    std::filesystem::create_directories(root);
+    std::ofstream output(root / "native-lifecycle.jsonl", std::ios::app);
+    output << "{\"event\":\"" << event << "\"}\n";
+  } catch (...) {
+    // Opt-in diagnostic evidence must not affect the lifecycle.
+  }
+}
+}  // namespace
+
 FlutterWindow::FlutterWindow(const flutter::DartProject& project,
                              std::string performance_trace_directory,
                              long long process_started_counter,
@@ -42,9 +57,10 @@ bool FlutterWindow::OnCreate() {
           "mana_familiar/project_window",
           &flutter::StandardMethodCodec::GetInstance());
   project_channel_->SetMethodCallHandler(
-      [state = close_preparation_](const auto& call, auto result) {
+      [state = close_preparation_, trace = performance_trace_directory_](const auto& call, auto result) {
         if (call.method_name() == "closePreparationReady") {
           state->Ready();
+          RecordLifecycle(trace, "close-preparation-ready");
           result->Success();
         } else {
           result->NotImplemented();
@@ -120,17 +136,26 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
   if (message == WM_CLOSE && close_preparation_->ShouldDefer()) {
+    RecordLifecycle(performance_trace_directory_, "close-requested");
     if (close_preparation_->Begin()) {
       auto state = close_preparation_;
+      auto trace = performance_trace_directory_;
       project_channel_->InvokeMethod(
           "prepareToClose", nullptr,
           std::make_unique<flutter::MethodResultFunctions<flutter::EncodableValue>>(
-              [state, hwnd](const auto*) {
+              [state, hwnd, trace](const auto*) {
+                RecordLifecycle(trace, "close-preparation-succeeded");
                 // Post rather than destroy the engine from its own callback.
                 if (state->Succeeded()) ::PostMessage(hwnd, WM_CLOSE, 0, 0);
               },
-              [state](const auto&, const auto&, const auto*) { state->Failed(); },
-              [state]() { state->Failed(); }));
+              [state, trace](const auto&, const auto&, const auto*) {
+                RecordLifecycle(trace, "close-preparation-failed");
+                state->Failed();
+              },
+              [state, trace]() {
+                RecordLifecycle(trace, "close-preparation-unimplemented");
+                state->Failed();
+              }));
     }
     return 0;
   }
