@@ -13,6 +13,46 @@ void main() {
     sectionId: 'decisions',
   );
 
+  test('failed automatic save is retained for an explicit retry', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'mana-feedback-failure-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    var attempts = 0;
+    var obstructed = true;
+    final attempted = Completer<void>();
+    final store = HumanFeedbackDraftStore(
+      root,
+      debounce: Duration.zero,
+      persistDraft: (file, draft) async {
+        attempts++;
+        if (!attempted.isCompleted) attempted.complete();
+        if (obstructed) {
+          throw const FileSystemException('synthetic obstruction');
+        }
+        await file.parent.create(recursive: true);
+        await file.writeAsString(jsonEncode(draft.toJson()));
+      },
+    );
+    store.schedule(
+      HumanFeedbackDraft(
+        target: target,
+        body: 'Preserve failed text',
+        author: 'Ada',
+        idempotencyKey: 'failed-auto-save',
+        updatedAt: DateTime.utc(2026),
+      ),
+    );
+    await attempted.future;
+    await Future<void>.delayed(Duration.zero);
+    await expectLater(store.flush(target), throwsA(isA<FileSystemException>()));
+    obstructed = false;
+    await store.flush(target);
+    expect(attempts, 3);
+    expect((await store.load(target))?.body, 'Preserve failed text');
+    await store.dispose();
+  });
+
   test('draft survives a flush and retains its producer target', () async {
     final root = await Directory.systemTemp.createTemp('mana-feedback-draft-');
     addTearDown(() => root.delete(recursive: true));
