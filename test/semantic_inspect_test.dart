@@ -14,6 +14,36 @@ Map<String, dynamic> fixture(String name) =>
         as Map<String, dynamic>;
 
 void main() {
+  test('Knowledge loads project context without Activity or catalog', () async {
+    final root = await Directory.systemTemp.createTemp('knowledge-context-');
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}/mana').writeAsString('');
+    final calls = <String>[];
+    final client = ManaInspectClient(
+      projectRoot: root.path,
+      run: (_, args, {workingDirectory}) async {
+        final operation = args[args.indexOf('inspect') + 1];
+        calls.add(operation);
+        final response = switch (operation) {
+          'project' => _projectWithSemantic,
+          'work-items' => fixture('work-items.json'),
+          'project-context' => fixture('project-context.json'),
+          _ => throw StateError('Knowledge unexpectedly requested $operation'),
+        };
+        return ProcessResult(0, 0, jsonEncode(response), '');
+      },
+    );
+    final repository = ManaSemanticRepository(client);
+    await repository.initialLoad();
+    expect(calls, ['project', 'work-items']);
+    final context = await repository.loadProjectContext();
+    expect(context.projectContext, isNotNull);
+    expect(context.activity, isNull);
+    expect(context.catalog, isNull);
+    expect(calls, ['project', 'work-items', 'project-context']);
+    expect(await repository.loadProjectContext(), same(context));
+    expect(calls, hasLength(3));
+  });
   test('offload does not capture observer timers or client state', () async {
     final root = await Directory.systemTemp.createTemp('semantic-observer-');
     addTearDown(() => root.delete(recursive: true));

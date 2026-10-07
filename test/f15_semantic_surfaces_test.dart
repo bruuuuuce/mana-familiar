@@ -1,8 +1,12 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mana_familiar/mana_inspect.dart';
 import 'package:mana_familiar/presentation/project_observatory_page.dart';
 import 'package:mana_familiar/semantic_navigation.dart';
+import 'package:mana_familiar/application/mana_knowledge.dart';
 
 void main() {
   Widget page(
@@ -12,6 +16,7 @@ void main() {
     Widget Function(String? journeyId)? knowledgeBuilder,
     Widget Function(ValueChanged<String> onOpenJourney)?
     learningJourneysBuilder,
+    ManaKnowledgeClient? knowledgeClient,
   }) => MaterialApp(
     home: ProjectObservatoryPage(
       key: ValueKey('${model.mode}-${route?.destination}'),
@@ -22,8 +27,109 @@ void main() {
       artifactDetailLoader: detailLoader,
       knowledgeBuilder: knowledgeBuilder,
       learningJourneysBuilder: learningJourneysBuilder,
+      knowledgeClient: knowledgeClient,
     ),
   );
+
+  testWidgets('live Knowledge navigation reaches the existing Journey reader', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final root = Directory.systemTemp.createTempSync(
+      'knowledge-journey-route-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    File('${root.path}/mana').writeAsStringSync('');
+    const revision =
+        'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const index = {
+      'freshness': 'current',
+      'reason': null,
+      'revision': revision,
+    };
+    final client = ManaKnowledgeClient(
+      projectRoot: root.path,
+      run: (_, args, {workingDirectory}) async => ProcessResult(
+        1,
+        0,
+        jsonEncode(
+          args.contains('capabilities')
+              ? {
+                  'schema': manaKnowledgeCapabilitiesSchema,
+                  'index': index,
+                  'scopes': [
+                    {
+                      'scope': 'project',
+                      'health': 'current',
+                      'editable': false,
+                    },
+                  ],
+                  'operations': ['documents', 'learning-candidates'],
+                  'effective_context_trace': {'status': 'unavailable'},
+                }
+              : args.contains('documents')
+              ? {
+                  'schema': manaKnowledgeDocumentsSchema,
+                  'index': index,
+                  'documents': [],
+                  'next_offset': null,
+                }
+              : {
+                  'schema': manaLearningQueueSchema,
+                  'index': index,
+                  'candidates': [],
+                },
+        ),
+        '',
+      ),
+    );
+    var journeyBuilds = 0;
+    String? requestedJourney;
+    final model = _semanticModelWithContext({
+      ..._context,
+      'categories': [
+        ...(_context['categories'] as List).where(
+          (c) => (c as Map)['category'] != 'learning_journeys',
+        ),
+        {
+          'category': 'learning_journeys',
+          'coverage': 'known',
+          'artifacts': [_journeyArtifact('journey:jrn_first', 'journey')],
+        },
+      ],
+    });
+    await tester.pumpWidget(
+      page(
+        model,
+        route: const ObservatoryRoute(
+          destination: ObservatoryDestination.knowledge,
+        ),
+        knowledgeClient: client,
+        learningJourneysBuilder: (onOpenJourney) {
+          journeyBuilds++;
+          return ListTile(
+            title: const Text('First journey'),
+            onTap: () => onOpenJourney('jrn_first'),
+          );
+        },
+        knowledgeBuilder: (id) {
+          requestedJourney = id;
+          return const Text('Existing Journey Explorer');
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(journeyBuilds, 0);
+    expect(find.text('Your knowledge workspace'), findsOneWidget);
+    await tester.tap(find.text('Journeys'));
+    await tester.pumpAndSettle();
+    expect(find.text('First journey'), findsOneWidget);
+    await tester.tap(find.text('First journey'));
+    await tester.pumpAndSettle();
+    expect(requestedJourney, 'jrn_first');
+    expect(find.text('Existing Journey Explorer'), findsOneWidget);
+  });
 
   testWidgets('Reviews uses typed work review state and enters its dossier', (
     tester,

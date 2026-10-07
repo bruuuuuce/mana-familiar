@@ -60,6 +60,8 @@ void main() {
         ),
         findsOneWidget,
       );
+      await tester.tap(find.text('Source'));
+      await _pumpFrames(tester);
       expect(find.text('SOURCE WORKSPACE'), findsOneWidget);
       expect(find.text('lib/example.dart:1-1'), findsOneWidget);
       expect(find.text('Source unavailable'), findsWidgets);

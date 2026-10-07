@@ -21,6 +21,7 @@ import 'package:re_highlight/styles/atom-one-light.dart';
 
 import '../architecture_context.dart';
 import '../application/explorer_config.dart';
+import '../application/mana_knowledge.dart';
 import '../diagram_detachment.dart';
 import '../diagram_workspace.dart';
 import '../explorer_navigation.dart';
@@ -30,9 +31,11 @@ import '../investigation_inspector.dart';
 import '../investigation_prompt.dart';
 import '../journey_graph.dart';
 import '../journey_navigator.dart';
+import '../journey_reading.dart';
 import '../safe_path.dart';
 import '../source_workspace.dart';
 import 'read_only_source_editor.dart';
+import 'journey_reading_view.dart';
 
 @Deprecated('Use ReadOnlySourceEditor.')
 class LegacyReadOnlySourceEditor extends StatefulWidget {
@@ -336,6 +339,8 @@ class ExplorerPreferences {
     required this.wordWrap,
     required this.externalEditors,
     required this.recentProjectRoots,
+    this.recentKnowledgeDocuments = const {},
+    this.journeyReading = const {},
   }) : themeMode = ValueNotifier(initialMode);
 
   final File _file;
@@ -349,6 +354,9 @@ class ExplorerPreferences {
   bool wordWrap;
   ExternalEditorSettings externalEditors;
   List<String> recentProjectRoots;
+  Map<String, List<ManaKnowledgeDocumentSummary>> recentKnowledgeDocuments;
+  Map<String, Map<String, JourneyReadingProgress>> journeyReading;
+  Future<void> _pendingSave = Future.value();
 
   static Future<ExplorerPreferences> load(ExplorerConfig config) async {
     final root = config.preferencesRoot ?? _defaultPreferencesRoot();
@@ -371,6 +379,10 @@ class ExplorerPreferences {
                 .where(_isUsableProjectRoot)
                 .toList() ??
             const [],
+        recentKnowledgeDocuments: _knowledgeHistory(
+          raw['recentKnowledgeDocuments'],
+        ),
+        journeyReading: _readingHistory(raw['journeyReading']),
       );
     } catch (_) {
       return ExplorerPreferences._(
@@ -442,12 +454,110 @@ class ExplorerPreferences {
     await _save();
   }
 
+  static Map<String, List<ManaKnowledgeDocumentSummary>> _knowledgeHistory(
+    Object? raw,
+  ) {
+    if (raw is! Map) return {};
+    final history = <String, List<ManaKnowledgeDocumentSummary>>{};
+    for (final entry in raw.entries.take(20)) {
+      if (entry.key is! String || entry.value is! List) continue;
+      final documents = <ManaKnowledgeDocumentSummary>[];
+      for (final value in (entry.value as List).take(8)) {
+        if (value is! Map<String, dynamic>) continue;
+        try {
+          documents.add(ManaKnowledgeDocumentSummary.fromJson(value));
+        } on ManaKnowledgeException {
+          /* Ignore an invalid local history entry. */
+        }
+      }
+      history[entry.key as String] = documents;
+    }
+    return history;
+  }
+
+  Future<void> rememberKnowledgeDocument(
+    String projectRoot,
+    ManaKnowledgeDocumentSummary document,
+  ) async {
+    recentKnowledgeDocuments = {
+      projectRoot: [
+        document,
+        ...?recentKnowledgeDocuments[projectRoot]?.where(
+          (entry) => entry.id != document.id,
+        ),
+      ].take(8).toList(),
+      for (final entry
+          in recentKnowledgeDocuments.entries
+              .where((entry) => entry.key != projectRoot)
+              .take(19))
+        entry.key: entry.value,
+    };
+    await _save();
+  }
+
+  static Map<String, Map<String, JourneyReadingProgress>> _readingHistory(
+    Object? raw,
+  ) {
+    if (raw is! Map) return {};
+    return {
+      for (final project in raw.entries.take(20))
+        if (project.key is String && project.value is Map)
+          project.key as String: {
+            for (final journey in (project.value as Map).entries.take(30))
+              if (journey.key is String && journey.value is Map)
+                journey.key as String: JourneyReadingProgress.fromJson(
+                  journey.value as Map,
+                ),
+          },
+    };
+  }
+
+  JourneyReadingProgress readingProgress(
+    String projectRoot,
+    String journeyId,
+  ) =>
+      journeyReading[projectRoot]?[journeyId] ?? const JourneyReadingProgress();
+
+  Future<void> saveReadingProgress(
+    String projectRoot,
+    String journeyId,
+    JourneyReadingProgress progress,
+  ) async {
+    journeyReading = {
+      projectRoot: {
+        journeyId: progress,
+        for (final entry
+            in (journeyReading[projectRoot] ??
+                    <String, JourneyReadingProgress>{})
+                .entries
+                .where((entry) => entry.key != journeyId)
+                .take(29))
+          entry.key: entry.value,
+      },
+      for (final entry
+          in journeyReading.entries
+              .where((entry) => entry.key != projectRoot)
+              .take(19))
+        entry.key: entry.value,
+    };
+    await _save();
+  }
+
   static bool _isUsableProjectRoot(String path) {
     final directory = Directory(path).absolute;
     return directory.parent.path != directory.path;
   }
 
-  Future<void> _save() async {
+  Future<void> _save() {
+    final write = _pendingSave.then((_) => _writePreferences());
+    _pendingSave = write.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return write;
+  }
+
+  Future<void> _writePreferences() async {
     await _file.parent.create(recursive: true);
     await _file.writeAsString(
       jsonEncode({
@@ -457,6 +567,28 @@ class ExplorerPreferences {
         'wordWrap': wordWrap,
         'externalEditors': externalEditors.toJson(),
         'recentProjectRoots': recentProjectRoots,
+        'journeyReading': {
+          for (final project in journeyReading.entries)
+            project.key: {
+              for (final journey in project.value.entries)
+                journey.key: journey.value.toJson(),
+            },
+        },
+        'recentKnowledgeDocuments': {
+          for (final entry in recentKnowledgeDocuments.entries)
+            entry.key: [
+              for (final document in entry.value)
+                {
+                  'document_id': document.id,
+                  'source_reference': document.reference,
+                  'source_scope': document.scope,
+                  'lifecycle_state': document.lifecycle,
+                  'title': document.title,
+                  'document_revision': document.revision,
+                  'byte_size': document.byteSize,
+                },
+            ],
+        },
       }),
     );
   }
@@ -481,10 +613,12 @@ class JourneyPickerPage extends StatefulWidget {
     super.key,
     required this.store,
     required this.onOpenJourney,
+    this.preferences,
   });
 
   final JourneyStore store;
   final ValueChanged<String> onOpenJourney;
+  final ExplorerPreferences? preferences;
 
   @override
   State<JourneyPickerPage> createState() => _JourneyPickerPageState();
@@ -503,6 +637,7 @@ class _JourneyPickerPageState extends State<JourneyPickerPage> {
             id: id,
             title: graph.title,
             description: journeyScopeDescription(graph),
+            graph: graph,
           );
         } catch (_) {
           return _JourneyChoice(
@@ -541,25 +676,47 @@ class _JourneyPickerPageState extends State<JourneyPickerPage> {
             '${choices.length} journey${choices.length == 1 ? '' : 's'} available',
           ),
           const SizedBox(height: 18),
-          ...choices.map(
-            (choice) => Card(
-              child: ListTile(
-                leading: const Icon(Icons.route_outlined),
-                title: Text(choice.title),
-                subtitle: Text(
-                  choice.description,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => widget.onOpenJourney(choice.id),
-              ),
-            ),
+          const Text(
+            'Choose a journey to read its explanations and sources. Reading markers and notes stay in Familiar.',
           ),
+          const SizedBox(height: 12),
+          ...choices.map(_choiceCard),
         ],
       );
     },
   );
+  Widget _choiceCard(_JourneyChoice choice) {
+    final graph = choice.graph;
+    final progress = graph == null
+        ? const JourneyReadingProgress()
+        : (widget.preferences?.readingProgress(
+                    widget.store.config.projectRoot,
+                    choice.id,
+                  ) ??
+                  const JourneyReadingProgress())
+              .reconcile(graph);
+    final resume = graph?.node(progress.lastNodeId ?? '');
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.route_outlined),
+        title: Text(choice.title),
+        subtitle: Text(
+          [
+            choice.description,
+            if (graph != null)
+              '${graph.nodes.length} known steps · ${graph.explainedNodeIds.length} explained ${graph.explainedNodeIds.length == 1 ? 'step' : 'steps'}',
+            if (resume != null)
+              'Resume from ${resume['label'] ?? progress.lastNodeId}',
+            if (progress.changed)
+              'Journey changed; previous markers need review',
+          ].join('\n'),
+        ),
+        isThreeLine: false,
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => widget.onOpenJourney(choice.id),
+      ),
+    );
+  }
 }
 
 class _JourneyChoice {
@@ -567,11 +724,13 @@ class _JourneyChoice {
     required this.id,
     required this.title,
     required this.description,
+    this.graph,
   });
 
   final String id;
   final String title;
   final String description;
+  final JourneyGraph? graph;
 }
 
 String journeyScopeDescription(JourneyGraph graph) {
@@ -586,7 +745,7 @@ String journeyScopeDescription(JourneyGraph graph) {
   return startValue ?? terminationValue ?? 'No journey scope was reported.';
 }
 
-enum ExplorerViewMode { journey, graph }
+enum ExplorerViewMode { journey, source, graph }
 
 class _BackIntent extends Intent {
   const _BackIntent();
@@ -625,6 +784,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
   ExplorerViewMode viewMode = ExplorerViewMode.journey;
   int graphCenterRequest = 0;
   final TraversalState navigation = TraversalState();
+  JourneyReadingProgress reading = const JourneyReadingProgress();
+  int _openGeneration = 0;
   final DiagramViewState diagramViewState = DiagramViewState();
   final ValueNotifier<ExplorerRoute?> currentRoute = ValueNotifier(null);
   final DiagramWindowState diagramWindowState = DiagramWindowState();
@@ -646,8 +807,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
   }
 
   Future<void> _open([String? requested]) async {
+    final generation = ++_openGeneration;
     try {
-      journeys = await widget.store.list();
+      final available = await widget.store.list();
+      if (!mounted || generation != _openGeneration) return;
+      journeys = available;
       final id =
           requested ??
           widget.initialJourney ??
@@ -659,12 +823,17 @@ class _ExplorerPageState extends State<ExplorerPage> {
         return;
       }
       final loaded = await widget.store.load(id);
+      if (!mounted || generation != _openGeneration) return;
+      final savedReading = widget.preferences
+          .readingProgress(widget.store.config.projectRoot, id)
+          .reconcile(loaded);
       final current = navigation.current;
       final nextNode =
           current?.journeyId == id && loaded.node(current!.nodeId) != null
           ? current.nodeId
-          : loaded.initialNodeId;
+          : savedReading.lastNodeId ?? loaded.initialNodeId;
       setState(() {
+        reading = savedReading;
         journeyId = id;
         _journeyTitles[id] = loaded.title;
         graph = loaded;
@@ -678,14 +847,18 @@ class _ExplorerPageState extends State<ExplorerPage> {
       watcher?.cancel();
       watcher = widget.store.watch(id).listen((_) => _reload());
       if (nextNode != null) {
-        if (current?.journeyId != id) {
+        if (current?.journeyId != id ||
+            loaded.node(current!.nodeId) == null ||
+            (savedReading.changed && current.sourceLocation != null)) {
           navigation.reset(ExplorerRoute(journeyId: id, nodeId: nextNode));
         }
         currentRoute.value = navigation.current;
         await _hydrateRoute(navigation.current!);
       }
     } catch (exception) {
-      setState(() => error = exception.toString());
+      if (mounted && generation == _openGeneration) {
+        setState(() => error = exception.toString());
+      }
     }
   }
 
@@ -707,6 +880,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
 
   Future<void> _hydrateRoute(ExplorerRoute route) async {
     if (graph == null || route.journeyId != journeyId) return;
+    final generation = _openGeneration;
     final architecture = ArchitectureContextModel.build(
       graph: graph!,
       nodeId: route.nodeId,
@@ -732,11 +906,15 @@ class _ExplorerPageState extends State<ExplorerPage> {
       route.journeyId,
       route.nodeId,
     );
-    if (mounted && navigation.current == route) {
+    if (mounted &&
+        generation == _openGeneration &&
+        navigation.current == route) {
       setState(() {
         source = loaded;
         labels = conceptLabels;
+        reading = reading.update(nodeId: route.nodeId);
       });
+      await _persistReading(route.journeyId);
     }
   }
 
@@ -760,6 +938,56 @@ class _ExplorerPageState extends State<ExplorerPage> {
       labels = [];
     });
     await _hydrateRoute(route);
+  }
+
+  Future<void> _persistReading(String id) async {
+    try {
+      await widget.preferences.saveReadingProgress(
+        widget.store.config.projectRoot,
+        id,
+        reading,
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not save reading progress locally.'),
+          ),
+        );
+      }
+    }
+  }
+
+  void _setReadingStatus(JourneyReadingStatus status) {
+    setState(
+      () => reading = reading.update(nodeId: selectedNode!, status: status),
+    );
+    unawaited(_persistReading(journeyId!));
+  }
+
+  Future<void> _editReadingNote() async {
+    final id = journeyId!;
+    final nodeId = selectedNode!;
+    final note = await showDialog<String>(
+      context: context,
+      builder: (context) =>
+          JourneyReadingNoteDialog(initialNote: reading.notes[nodeId] ?? ''),
+    );
+    if (!mounted || id != journeyId || note == null) return;
+    setState(() => reading = reading.update(nodeId: nodeId, note: note));
+    await _persistReading(id);
+  }
+
+  Future<void> _showReadingSummary() async {
+    final id = journeyId!;
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) =>
+          JourneyReadingSummary(graph: graph!, progress: reading),
+    );
+    if (mounted && id == journeyId && selected != null) {
+      await _navigate(ExplorerRoute(journeyId: id, nodeId: selected));
+    }
   }
 
   void _continuePrimary() {
@@ -833,177 +1061,259 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
     final selected = graph!.node(selectedNode!)!;
     final hasSelectedDiagram = graph!.diagramsFor(selectedNode!).isNotEmpty;
-    return Shortcuts(
-      shortcuts: const {
-        SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): _BackIntent(),
-        SingleActivator(LogicalKeyboardKey.arrowRight, alt: true):
-            _ForwardIntent(),
-        SingleActivator(LogicalKeyboardKey.arrowDown, alt: true):
-            _ContinueIntent(),
-        SingleActivator(LogicalKeyboardKey.keyF, control: true, shift: true):
-            _ToggleFocusIntent(),
-        SingleActivator(LogicalKeyboardKey.keyD, control: true):
-            _OpenDiagramIntent(),
-        SingleActivator(LogicalKeyboardKey.keyL, control: true):
-            _CenterOnCurrentIntent(),
-      },
-      child: Actions(
-        actions: {
-          _BackIntent: CallbackAction<_BackIntent>(onInvoke: (_) => _goBack()),
-          _ForwardIntent: CallbackAction<_ForwardIntent>(
-            onInvoke: (_) => _goForward(),
-          ),
-          _ContinueIntent: CallbackAction<_ContinueIntent>(
-            onInvoke: (_) => _continuePrimary(),
-          ),
-          _ToggleFocusIntent: CallbackAction<_ToggleFocusIntent>(
-            onInvoke: (_) => _toggleFocusMode(),
-          ),
-          _OpenDiagramIntent: CallbackAction<_OpenDiagramIntent>(
-            onInvoke: (_) => _showDiagramAccess(selected),
-          ),
-          _CenterOnCurrentIntent: CallbackAction<_CenterOnCurrentIntent>(
-            onInvoke: (_) => _centerOnCurrent(),
-          ),
-        },
-        child: Focus(
-          autofocus: true,
-          child: Scaffold(
-            appBar: AppBar(
-              titleSpacing: 20,
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    graph!.title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  Text(
-                    journeyScopeDescription(graph!),
-                    style: Theme.of(context).textTheme.labelSmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+    return LayoutBuilder(
+      builder: (context, available) {
+        final availableWidth = available.maxWidth;
+        return Shortcuts(
+          shortcuts: const {
+            SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true):
+                _BackIntent(),
+            SingleActivator(LogicalKeyboardKey.arrowRight, alt: true):
+                _ForwardIntent(),
+            SingleActivator(LogicalKeyboardKey.arrowDown, alt: true):
+                _ContinueIntent(),
+            SingleActivator(
+              LogicalKeyboardKey.keyF,
+              control: true,
+              shift: true,
+            ): _ToggleFocusIntent(),
+            SingleActivator(LogicalKeyboardKey.keyD, control: true):
+                _OpenDiagramIntent(),
+            SingleActivator(LogicalKeyboardKey.keyL, control: true):
+                _CenterOnCurrentIntent(),
+          },
+          child: Actions(
+            actions: {
+              _BackIntent: CallbackAction<_BackIntent>(
+                onInvoke: (_) => _goBack(),
               ),
-              actions: [
-                SegmentedButton<ExplorerViewMode>(
-                  segments: const [
-                    ButtonSegment(
-                      value: ExplorerViewMode.journey,
-                      label: Text('Journey'),
-                    ),
-                    ButtonSegment(
-                      value: ExplorerViewMode.graph,
-                      label: Text('Graph'),
-                    ),
-                  ],
-                  selected: {viewMode},
-                  onSelectionChanged: (value) =>
-                      setState(() => viewMode = value.single),
-                ),
-                const SizedBox(width: 12),
-                DropdownButton<String>(
-                  value: journeyId,
-                  items: journeys
-                      .map(
-                        (id) => DropdownMenuItem(
-                          value: id,
-                          child: Text(_journeyTitles[id] ?? 'Learning Journey'),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (id) {
-                    if (id != null) _open(id);
-                  },
-                ),
-                IconButton(
-                  onPressed: hasSelectedDiagram
-                      ? () => _showDiagramAccess(selected)
-                      : null,
-                  icon: const Icon(Icons.account_tree_outlined),
-                  tooltip: hasSelectedDiagram
-                      ? 'Diagram workspace (Ctrl+D)'
-                      : 'No diagram context for this node',
-                ),
-                IconButton(
-                  onPressed: _toggleFocusMode,
-                  icon: Icon(
-                    navigatorVisible || inspectorVisible
-                        ? Icons.center_focus_strong_outlined
-                        : Icons.center_focus_weak_outlined,
-                  ),
-                  tooltip: navigatorVisible || inspectorVisible
-                      ? 'Focus mode: hide side panels (Ctrl+Shift+F)'
-                      : 'Exit focus mode (Ctrl+Shift+F)',
-                ),
-                IconButton(
-                  onPressed: () => _copyToClipboard(selectedNode!, 'Node ID'),
-                  icon: const Icon(Icons.tag),
-                  tooltip: 'Copy node ID',
-                ),
-                IconButton(
-                  onPressed: () => _copyToClipboard(journeyId!, 'Journey ID'),
-                  icon: const Icon(Icons.copy_all_outlined),
-                  tooltip: 'Copy journey ID',
-                ),
-                IconButton(
-                  onPressed: _showSettings,
-                  icon: const Icon(Icons.settings_outlined),
-                  tooltip: 'Settings',
-                ),
-                IconButton(
-                  onPressed: _reload,
-                  icon: const Icon(Icons.refresh),
-                  tooltip: 'Refresh',
-                ),
-              ],
-            ),
-            body: LayoutBuilder(
-              builder: (context, constraints) {
-                // Preserve a usable central investigation surface before
-                // showing optional persistent panels. The user can still use
-                // focus mode and graph navigation at constrained widths.
-                final showInspector =
-                    inspectorVisible && constraints.maxWidth >= 1190;
-                final showNavigator =
-                    navigatorVisible &&
-                    constraints.maxWidth >= (showInspector ? 1190 : 780);
-                return Row(
-                  children: [
-                    if (showNavigator) ...[
-                      SizedBox(width: 292, child: _navigatorPanel()),
-                      const VerticalDivider(width: 1),
+              _ForwardIntent: CallbackAction<_ForwardIntent>(
+                onInvoke: (_) => _goForward(),
+              ),
+              _ContinueIntent: CallbackAction<_ContinueIntent>(
+                onInvoke: (_) => _continuePrimary(),
+              ),
+              _ToggleFocusIntent: CallbackAction<_ToggleFocusIntent>(
+                onInvoke: (_) => _toggleFocusMode(),
+              ),
+              _OpenDiagramIntent: CallbackAction<_OpenDiagramIntent>(
+                onInvoke: (_) => _showDiagramAccess(selected),
+              ),
+              _CenterOnCurrentIntent: CallbackAction<_CenterOnCurrentIntent>(
+                onInvoke: (_) => _centerOnCurrent(),
+              ),
+            },
+            child: Focus(
+              autofocus: true,
+              child: Scaffold(
+                appBar: AppBar(
+                  titleSpacing: 20,
+                  title: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        graph!.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Text(
+                        journeyScopeDescription(graph!),
+                        style: Theme.of(context).textTheme.labelSmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
-                    Expanded(
-                      child: viewMode == ExplorerViewMode.journey
-                          ? _sourceWorkspace(selected)
-                          : JourneyGraphOverview(
-                              graph: graph!,
-                              currentNodeId: selectedNode!,
-                              visitedNodeIds: navigation.visitedNodeIds,
-                              onNodeSelected: (nodeId) => _navigate(
-                                ExplorerRoute(
-                                  journeyId: journeyId!,
-                                  nodeId: nodeId,
+                  ),
+                  actions: [
+                    SegmentedButton<ExplorerViewMode>(
+                      segments: [
+                        ButtonSegment(
+                          value: ExplorerViewMode.journey,
+                          label: availableWidth >= 700
+                              ? const Text('Read')
+                              : null,
+                          icon: const Icon(Icons.menu_book_outlined),
+                          tooltip: 'Read journey',
+                        ),
+                        ButtonSegment(
+                          value: ExplorerViewMode.source,
+                          label: availableWidth >= 700
+                              ? const Text('Source')
+                              : null,
+                          icon: const Icon(Icons.code),
+                          tooltip: 'Source workspace',
+                        ),
+                        ButtonSegment(
+                          value: ExplorerViewMode.graph,
+                          label: availableWidth >= 700
+                              ? const Text('Graph')
+                              : null,
+                          icon: const Icon(Icons.account_tree_outlined),
+                          tooltip: 'Journey graph',
+                        ),
+                      ],
+                      selected: {viewMode},
+                      onSelectionChanged: (value) =>
+                          setState(() => viewMode = value.single),
+                    ),
+                    if (availableWidth >= 1300) ...[
+                      const SizedBox(width: 12),
+                      DropdownButton<String>(
+                        value: journeyId,
+                        items: journeys
+                            .map(
+                              (id) => DropdownMenuItem(
+                                value: id,
+                                child: Text(
+                                  _journeyTitles[id] ?? 'Learning Journey',
                                 ),
                               ),
-                              onRelationSelected: _showGraphRelation,
-                              centerRequest: graphCenterRequest,
-                            ),
-                    ),
-                    if (showInspector) ...[
-                      const VerticalDivider(width: 1),
-                      SizedBox(width: 420, child: _inspectorPanel(selected)),
+                            )
+                            .toList(),
+                        onChanged: (id) {
+                          if (id != null) _open(id);
+                        },
+                      ),
                     ],
+                    if (availableWidth >= 1000) ...[
+                      IconButton(
+                        onPressed: hasSelectedDiagram
+                            ? () => _showDiagramAccess(selected)
+                            : null,
+                        icon: const Icon(Icons.account_tree_outlined),
+                        tooltip: hasSelectedDiagram
+                            ? 'Diagram workspace (Ctrl+D)'
+                            : 'No diagram context for this node',
+                      ),
+                      IconButton(
+                        onPressed: _toggleFocusMode,
+                        icon: Icon(
+                          navigatorVisible || inspectorVisible
+                              ? Icons.center_focus_strong_outlined
+                              : Icons.center_focus_weak_outlined,
+                        ),
+                        tooltip: navigatorVisible || inspectorVisible
+                            ? 'Focus mode: hide side panels (Ctrl+Shift+F)'
+                            : 'Exit focus mode (Ctrl+Shift+F)',
+                      ),
+                      IconButton(
+                        onPressed: () =>
+                            _copyToClipboard(selectedNode!, 'Node ID'),
+                        icon: const Icon(Icons.tag),
+                        tooltip: 'Copy node ID',
+                      ),
+                      IconButton(
+                        onPressed: () =>
+                            _copyToClipboard(journeyId!, 'Journey ID'),
+                        icon: const Icon(Icons.copy_all_outlined),
+                        tooltip: 'Copy journey ID',
+                      ),
+                    ],
+                    IconButton(
+                      onPressed: _showSettings,
+                      icon: const Icon(Icons.settings_outlined),
+                      tooltip: 'Settings',
+                    ),
+                    IconButton(
+                      onPressed: _reload,
+                      icon: const Icon(Icons.refresh),
+                      tooltip: 'Refresh',
+                    ),
                   ],
-                );
-              },
+                ),
+                body: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Preserve a usable central investigation surface before
+                    // showing optional persistent panels. The user can still use
+                    // focus mode and graph navigation at constrained widths.
+                    final showInspector =
+                        inspectorVisible &&
+                        viewMode != ExplorerViewMode.journey &&
+                        constraints.maxWidth >= 1190;
+                    final showNavigator =
+                        navigatorVisible &&
+                        constraints.maxWidth >= (showInspector ? 1190 : 780);
+                    return Row(
+                      children: [
+                        if (showNavigator) ...[
+                          SizedBox(width: 292, child: _navigatorPanel()),
+                          const VerticalDivider(width: 1),
+                        ],
+                        Expanded(
+                          child: viewMode == ExplorerViewMode.journey
+                              ? JourneyReadingView(
+                                  graph: graph!,
+                                  nodeId: selectedNode!,
+                                  projectRoot: widget.store.config.projectRoot,
+                                  progress: reading,
+                                  source: source,
+                                  onNavigate: (id) => _navigate(
+                                    ExplorerRoute(
+                                      journeyId: journeyId!,
+                                      nodeId: id,
+                                    ),
+                                  ),
+                                  onOpenSource: () => setState(
+                                    () => viewMode = ExplorerViewMode.source,
+                                  ),
+                                  onStatus: _setReadingStatus,
+                                  onNote: _editReadingNote,
+                                  onReview: _showReadingSummary,
+                                  onAcknowledgeChange: () {
+                                    setState(
+                                      () =>
+                                          reading = reading.acknowledgeChange(),
+                                    );
+                                    unawaited(_persistReading(journeyId!));
+                                  },
+                                  onEvidence: (evidence) {
+                                    setState(
+                                      () => viewMode = ExplorerViewMode.source,
+                                    );
+                                    _navigate(
+                                      ExplorerRoute(
+                                        journeyId: journeyId!,
+                                        nodeId: selectedNode!,
+                                        evidenceId: evidence.id,
+                                        sourceLocation: evidence.location,
+                                      ),
+                                    );
+                                  },
+                                )
+                              : viewMode == ExplorerViewMode.source
+                              ? _sourceWorkspace(selected)
+                              : JourneyGraphOverview(
+                                  graph: graph!,
+                                  currentNodeId: selectedNode!,
+                                  visitedNodeIds: navigation.visitedNodeIds,
+                                  onNodeSelected: (nodeId) => _navigate(
+                                    ExplorerRoute(
+                                      journeyId: journeyId!,
+                                      nodeId: nodeId,
+                                    ),
+                                  ),
+                                  onRelationSelected: _showGraphRelation,
+                                  centerRequest: graphCenterRequest,
+                                ),
+                        ),
+                        if (showInspector) ...[
+                          const VerticalDivider(width: 1),
+                          SizedBox(
+                            width: 420,
+                            child: _inspectorPanel(selected),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
+                ),
+                bottomNavigationBar: _traversalBar(),
+              ),
             ),
-            bottomNavigationBar: _traversalBar(),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

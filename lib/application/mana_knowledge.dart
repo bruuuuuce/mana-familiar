@@ -11,6 +11,7 @@ const manaKnowledgeCapabilitiesSchema = 'mana.knowledge.capabilities/v1';
 const manaKnowledgeDocumentsSchema = 'mana.knowledge.documents/v1';
 const manaKnowledgeDocumentSchema = 'mana.knowledge.document/v1';
 const manaKnowledgeSearchSchema = 'mana.knowledge.search/v1';
+const manaKnowledgePassageSchema = 'mana.knowledge.passage/v1';
 const manaLearningQueueSchema = 'mana.learning.review-queue/v1';
 const manaActionReceiptSchema = 'mana.action.receipt/v1';
 
@@ -258,6 +259,8 @@ class ManaKnowledgeSearchResult {
     required this.revision,
     this.title,
     this.snippet,
+    this.documentRevision,
+    this.headingPath = const [],
   });
   final String passageId;
   final String documentId;
@@ -267,6 +270,8 @@ class ManaKnowledgeSearchResult {
   final String revision;
   final String? title;
   final String? snippet;
+  final String? documentRevision;
+  final List<String> headingPath;
   factory ManaKnowledgeSearchResult.fromJson(Map<String, dynamic> json) {
     final reference = _requiredString(
       json['source_reference'],
@@ -290,6 +295,12 @@ class ManaKnowledgeSearchResult {
       revision: _revision(json['passage_revision'], 'passage_revision'),
       title: _optionalString(json['title']),
       snippet: _optionalString(json['snippet'], allowEmpty: true),
+      documentRevision: json['document_revision'] == null
+          ? null
+          : _revision(json['document_revision'], 'document_revision'),
+      headingPath: json['heading_path'] == null
+          ? const []
+          : _strings(json['heading_path'], 'heading_path'),
     );
   }
 }
@@ -308,6 +319,37 @@ class ManaKnowledgeSearch {
         'results',
       ).map(ManaKnowledgeSearchResult.fromJson).toList(growable: false),
       _nonNegativeInt(json['returned_bytes'], 'returned_bytes'),
+    );
+  }
+}
+
+class ManaKnowledgePassageResponse {
+  const ManaKnowledgePassageResponse(
+    this.index,
+    this.documentId,
+    this.documentRevision,
+    this.passage,
+  );
+  final ManaKnowledgeIndex index;
+  final String documentId;
+  final String documentRevision;
+  final ManaKnowledgePassage passage;
+
+  factory ManaKnowledgePassageResponse.fromJson(Map<String, dynamic> json) {
+    _schema(json, manaKnowledgePassageSchema);
+    final value = _map(json['passage'], 'passage');
+    if (!_safeReference(
+      _requiredString(value['source_reference'], 'source_reference'),
+    )) {
+      throw const ManaKnowledgeException(
+        'Knowledge passage source reference is unsafe.',
+      );
+    }
+    return ManaKnowledgePassageResponse(
+      ManaKnowledgeIndex.fromJson(_map(json['index'], 'index')),
+      _id(value['document_id'], r'^doc_[0-9a-f]{24}$', 'document_id'),
+      _revision(value['document_revision'], 'document_revision'),
+      ManaKnowledgePassage.fromJson(value),
     );
   }
 }
@@ -444,13 +486,14 @@ class ManaKnowledgeClient {
 
   Future<ManaKnowledgeDocuments> documents({
     required String scope,
+    String lifecycle = 'active',
     int limit = 50,
     int offset = 0,
   }) async => ManaKnowledgeDocuments.fromJson(
     await _knowledge([
       'documents',
-      '--scope',
-      scope,
+      ..._scopeArguments(scope),
+      ..._lifecycleArguments(lifecycle),
       '--limit',
       '$limit',
       '--offset',
@@ -480,10 +523,8 @@ class ManaKnowledgeClient {
       'search',
       '--query',
       query,
-      '--scope',
-      scope,
-      '--lifecycle',
-      lifecycle,
+      ..._scopeArguments(scope),
+      ..._lifecycleArguments(lifecycle),
       '--limit',
       '20',
       '--max-bytes',
@@ -493,6 +534,41 @@ class ManaKnowledgeClient {
 
   Future<ManaLearningQueue> learningCandidates() async =>
       ManaLearningQueue.fromJson(await _knowledge(['learning-candidates']));
+
+  Future<ManaKnowledgePassageResponse> passage(
+    String id, {
+    String? ifRevision,
+  }) async => ManaKnowledgePassageResponse.fromJson(
+    await _knowledge([
+      'passage',
+      id,
+      '--max-bytes',
+      '8192',
+      if (ifRevision != null) ...['--if-revision', ifRevision],
+    ]),
+  );
+
+  static List<String> _scopeArguments(String scope) => [
+    for (final value
+        in scope == 'all'
+            ? const ['project', 'user', 'framework']
+            : [scope]) ...['--scope', value],
+  ];
+
+  static List<String> _lifecycleArguments(String lifecycle) => [
+    for (final value
+        in lifecycle == 'all'
+            ? const [
+                'active',
+                'candidate',
+                'reviewed',
+                'rejected',
+                'deferred',
+                'archived',
+                'superseded',
+              ]
+            : [lifecycle]) ...['--lifecycle', value],
+  ];
 
   Future<ManaActionReceipt> editDocument({
     required ManaKnowledgeDocument document,

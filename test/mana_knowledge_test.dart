@@ -1,12 +1,432 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mana_familiar/application/mana_knowledge.dart';
 import 'package:mana_familiar/presentation/knowledge_center_page.dart';
+import 'package:mana_familiar/presentation/knowledge_document_reader.dart';
+import 'package:mana_familiar/presentation/explorer_page.dart';
+import 'package:mana_familiar/application/explorer_config.dart';
 
 void main() {
+  final liveProject = Platform.environment['KNOWLEDGE_PROJECT_ROOT'];
+  final liveMana = Platform.environment['KNOWLEDGE_MANA_ROOT'];
+  test(
+    'reads cross-source pages and passages from the real Mana producer',
+    () async {
+      final client = ManaKnowledgeClient(
+        projectRoot: liveProject!,
+        manaRoot: liveMana!,
+      );
+      final capabilities = await client.capabilities();
+      expect(capabilities.index.freshness, 'current');
+      final documents = await client.documents(scope: 'all', limit: 5);
+      expect(documents.documents, isNotEmpty);
+      if (documents.nextOffset case final offset?) {
+        final next = await client.documents(
+          scope: 'all',
+          limit: 5,
+          offset: offset,
+        );
+        expect(next.index.revision, documents.index.revision);
+        expect(
+          next.documents
+              .map((d) => d.id)
+              .toSet()
+              .intersection(documents.documents.map((d) => d.id).toSet()),
+          isEmpty,
+        );
+      }
+      final search = await client.search(query: 'Synthetic', scope: 'all');
+      expect(search.results, isNotEmpty);
+      final match = search.results.first;
+      final document = await client.document(
+        match.documentId,
+        ifRevision: search.index.revision,
+      );
+      expect(document.document!.summary.revision, match.documentRevision);
+      final passage = await client.passage(
+        match.passageId,
+        ifRevision: search.index.revision,
+      );
+      expect(passage.documentId, match.documentId);
+      expect(passage.passage.revision, match.revision);
+      expect(passage.passage.body, isNotEmpty);
+      expect(passage.passage.headingPath, match.headingPath);
+    },
+    skip: liveProject == null || liveMana == null
+        ? 'Set KNOWLEDGE_PROJECT_ROOT and KNOWLEDGE_MANA_ROOT after preparing a derived index.'
+        : false,
+  );
+  test(
+    'expands cross-source and lifecycle filters through published CLI arguments',
+    () async {
+      final calls = <List<String>>[];
+      final client = _uiClient((args) async {
+        calls.add(args);
+        return _defaultResponse(args);
+      });
+      await client.documents(scope: 'all', lifecycle: 'archived', offset: 50);
+      expect(
+        calls.single,
+        containsAllInOrder([
+          '--scope',
+          'project',
+          '--scope',
+          'user',
+          '--scope',
+          'framework',
+          '--lifecycle',
+          'archived',
+          '--offset',
+          '50',
+        ]),
+      );
+      await client.search(query: 'retry', scope: 'all', lifecycle: 'all');
+      expect(calls.last, isNot(contains('all')));
+      expect(
+        calls.last,
+        containsAllInOrder([
+          '--lifecycle',
+          'active',
+          '--lifecycle',
+          'candidate',
+        ]),
+      );
+      final result = ManaKnowledgeSearch.fromJson(_search).results.single;
+      expect(result.headingPath, ['Architecture']);
+      expect(result.documentRevision, _revision);
+    },
+  );
+
+  testWidgets('search opens and highlights the exact producer passage', (
+    tester,
+  ) async {
+    final calls = <List<String>>[];
+    final client = _uiClient((args) async {
+      calls.add(args);
+      return _defaultResponse(args);
+    });
+    await _mountKnowledge(tester, client);
+    await tester.enterText(
+      find.byKey(const Key('knowledge-search')),
+      'architecture',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey('knowledge-result-psg_aaaaaaaaaaaaaaaaaaaaaaaa'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('knowledge-search-match')), findsOneWidget);
+    final reader = tester.widget<KnowledgeDocumentReader>(
+      find.byType(KnowledgeDocumentReader),
+    );
+    expect(reader.initialPassageId, 'psg_aaaaaaaaaaaaaaaaaaaaaaaa');
+    expect(
+      calls.last,
+      containsAllInOrder([
+        'document',
+        _summary['document_id'],
+        '--if-revision',
+        _revision,
+      ]),
+    );
+    expect(find.text('On this page'), findsOneWidget);
+    await tester.tap(find.text('Source'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('knowledge-source')), findsOneWidget);
+  });
+
+  testWidgets('retrieves a search passage beyond a truncated preview', (
+    tester,
+  ) async {
+    final calls = <List<String>>[];
+    const passageId = 'psg_cccccccccccccccccccccccc';
+    final client = _uiClient((args) async {
+      calls.add(args);
+      if (args.contains('search')) {
+        return {
+          ..._search,
+          'results': [
+            {
+              ...(_search['results'] as List).single as Map<String, dynamic>,
+              'passage_id': passageId,
+            },
+          ],
+        };
+      }
+      if (args.contains('document')) {
+        return {
+          ..._document,
+          'document': {
+            ..._document['document'] as Map<String, dynamic>,
+            'truncated': true,
+          },
+        };
+      }
+      if (args.contains('passage')) {
+        return {
+          'schema': manaKnowledgePassageSchema,
+          'index': _documents['index'],
+          'passage': {
+            ..._summary,
+            'passage_id': passageId,
+            'heading_path': ['Later guidance'],
+            'body': '**Exact later match**',
+            'passage_revision': _passageRevision,
+            'truncated': false,
+          },
+        };
+      }
+      return _defaultResponse(args);
+    });
+    await _mountKnowledge(tester, client);
+    await tester.enterText(find.byKey(const Key('knowledge-search')), 'later');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('knowledge-result-$passageId')));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Matched passage outside the document preview'),
+      findsOneWidget,
+    );
+    expect(find.text('Exact later match'), findsOneWidget);
+    expect(
+      calls.last,
+      containsAllInOrder(['passage', passageId, '--if-revision', _revision]),
+    );
+  });
+
+  testWidgets(
+    'loads the next library page and deduplicates document identities',
+    (tester) async {
+      final calls = <List<String>>[];
+      final client = _uiClient((args) async {
+        calls.add(args);
+        if (args.contains('documents')) {
+          return {
+            ..._documents,
+            'documents':
+                args.contains('50') &&
+                    args[args.indexOf('--offset') + 1] == '50'
+                ? [_summary, _otherSummary]
+                : [_summary],
+            'next_offset': args[args.indexOf('--offset') + 1] == '50'
+                ? null
+                : 50,
+          };
+        }
+        return _defaultResponse(args);
+      });
+      await _mountKnowledge(tester, client);
+      await tester.tap(find.text('Library'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Load more documents'));
+      await tester.pumpAndSettle();
+      expect(find.text('Architecture'), findsOneWidget);
+      expect(find.text('Recovery policy'), findsOneWidget);
+      expect(find.text('2 loaded documents'), findsOneWidget);
+      expect(find.text('Load more documents'), findsNothing);
+      expect(calls.last, containsAllInOrder(['--offset', '50']));
+    },
+  );
+
+  testWidgets('does not mix pages from different index revisions', (
+    tester,
+  ) async {
+    final client = _uiClient((args) async {
+      if (args.contains('documents')) {
+        return {
+          ..._documents,
+          'next_offset': 50,
+          if (args[args.indexOf('--offset') + 1] == '50')
+            'index': {
+              ..._documents['index'] as Map<String, dynamic>,
+              'revision': _passageRevision,
+            },
+          if (args[args.indexOf('--offset') + 1] == '50')
+            'documents': [_otherSummary],
+        };
+      }
+      return _defaultResponse(args);
+    });
+    await _mountKnowledge(tester, client);
+    await tester.tap(find.text('Library'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Load more documents'));
+    await tester.pumpAndSettle();
+    expect(find.text('Recovery policy'), findsNothing);
+    expect(find.textContaining('The index changed.'), findsOneWidget);
+    expect(find.text('Architecture'), findsOneWidget);
+  });
+
+  testWidgets(
+    'an older document response cannot replace the latest selection',
+    (tester) async {
+      final first = Completer<Map<String, dynamic>>();
+      final second = Completer<Map<String, dynamic>>();
+      final client = _uiClient((args) async {
+        if (args.contains('documents')) {
+          return {
+            ..._documents,
+            'documents': [_summary, _otherSummary],
+          };
+        }
+        if (args.contains('document')) {
+          return args.contains(_summary['document_id'])
+              ? first.future
+              : second.future;
+        }
+        return _defaultResponse(args);
+      });
+      await _mountKnowledge(tester, client);
+      await tester.tap(find.text('Library'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Architecture'));
+      await tester.pump();
+      await tester.tap(find.text('Recovery policy'));
+      second.complete({
+        ..._document,
+        'document': {
+          ..._document['document'] as Map<String, dynamic>,
+          ..._otherSummary,
+        },
+      });
+      await tester.pumpAndSettle();
+      first.complete(_document);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<KnowledgeDocumentReader>(
+              find.byType(KnowledgeDocumentReader),
+            )
+            .document
+            .summary
+            .title,
+        'Recovery policy',
+      );
+    },
+  );
+
+  testWidgets('refresh invalidates a pending document response', (
+    tester,
+  ) async {
+    final response = Completer<Map<String, dynamic>>();
+    final signal = ValueNotifier(0);
+    addTearDown(signal.dispose);
+    final client = _uiClient(
+      (args) async =>
+          args.contains('document') ? response.future : _defaultResponse(args),
+    );
+    await _mountKnowledge(tester, client, refreshSignal: signal);
+    await tester.tap(find.text('Architecture'));
+    await tester.pump();
+    signal.value++;
+    await tester.pumpAndSettle();
+    response.complete(_document);
+    await tester.pumpAndSettle();
+    expect(find.byType(KnowledgeDocumentReader), findsNothing);
+  });
+
+  testWidgets(
+    'Journeys loads only when selected and Learning exposes evidence',
+    (tester) async {
+      var journeyBuilds = 0;
+      final client = _uiClient((args) async => _defaultResponse(args));
+      await _mountKnowledge(
+        tester,
+        client,
+        journeysBuilder: () {
+          journeyBuilds++;
+          return const Text('Connected Journey picker');
+        },
+      );
+      expect(journeyBuilds, 0);
+      await tester.tap(find.text('Journeys'));
+      await tester.pumpAndSettle();
+      expect(find.text('Connected Journey picker'), findsOneWidget);
+      await tester.tap(find.text('Learning'));
+      await tester.pumpAndSettle();
+      expect(find.text('Evidence and limitations'), findsOneWidget);
+      await tester.tap(find.text('Evidence and limitations'));
+      await tester.pumpAndSettle();
+      expect(find.text('event-1'), findsOneWidget);
+      expect(find.text('One success'), findsOneWidget);
+      expect(find.text('One service'), findsOneWidget);
+      expect(find.text('Review proposal'), findsOneWidget);
+    },
+  );
+
+  testWidgets('Knowledge reader remains usable in a narrow window', (
+    tester,
+  ) async {
+    final client = _uiClient((args) async => _defaultResponse(args));
+    await _mountKnowledge(tester, client, size: const Size(480, 850));
+    await tester.tap(find.text('Architecture'));
+    await tester.pumpAndSettle();
+    expect(find.text('Back to library'), findsOneWidget);
+    expect(find.byType(KnowledgeDocumentReader), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Back to library'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('knowledge-library-list')), findsOneWidget);
+  });
+
+  test(
+    'reading history persists locally, is bounded and isolates projects',
+    () async {
+      final root = Directory.systemTemp.createTempSync(
+        'knowledge-preferences-',
+      );
+      addTearDown(() => root.deleteSync(recursive: true));
+      final config = ExplorerConfig(
+        projectRoot: '/project-a',
+        manaRoot: '/mana',
+        preferencesRoot: root.path,
+      );
+      final preferences = await ExplorerPreferences.load(config);
+      final document = ManaKnowledgeDocumentSummary.fromJson(_summary);
+      await preferences.rememberKnowledgeDocument('/project-a', document);
+      await preferences.rememberKnowledgeDocument(
+        '/project-b',
+        ManaKnowledgeDocumentSummary.fromJson(_otherSummary),
+      );
+      await preferences.rememberKnowledgeDocument('/project-a', document);
+      final loaded = await ExplorerPreferences.load(config);
+      expect(
+        loaded.recentKnowledgeDocuments['/project-a']!.single.id,
+        document.id,
+      );
+      expect(
+        loaded.recentKnowledgeDocuments['/project-b']!.single.title,
+        'Recovery policy',
+      );
+      final content = File('${root.path}/preferences.json').readAsStringSync();
+      expect(content, isNot(contains('exact_content')));
+      expect(content, isNot(contains('passages')));
+      await Future.wait([
+        loaded.saveThemeMode(ThemeMode.dark),
+        for (var i = 0; i < 12; i++)
+          loaded.rememberKnowledgeDocument(
+            '/project-a',
+            ManaKnowledgeDocumentSummary.fromJson({
+              ..._summary,
+              'document_id': 'doc_${i.toRadixString(16).padLeft(24, '0')}',
+            }),
+          ),
+      ]);
+      final bounded = await ExplorerPreferences.load(config);
+      expect(bounded.recentKnowledgeDocuments['/project-a'], hasLength(8));
+      expect(bounded.themeMode.value, ThemeMode.dark);
+    },
+  );
+
   test(
     'consumes published knowledge reads and revision-checked actions',
     () async {
@@ -178,7 +598,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('Knowledge'), findsOneWidget);
-    expect(find.textContaining('Index current'), findsOneWidget);
+    expect(find.text('Sources are up to date'), findsOneWidget);
     expect(find.text('Architecture'), findsOneWidget);
     expect(find.text('Learning review queue'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -280,6 +700,60 @@ void main() {
     expect(find.text('Accept for separate promotion'), findsNothing);
   });
 }
+
+ManaKnowledgeClient _uiClient(
+  Future<Map<String, dynamic>> Function(List<String>) respond,
+) {
+  final root = Directory.systemTemp.createTempSync('knowledge-workspace-test-');
+  addTearDown(() => root.deleteSync(recursive: true));
+  File('${root.path}/mana').writeAsStringSync('');
+  return ManaKnowledgeClient(
+    projectRoot: root.path,
+    run: (_, args, {workingDirectory}) async =>
+        ProcessResult(1, 0, jsonEncode(await respond(args)), ''),
+  );
+}
+
+Map<String, dynamic> _defaultResponse(List<String> args) =>
+    args.contains('capabilities')
+    ? _capabilities
+    : args.contains('documents')
+    ? _documents
+    : args.contains('document')
+    ? _document
+    : args.contains('search')
+    ? _search
+    : _queue;
+
+Future<void> _mountKnowledge(
+  WidgetTester tester,
+  ManaKnowledgeClient client, {
+  Size size = const Size(1280, 1000),
+  ValueListenable<int>? refreshSignal,
+  Widget Function()? journeysBuilder,
+}) async {
+  await tester.binding.setSurfaceSize(size);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: KnowledgeCenterPage(
+          client: client,
+          refreshSignal: refreshSignal,
+          journeysBuilder: journeysBuilder,
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+final _otherSummary = <String, dynamic>{
+  ..._summary,
+  'document_id': 'doc_bbbbbbbbbbbbbbbbbbbbbbbb',
+  'title': 'Recovery policy',
+  'source_reference': '.mana/global/recovery.md',
+};
 
 const _revision =
     'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
