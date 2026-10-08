@@ -198,6 +198,11 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
                       manaRoot: widget.config.manaRoot,
                     )
                   : null,
+              recentKnowledgeDocuments:
+                  widget.preferences.recentKnowledgeDocuments[_projectRoot] ??
+                  const [],
+              onKnowledgeDocumentOpened: (document) => widget.preferences
+                  .rememberKnowledgeDocument(_projectRoot, document),
               reviewSchedulerClient: widget.config.inspectSnapshotPath == null
                   ? ManaReviewSchedulerClient(
                       projectRoot: _projectRoot,
@@ -220,6 +225,7 @@ class _ManaFamiliarAppState extends State<ManaFamiliarApp> {
                 initialJourney: journeyId ?? widget.config.journeyId,
               ),
               learningJourneysBuilder: (onOpenJourney) => JourneyPickerPage(
+                preferences: widget.preferences,
                 store: JourneyStore(
                   widget.config.withProjectRoot(_projectRoot),
                 ),

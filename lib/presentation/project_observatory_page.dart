@@ -38,6 +38,8 @@ class ProjectObservatoryPage extends StatefulWidget {
     this.feedbackDrafts,
     this.nativeE2E,
     this.knowledgeClient,
+    this.recentKnowledgeDocuments = const [],
+    this.onKnowledgeDocumentOpened,
     this.reviewSchedulerClient,
     this.performanceMilestone,
   });
@@ -60,6 +62,9 @@ class ProjectObservatoryPage extends StatefulWidget {
   final HumanFeedbackDraftStore? feedbackDrafts;
   final NativeE2EBridge? nativeE2E;
   final ManaKnowledgeClient? knowledgeClient;
+  final List<ManaKnowledgeDocumentSummary> recentKnowledgeDocuments;
+  final Future<void> Function(ManaKnowledgeDocumentSummary document)?
+  onKnowledgeDocumentOpened;
   final ManaReviewSchedulerClient? reviewSchedulerClient;
   final void Function(String milestone)? performanceMilestone;
   @override
@@ -115,6 +120,8 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   var _knowledgeRefreshPending = false;
   var _activityRefreshPending = false;
   var _supportingLoading = false;
+  var _knowledgeContextLoading = false;
+  Object? _knowledgeContextError;
   var _producerInitialLoadComplete = false;
   var _scheduledReviews = false;
   Object? _catalogError;
@@ -222,6 +229,17 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   void _loadSupportingIfNeeded() {
     final model = _model;
     final destination = _navigation.current.destination;
+    if (model != null && destination == ObservatoryDestination.knowledge) {
+      if (_producerInitialLoadComplete &&
+          model.project.supportsProjectContext &&
+          model.projectContext == null &&
+          !_knowledgeContextLoading &&
+          _knowledgeContextError == null) {
+        _knowledgeContextLoading = true;
+        unawaited(_loadKnowledgeContext());
+      }
+      return;
+    }
     if (model != null &&
         destination == ObservatoryDestination.activity &&
         model.project.supportsActivityPages) {
@@ -257,6 +275,21 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
       _supportingLoading = true;
       unawaited(_loadSupportingSurfaces());
     });
+  }
+
+  Future<void> _loadKnowledgeContext() async {
+    final request = _semanticRequest;
+    try {
+      final model = await _repository.loadProjectContext();
+      if (mounted && request == _semanticRequest)
+        setState(() => _model = model);
+    } catch (error) {
+      if (mounted && request == _semanticRequest)
+        setState(() => _knowledgeContextError = error);
+    } finally {
+      _knowledgeContextLoading = false;
+      if (mounted && request != _semanticRequest) _loadSupportingIfNeeded();
+    }
   }
 
   Future<void> _loadSupportingSurfaces() async {
@@ -342,6 +375,7 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
     final request = ++_semanticRequest;
     setState(() {
       _refreshPending = false;
+      _knowledgeContextError = null;
       _detailCache.clear();
       _workDetails.clear();
       _workDetailErrors.clear();
@@ -2341,9 +2375,46 @@ class _ProjectObservatoryPageState extends State<ProjectObservatoryPage> {
   }
 
   Widget _knowledge(ManaSemanticReadModel model) {
-    if (widget.knowledgeClient case final client?) {
+    if (_navigation.current.category == null &&
+        widget.knowledgeClient != null) {
+      final client = widget.knowledgeClient!;
+      final categories =
+          model.projectContext?.categories ??
+          const <ManaProjectContextCategory>[];
+      final journeys = categories.where(_isLearningJourneys).firstOrNull;
       return KnowledgeCenterPage(
         client: client,
+        recentDocuments: widget.recentKnowledgeDocuments,
+        onDocumentOpened: widget.onKnowledgeDocumentOpened,
+        contextOverview: categories.isEmpty
+            ? model.project.supportsProjectContext &&
+                      model.projectContext == null
+                  ? Text(
+                      _knowledgeContextError == null
+                          ? 'Loading project categories…'
+                          : 'Project categories unavailable: $_knowledgeContextError',
+                    )
+                  : null
+            : Column(
+                children: categories
+                    .where((category) => !_isLearningJourneys(category))
+                    .map(_knowledgeCategoryRow)
+                    .toList(),
+              ),
+        journeysBuilder: () => journeys == null
+            ? model.project.supportsProjectContext &&
+                      model.projectContext == null
+                  ? _knowledgeContextError == null
+                        ? const Center(child: CircularProgressIndicator())
+                        : _placeholder(
+                            'Journeys unavailable',
+                            '$_knowledgeContextError',
+                          )
+                  : _placeholder(
+                      'No Learning Journeys reported yet',
+                      'Mana has not reported a Journey manifest for this project.',
+                    )
+            : _learningJourneys(journeys),
         refreshSignal: _feedbackRefresh,
         onReady: () => _recordAfterFrame('knowledge_visible'),
         onSettled: (available) {

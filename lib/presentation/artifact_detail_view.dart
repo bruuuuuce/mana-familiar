@@ -661,6 +661,24 @@ class _JourneyArtifactModule extends StatelessWidget {
 /// notes. Links, images, and HTML have already been removed by the renderer.
 enum MarkdownReaderMode { reader, source, metadata }
 
+/// Reuses the bounded document renderer for producer-owned Knowledge passages.
+/// HTML and remote images remain inert; navigation is owned by the parent UI.
+class MarkdownPassageView extends StatelessWidget {
+  const MarkdownPassageView({super.key, required this.markdown});
+  final String markdown;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      for (final block in _MarkdownBlocks.parse(
+        safeMarkdownText(markdown),
+      ).blocks)
+        block.build(context),
+    ],
+  );
+}
+
 class _OpenDocumentCommentsIntent extends Intent {
   const _OpenDocumentCommentsIntent();
 }

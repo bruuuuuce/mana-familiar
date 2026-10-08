@@ -1393,6 +1393,29 @@ class ManaSemanticRepository {
     includeActivity: false,
   ).whenComplete(() => _refreshing = null);
 
+  /// Loads Knowledge categories without fetching Activity or the raw catalog.
+  Future<ManaSemanticReadModel> loadProjectContext() async {
+    final latest = _latest ?? await initialLoad();
+    if (latest.projectContext != null ||
+        !latest.project.supportsProjectContext) {
+      return latest;
+    }
+    final context = await client.projectContext(capabilities: latest.project);
+    if (!identical(_latest, latest)) return _latest!;
+    final model = ManaSemanticReadModel(
+      project: latest.project,
+      mode: latest.mode,
+      catalog: latest.catalog,
+      workItems: latest.workItems,
+      projectContext: context,
+      activity: latest.activity,
+      semanticRevision: latest.semanticRevision,
+      refreshError: latest.refreshError,
+    );
+    _latest = model;
+    return model;
+  }
+
   /// Completes the non-critical semantic surfaces after the first frame.
   Future<ManaSemanticReadModel> loadSupportingSurfaces() async {
     final latest = _latest;
