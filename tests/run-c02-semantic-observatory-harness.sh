@@ -44,7 +44,7 @@ new_project() {
   git -C "$project" config user.email 'mana-f16@example.invalid'
   printf '%s\n' "# $name" > "$project/README.md"
   git -C "$project" add README.md
-  git -C "$project" commit -qm initial
+  # The semantic reader needs tracked working files, not a committed revision.
   printf '%s\n' "$project"
 }
 
