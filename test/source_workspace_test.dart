@@ -9,21 +9,33 @@ void main() {
     () async {
       final root = await Directory.systemTemp.createTemp('mana-source-');
       addTearDown(() => root.delete(recursive: true));
-      await _git(root.path, ['init']);
-      await _git(root.path, ['config', 'user.email', 'test@mana.local']);
-      await _git(root.path, ['config', 'user.name', 'Mana test']);
-      final source = File('${root.path}/lib/example.dart');
-      await source.parent.create(recursive: true);
-      await source.writeAsString('void main() {}\n');
-      await _git(root.path, ['add', '.']);
-      await _git(root.path, ['commit', '-m', 'snapshot']);
-      final revision = (await _git(root.path, ['rev-parse', 'HEAD'])).trim();
-      await source.writeAsString('void main() { print("drift"); }\n');
+      // Reuse a pinned local snapshot instead of creating a fixture commit.
+      final repository = (await _git(Directory.current.path, [
+        'rev-parse',
+        '--show-toplevel',
+      ])).trim();
+      final revision = (await _git(repository, ['rev-parse', 'HEAD'])).trim();
+      await _git(root.path, [
+        'clone',
+        '--quiet',
+        '--no-hardlinks',
+        '--no-checkout',
+        repository,
+        '.',
+      ]);
+      await _git(root.path, ['checkout', '--quiet', '--detach', revision]);
+      const sourcePath = 'lib/source_workspace.dart';
+      final snapshotContents = await _git(root.path, [
+        'show',
+        '$revision:$sourcePath',
+      ]);
+      final source = File('${root.path}/$sourcePath');
+      await source.writeAsString('$snapshotContents// Working-tree drift.\n');
 
       final resolved = await SourceResolver().resolve(
         SourceLocation(
           projectRoot: root.path,
-          path: 'lib/example.dart',
+          path: sourcePath,
           startLine: 1,
           endLine: 1,
           revision: revision,
@@ -31,7 +43,7 @@ void main() {
       );
 
       expect(resolved.state, SourceState.snapshot);
-      expect(resolved.contents, 'void main() {}\n');
+      expect(resolved.contents, snapshotContents);
       expect(resolved.drifted, isTrue);
     },
   );
