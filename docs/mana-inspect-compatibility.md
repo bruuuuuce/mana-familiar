@@ -11,6 +11,7 @@ Mana `mana-inspect-contract/v1` response schemas:
 - `mana.inspect.work-item/v1`
 - `mana.inspect.project-context/v1`
 - `mana.inspect.activity/v1`
+- `mana.inspect.activity-page/v1`
 - `mana.inspect.semantic-snapshot/v1`
 
 Before requesting optional detail or source relations, Familiar calls
