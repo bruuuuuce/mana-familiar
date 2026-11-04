@@ -51,7 +51,7 @@ void main() {
         {'eventId': 'synthetic:duplicate', 'timestamp': '2026-10-04T08:00:01Z'},
         {'eventId': 'synthetic:duplicate', 'timestamp': '2026-10-04T08:00:02Z'},
       ];
-      await events.writeAsString(records.map(jsonEncode).join('\n') + '\n');
+      await events.writeAsString('${records.map(jsonEncode).join('\n')}\n');
       final original = await snapshotMana(project);
       final client = ManaInspectClient(
         projectRoot: project.path,
@@ -143,8 +143,9 @@ void main() {
           arguments,
           workingDirectory: workingDirectory,
         );
-        if (actual.exitCode != 0 || !arguments.contains('activity-page'))
+        if (actual.exitCode != 0 || !arguments.contains('activity-page')) {
           return actual;
+        }
         final json =
             jsonDecode(actual.stdout as String) as Map<String, dynamic>;
         if (duplicate) {
