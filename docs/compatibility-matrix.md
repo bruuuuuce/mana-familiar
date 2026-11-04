@@ -10,7 +10,7 @@ Transport can use a project-local `./mana` wrapper or an explicit compatible
 `--mana-root`. A saved inspect response represents only its matching operation.
 Direct `mana.learning.graph/v1` artifacts open the separate legacy Journey UI.
 
-Familiar accepts the nine v1 inspect schemas listed in
+Familiar supports the ten v1 inspect schemas listed in
 [mana-inspect compatibility](mana-inspect-compatibility.md). Unknown additive
 object fields are ignored safely; unknown enum values map to explicit unknown
 state where the typed model supports it. Invalid identity, ownership, unsafe
